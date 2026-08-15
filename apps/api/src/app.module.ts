@@ -8,6 +8,7 @@ import { OutboxService } from './modules/outbox/outbox.service.js';
 import { ReservationGate } from './modules/reservation/reservation.gate.js';
 import { MetricsController } from './modules/metrics/metrics.controller.js';
 import { MetricsService } from './modules/metrics/metrics.service.js';
+import { ReservationsController } from './modules/reservation/reservations.controller.js';
 
 @Module({
   imports: [
@@ -15,7 +16,7 @@ import { MetricsService } from './modules/metrics/metrics.service.js';
       pinoHttp: { level: process.env.LOG_LEVEL ?? 'info' },
     }),
   ],
-  controllers: [HealthController, MetricsController],
+  controllers: [HealthController, MetricsController, ReservationsController],
   providers: [
     {
       provide: Pool,

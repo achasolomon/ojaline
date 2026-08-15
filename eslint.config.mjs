@@ -15,6 +15,10 @@ export default tseslint.config(
     languageOptions: { globals: globals.browser },
   },
   {
+    files: ['scripts/load/**/*.js'],
+    languageOptions: { globals: { ...globals.node, __ENV: 'readonly', __VU: 'readonly', __ITER: 'readonly' } },
+  },
+  {
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }]

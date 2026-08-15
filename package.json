@@ -11,6 +11,7 @@
     "typecheck": "pnpm -r run typecheck",
     "lint": "eslint .",
     "lint:boundaries": "node scripts/check-boundaries.mjs",
+    "load:reservation": "k6 run scripts/load/reservation-gate.js",
     "db:migrate": "docker compose run --rm flyway migrate",
     "generate:schemas": "pnpm --filter @ojaline/contracts run generate:schemas"
   },

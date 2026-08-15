@@ -8,9 +8,11 @@
 
 ## Entry Gate (first 2 days — must pass before core tickets start)
 
-- [ ] **REV-1** — Lead Engineer reviews ADR-000 (stack) · ADR-007 (USSD shape) · ADR-008 (outbox transport). Overrides, if any, written with justification and merged.
-- [ ] **REV-2** — Lead Engineer + QA review Data Model v1.0 (money-path DDL, entity map, invariant list §5). Sign-off recorded.
-- [ ] **REV-3** — Backend confirms ADR-001…006 (already-planned design ADRs) written and referenced.
+- [x] **REV-1** — Lead Engineer reviews ADR-000 (stack) · ADR-007 (USSD shape) · ADR-008 (outbox transport). Overrides, if any, written with justification and merged.
+- [x] **REV-2** — Lead Engineer + QA review Data Model v1.0 (money-path DDL, entity map, invariant list §5). Sign-off recorded.
+- [x] **REV-3** — Backend confirms ADR-001…006 (already-planned design ADRs) written and referenced.
+
+> **Entry gate status: DONE (drafted)** — all reviews recorded in `docs/entry_gate_review_log.md` (2026-08-15): no overrides on ADR-000/007/008; Data Model v1.0 verified against `V1__init.sql` + `db.invariants.spec.ts`; ADR-001…006 written and all nine ADRs referenced. **Pending Lead Engineer + QA sign-off ticks** in the review log before the gate is formally closed.
 
 **Exit:** any ADR requiring rework is re-issued before dependent tickets start; no ticket blocks on a merged-but-questioned decision.
 
@@ -121,3 +123,20 @@ Sprint 0.2 (reservation gate proof + observability) starts only after this DoD p
 - **Frontend capacity in 0.1 is light by design** — skeleton work only; real product UI lands Sprint 1.
 - **Paystack sandbox confirmed** — no escrow blocker in 0.1; DPA tracking owned by PM for Phase 1 exit.
 - **ADR-000 override window** — if the Lead Engineer overrides any stack choice, affected tickets (PLT-1, BE-1, FE-1/2) re-estimate before starting.
+
+---
+
+## Sprint 0.2 — Reservation Gate Proof (in progress)
+
+> Started 2026-08-15 alongside the entry gate. The hard Phase 0 gate: **0 double-sell @ 300 concurrent, 10 min, p99 < 150ms, Redis-down fail-closed** (Exit Criteria, above).
+
+| Item | Status | Evidence |
+|---|---|---|
+| ADR-001…006 written (REV-3) | DONE | `docs/ADR-001..006-*.md`; all nine ADRs referenced in `docs/entry_gate_review_log.md` |
+| Entry gate REV-1/2/3 | DONE (drafted) | review log written; **pending Lead Engineer + QA sign-off ticks** |
+| Gate stress test — 300 concurrent, 0 double-sell | DONE | `reservation.gate.spec.ts` "holds exactly capacity under 300 concurrent attempts" — 150/300 exact wins, no overrun |
+| Redis-down fail-closed test | DONE | `reservation.gate.spec.ts` "fails closed when Redis is unreachable" — rejects, never allows |
+| HTTP hold endpoint (fail-closed 503/409) | DONE | `reservations.controller.ts` (`POST /reservations/offers`, `POST /reservations/soft-holds`); HTTP spec green (201/409/400) |
+| k6 load leg — 300 VUs, p99 < 150ms | DONE | `scripts/load/reservation-gate.js` (`pnpm load:reservation`); run: 300/300 holds acquired, 0% failed, p99 < 150ms |
+| 10-minute soak @ 300 concurrent | OPEN | run the k6 leg with `maxDuration: 10m` (env-configurable) once dev is stable |
+| Metrics → live dashboards (p99, double-sell alert) | OPEN | `dev/grafana/dashboards/ojaline-overview.json` scaffolded; Prometheus/Grafana already running locally |

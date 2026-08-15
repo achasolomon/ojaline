@@ -54,6 +54,45 @@ describe('ReservationGate (integration — requires redis on REDIS_URL)', () => 
     expect(c).toEqual({ available: 1, reserved: 0, softHeld: 1 });
   });
 
+  it('holds exactly capacity under 300 concurrent attempts — zero double-sell (Phase 0 gate arithmetic)', async () => {
+    const CAPACITY = 150;
+    const ATTEMPTS = 300;
+    await gate.seedOffer(offerId, CAPACITY);
+
+    const attempts = Array.from({ length: ATTEMPTS }, () => gate.acquireSoftHold(offerId, randomUUID(), 1, SOFT_HOLD_TTL));
+    const results = await Promise.all(attempts);
+    const wins = results.filter(Boolean).length;
+
+    expect(wins).toBe(CAPACITY);
+
+    const c = await gate.getCounters(offerId);
+    expect(c).toEqual({ available: CAPACITY, reserved: 0, softHeld: CAPACITY });
+
+    const overrun = await gate.acquireSoftHold(offerId, randomUUID(), 1, SOFT_HOLD_TTL);
+    expect(overrun).toBe(false);
+  });
+
+  it('fails closed when Redis is unreachable — never allows a hold on gate error', async () => {
+    const dead = new Redis({
+      host: '127.0.0.1',
+      port: 1,
+      connectTimeout: 500,
+      maxRetriesPerRequest: 0,
+      enableOfflineQueue: false,
+      retryStrategy: () => null,
+      lazyConnect: false,
+    });
+    try {
+      const failClosedGate = new ReservationGate(dead);
+      await expect(failClosedGate.acquireSoftHold(offerId, randomUUID(), 1, SOFT_HOLD_TTL)).rejects.toThrow();
+
+      const c = await gate.getCounters(offerId);
+      expect(c.softHeld).toBe(0);
+    } finally {
+      dead.disconnect();
+    }
+  });
+
   it('releases a soft hold and restores sellable budget', async () => {
     const holdKey = randomUUID();
     await gate.acquireSoftHold(offerId, holdKey, 1, SOFT_HOLD_TTL);
