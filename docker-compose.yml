@@ -1,7 +1,6 @@
 # Ojaline Phase 1 dev environment (ADR-000 §5).
 # Core: postgres (postgis), redis, minio. flyway runs migrations one-shot.
-# Future (PLT-1 follow-ups, not yet in compose): ats-mock (SMS/USSD stub),
-# paystack-stub (test-mode webhook).
+# Stubs: ats-mock (Africa's Talking SMS/USSD stub), paystack-stub (test-mode).
 name: ojaline
 
 services:
@@ -64,6 +63,38 @@ services:
       - ./packages/db/migrations:/flyway/sql:ro
     profiles: ["migrate"]
     entrypoint: ["flyway", "migrate"]
+
+  ats-mock:
+    image: node:22-alpine
+    volumes:
+      - ./dev/ats-mock:/app:ro
+    working_dir: /app
+    command: ["node", "server.mjs"]
+    environment:
+      PORT: 9201
+    ports:
+      - "${ATS_MOCK_PORT:-9201}:9201"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:9201/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  paystack-stub:
+    image: node:22-alpine
+    volumes:
+      - ./dev/paystack-stub:/app:ro
+    working_dir: /app
+    command: ["node", "server.mjs"]
+    environment:
+      PORT: 9202
+    ports:
+      - "${PAYSTACK_STUB_PORT:-9202}:9202"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:9202/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
 volumes:
   ojaline_pg_data:

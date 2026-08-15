@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PNPM_VERSION: "11.5.1"
+
+jobs:
+  quality:
+    name: Lint / Typecheck / Contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - name: Contract validation (good payloads pass, bad payloads fail)
+        run: pnpm --filter @ojaline/contracts run check
+      - name: JSON Schema drift check (ADR-003/008)
+        run: |
+          pnpm --filter @ojaline/contracts run generate:schemas
+          git diff --exit-code packages/contracts/schemas
+
+  integration:
+    name: Integration tests (Postgres + Redis)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: ojaline
+          POSTGRES_USER: ojaline
+          POSTGRES_PASSWORD: ojaline_dev_pw
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ojaline -d ojaline"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Apply Flyway migrations
+        run: |
+          docker run --rm --network host \
+            -v "${{ github.workspace }}/packages/db/migrations:/flyway/sql:ro" \
+            flyway/flyway:11 \
+            -url=jdbc:postgresql://localhost:5432/ojaline \
+            -user=ojaline \
+            -password=ojaline_dev_pw \
+            -locations=filesystem:/flyway/sql \
+            migrate
+      - name: Run test suite (health, reservation gate, DB invariants, grants)
+        env:
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          DB_NAME: ojaline
+          DB_USER: ojaline_app
+          DB_PASSWORD: ojaline_app_dev_pw
+          REDIS_URL: redis://localhost:6379
+        run: pnpm --filter @ojaline/api run test
+
+  audit:
+    name: Dependency audit (SCA gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Fail on high/critical vulnerabilities
+        run: pnpm audit --audit-level high

@@ -6,6 +6,8 @@ import { loadConfig } from '@ojaline/config';
 import { HealthController } from './modules/health/health.controller.js';
 import { OutboxService } from './modules/outbox/outbox.service.js';
 import { ReservationGate } from './modules/reservation/reservation.gate.js';
+import { MetricsController } from './modules/metrics/metrics.controller.js';
+import { MetricsService } from './modules/metrics/metrics.service.js';
 
 @Module({
   imports: [
@@ -13,7 +15,7 @@ import { ReservationGate } from './modules/reservation/reservation.gate.js';
       pinoHttp: { level: process.env.LOG_LEVEL ?? 'info' },
     }),
   ],
-  controllers: [HealthController],
+  controllers: [HealthController, MetricsController],
   providers: [
     {
       provide: Pool,
@@ -37,6 +39,7 @@ import { ReservationGate } from './modules/reservation/reservation.gate.js';
     },
     OutboxService,
     ReservationGate,
+    MetricsService,
   ],
   exports: [Pool, Redis, OutboxService, ReservationGate],
 })

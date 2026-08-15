@@ -1,0 +1,23 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":disableDependencyDashboard"
+  ],
+  "packageRules": [
+    {
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "dev dependencies (minor/patch)"
+    },
+    {
+      "matchPackageNames": ["@nestjs/**"],
+      "groupName": "nestjs"
+    },
+    {
+      "matchPackageNames": ["typescript", "eslint", "typescript-eslint", "vitest"],
+      "automerge": false
+    }
+  ],
+  "schedule": ["before 6am on the first day of the week"]
+}

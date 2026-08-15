@@ -1,0 +1,46 @@
+{
+  "id": null,
+  "title": "Ojaline Overview (placeholder — Sprint 0.2 makes live)",
+  "uid": "ojaline-overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Outbox pending (PENDING/FAILED)",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "targets": [{ "expr": "ojaline_outbox_pending", "legendFormat": "pending" }],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Active soft holds (Redis)",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+      "targets": [{ "expr": "ojaline_soft_hold_active", "legendFormat": "soft_holds" }],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "DB pool connections",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
+      "targets": [{ "expr": "ojaline_db_pool_connections", "legendFormat": "{{state}}" }],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Redis connectivity",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
+      "targets": [{ "expr": "ojaline_redis_connected", "legendFormat": "connected" }],
+      "fieldConfig": { "defaults": { "unit": "bool" }, "overrides": [] }
+    }
+  ],
+  "templating": { "list": [] },
+  "annotations": { "list": [] }
+}

@@ -31,3 +31,5 @@ export class HealthController {
     return { status: db && redis ? 'ok' : 'degraded', db, redis, dbError, redisError };
   }
 }
+
+

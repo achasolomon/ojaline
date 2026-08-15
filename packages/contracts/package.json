@@ -9,7 +9,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "generate:schemas": "tsx scripts/generate-schemas.ts"
+    "generate:schemas": "tsx scripts/generate-schemas.ts",
+    "check": "tsx scripts/check-contracts.ts"
   },
   "dependencies": {
     "zod": "^3.25.0"
