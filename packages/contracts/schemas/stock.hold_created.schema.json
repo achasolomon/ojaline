@@ -1,0 +1,34 @@
+{
+  "event_type": "stock.hold_created",
+  "schema_version": 1,
+  "type": "object",
+  "properties": {
+    "offer_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "user_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "qty": {
+      "type": "integer",
+      "exclusiveMinimum": 0
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "SOFT",
+        "HARD"
+      ]
+    }
+  },
+  "required": [
+    "offer_id",
+    "user_id",
+    "qty",
+    "kind"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

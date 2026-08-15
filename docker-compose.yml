@@ -1,0 +1,70 @@
+# Ojaline Phase 1 dev environment (ADR-000 §5).
+# Core: postgres (postgis), redis, minio. flyway runs migrations one-shot.
+# Future (PLT-1 follow-ups, not yet in compose): ats-mock (SMS/USSD stub),
+# paystack-stub (test-mode webhook).
+name: ojaline
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ojaline}
+      POSTGRES_USER: ${POSTGRES_USER:-ojaline}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ojaline_dev_pw}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - ojaline_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ojaline} -d ${POSTGRES_DB:-ojaline}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":${MINIO_CONSOLE_PORT:-9001}"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-ojaline_minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-ojaline_minio_pw}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - ojaline_minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  flyway:
+    image: flyway/flyway:11
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      FLYWAY_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-ojaline}
+      FLYWAY_USER: ${POSTGRES_USER:-ojaline}
+      FLYWAY_PASSWORD: ${POSTGRES_PASSWORD:-ojaline_dev_pw}
+      FLYWAY_LOCATIONS: filesystem:/flyway/sql
+      FLYWAY_SCHEMAS: public
+      FLYWAY_BASELINE_ON_MIGRATE: "true"
+    volumes:
+      - ./packages/db/migrations:/flyway/sql:ro
+    profiles: ["migrate"]
+    entrypoint: ["flyway", "migrate"]
+
+volumes:
+  ojaline_pg_data:
+  ojaline_minio_data:

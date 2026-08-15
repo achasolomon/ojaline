@@ -1,0 +1,31 @@
+{
+  "event_type": "stock.hold_converted",
+  "schema_version": 1,
+  "type": "object",
+  "properties": {
+    "hold_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "offer_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "qty": {
+      "type": "integer",
+      "exclusiveMinimum": 0
+    },
+    "paystack_reference": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "hold_id",
+    "offer_id",
+    "qty",
+    "paystack_reference"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

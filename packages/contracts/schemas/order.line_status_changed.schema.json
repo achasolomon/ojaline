@@ -1,0 +1,33 @@
+{
+  "event_type": "order.line_status_changed",
+  "schema_version": 1,
+  "type": "object",
+  "properties": {
+    "order_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "line_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "PAID",
+        "DISPATCHED",
+        "DELIVERED",
+        "PENDING",
+        "REFUNDED",
+        "FAILED"
+      ]
+    }
+  },
+  "required": [
+    "order_id",
+    "line_id",
+    "status"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

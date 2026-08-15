@@ -1,0 +1,26 @@
+{
+  "event_type": "order.paid",
+  "schema_version": 1,
+  "type": "object",
+  "properties": {
+    "order_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "buyer_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "landed_total_cents": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "order_id",
+    "buyer_id",
+    "landed_total_cents"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
