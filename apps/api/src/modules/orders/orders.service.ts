@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 import { OutboxService } from '../outbox/outbox.service.js';
 import { PaystackService } from '../paystack/paystack.service.js';
 import { ReservationGate } from '../reservation/reservation.gate.js';
+import { MultiSellerGate } from '../fulfilment/multi-seller-gate.js';
 
 const SOFT_HOLD_TTL_SECONDS = 8 * 60;
 
@@ -32,6 +33,7 @@ export class OrdersService {
     @Inject(OutboxService) private readonly outbox: OutboxService,
     @Inject(PaystackService) private readonly paystack: PaystackService,
     @Inject(ReservationGate) private readonly gate: ReservationGate,
+    @Inject(MultiSellerGate) private readonly multiSellerGate: MultiSellerGate,
   ) {}
 
   async createCheckout(input: CreateCheckoutInput): Promise<{
@@ -54,20 +56,35 @@ export class OrdersService {
       await client.query('BEGIN');
 
       const offerIds = input.items.map((i) => i.offer_id);
-      const offersResult = await client.query<{ id: string; channel: string; available_qty: number }>(
-        `SELECT id, channel, available_qty FROM catalog.offers WHERE id = ANY($1)`,
+      const offersResult = await client.query<{ id: string; channel: string; available_qty: number; seller_id: string; cluster_id: string }>(
+        `SELECT id, channel, available_qty, seller_id, cluster_id FROM catalog.offers WHERE id = ANY($1)`,
         [offerIds],
       );
 
-      const offerChannelMap = new Map(offersResult.rows.map((o) => [o.id, o.channel]));
+      const offerMap = new Map(offersResult.rows.map((o) => [o.id, o]));
 
       for (const item of input.items) {
-        if (!offerChannelMap.has(item.offer_id)) {
+        if (!offerMap.has(item.offer_id)) {
           throw new NotFoundException(`offer ${item.offer_id} not found`);
         }
       }
 
-      const orderChannel = offerChannelMap.get(offerIds[0]) ?? 'RETAILER';
+      const gateItems = input.items.map((item) => {
+        const offer = offerMap.get(item.offer_id)!;
+        return {
+          offer_id: item.offer_id,
+          seller_id: offer.seller_id,
+          cluster_id: offer.cluster_id,
+          qty: item.qty,
+        };
+      });
+
+      const gateResult = await this.multiSellerGate.checkGate(gateItems);
+      if (!gateResult.allowed) {
+        throw new BadRequestException(`multi-seller gate rejected: ${gateResult.reason}`);
+      }
+
+      const orderChannel = offerMap.get(offerIds[0])?.channel ?? 'RETAILER';
 
       const expiresAt = new Date(Date.now() + SOFT_HOLD_TTL_SECONDS * 1000);
 

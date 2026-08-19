@@ -19,7 +19,8 @@
         "DELIVERED",
         "PENDING",
         "REFUNDED",
-        "FAILED"
+        "FAILED",
+        "REPLACED"
       ]
     }
   },

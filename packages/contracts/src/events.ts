@@ -10,7 +10,7 @@ import { z } from 'zod';
 
 export const EVENT_NAMESPACES = ['stock', 'order', 'escrow', 'notification'] as const;
 
-export const lineStatuses = ['PAID', 'DISPATCHED', 'DELIVERED', 'PENDING', 'REFUNDED', 'FAILED'] as const;
+export const lineStatuses = ['PAID', 'DISPATCHED', 'DELIVERED', 'PENDING', 'REFUNDED', 'FAILED', 'REPLACED'] as const;
 
 export const holdKinds = ['SOFT', 'HARD'] as const;
 export const holdReasons = ['EXPIRED', 'CANCELLED', 'FAILED'] as const;

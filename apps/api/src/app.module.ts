@@ -15,6 +15,9 @@ import { PaystackService } from './modules/paystack/paystack.service.js';
 import { WebhookController } from './modules/paystack/webhook.controller.js';
 import { CatalogController } from './modules/catalog/catalog.controller.js';
 import { CatalogService } from './modules/catalog/catalog.service.js';
+import { MultiSellerGate } from './modules/fulfilment/multi-seller-gate.js';
+import { FulfilmentStateMachine } from './modules/fulfilment/fulfilment-state-machine.js';
+import { FulfilmentController } from './modules/fulfilment/fulfilment.controller.js';
 
 @Module({
   imports: [
@@ -22,7 +25,7 @@ import { CatalogService } from './modules/catalog/catalog.service.js';
       pinoHttp: { level: process.env.LOG_LEVEL ?? 'info' },
     }),
   ],
-  controllers: [HealthController, MetricsController, ReservationsController, OrdersController, WebhookController, CatalogController],
+  controllers: [HealthController, MetricsController, ReservationsController, OrdersController, WebhookController, CatalogController, FulfilmentController],
   providers: [
     {
       provide: Pool,
@@ -50,6 +53,8 @@ import { CatalogService } from './modules/catalog/catalog.service.js';
     OrdersService,
     PaystackService,
     CatalogService,
+    MultiSellerGate,
+    FulfilmentStateMachine,
   ],
 })
 export class AppModule {}
