@@ -6,9 +6,43 @@ import { ReservationGate } from './modules/reservation/reservation.gate.js';
 
 const POLL_INTERVAL_MS = 2000;
 const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
+const RELEASE_SWEEP_INTERVAL_MS = 60 * 1000;
 const MAX_ATTEMPTS = 5;
 
-const DISPATCHERS: Partial<Record<EventType, (payload: unknown) => Promise<void>>> = {};
+const DISPATCHERS: Partial<Record<EventType, (payload: unknown) => Promise<void>>> = {
+  'order.paid': async (payload) => {
+    const p = payload as { order_id: string; buyer_id: string; landed_total_cents: number };
+    console.log(`[worker] order.paid: order=${p.order_id} buyer=${p.buyer_id} total=${p.landed_total_cents}`);
+  },
+  'order.line_status_changed': async (payload) => {
+    const p = payload as { order_id: string; line_id: string; status: string };
+    console.log(`[worker] order.line_status_changed: order=${p.order_id} line=${p.line_id} status=${p.status}`);
+  },
+  'stock.hold_created': async (payload) => {
+    const p = payload as { offer_id: string; user_id: string; qty: number; kind: string };
+    console.log(`[worker] stock.hold_created: offer=${p.offer_id} user=${p.user_id} qty=${p.qty} kind=${p.kind}`);
+  },
+  'stock.hold_converted': async (payload) => {
+    const p = payload as { hold_id: string; offer_id: string; qty: number; paystack_reference: string };
+    console.log(`[worker] stock.hold_converted: hold=${p.hold_id} offer=${p.offer_id} ref=${p.paystack_reference}`);
+  },
+  'stock.hold_released': async (payload) => {
+    const p = payload as { hold_id: string; offer_id: string; qty: number; reason: string };
+    console.log(`[worker] stock.hold_released: hold=${p.hold_id} offer=${p.offer_id} reason=${p.reason}`);
+  },
+  'escrow.released': async (payload) => {
+    const p = payload as { escrow_order_id: string; order_id: string; reason: string };
+    console.log(`[worker] escrow.released: escrow=${p.escrow_order_id} order=${p.order_id} reason=${p.reason}`);
+  },
+  'escrow.disputed': async (payload) => {
+    const p = payload as { escrow_order_id: string; dispute_id: string; type: string };
+    console.log(`[worker] escrow.disputed: escrow=${p.escrow_order_id} dispute=${p.dispute_id} type=${p.type}`);
+  },
+  'notification.sent': async (payload) => {
+    const p = payload as { channel: string; recipient: string; template: string };
+    console.log(`[worker] notification.sent: channel=${p.channel} to=${p.recipient} template=${p.template}`);
+  },
+};
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -32,6 +66,14 @@ async function main(): Promise<void> {
       console.error('[worker] sweep failed', err);
     }
   }, SWEEP_INTERVAL_MS);
+
+  const releaseSweep = setInterval(async () => {
+    try {
+      await sweepSilentRelease(pool);
+    } catch (err) {
+      console.error('[worker] release sweep failed', err);
+    }
+  }, RELEASE_SWEEP_INTERVAL_MS);
 
   const stop = setInterval(async () => {
     try {
@@ -84,6 +126,7 @@ async function main(): Promise<void> {
   const shutdown = async () => {
     clearInterval(stop);
     clearInterval(sweep);
+    clearInterval(releaseSweep);
     await redis.quit();
     await pool.end();
     process.exit(0);
@@ -113,6 +156,84 @@ async function sweepExpiredSoftHolds(pool: Pool, gate: ReservationGate): Promise
       [row.qty, row.offer_id],
     );
     console.log(`[worker] released expired soft hold ${row.id}`);
+  }
+}
+
+async function sweepSilentRelease(pool: Pool): Promise<void> {
+  const { rows } = await pool.query<{
+    id: string;
+    order_id: string;
+    amount_held_cents: string;
+  }>(`
+    SELECT id, order_id, amount_held_cents
+    FROM escrow.escrow_orders
+    WHERE status = 'HELD' AND release_scheduled_at < now()
+    LIMIT 50
+  `);
+
+  for (const row of rows) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const locked = await client.query<{ id: string }>(
+        `SELECT id FROM escrow.escrow_orders
+         WHERE id = $1 AND status = 'HELD'
+         FOR UPDATE`,
+        [row.id],
+      );
+      if (locked.rowCount !== 1) {
+        await client.query('ROLLBACK');
+        continue;
+      }
+
+      await client.query(
+        `UPDATE escrow.escrow_orders
+         SET status = 'RELEASED', released_at = now(), updated_at = now()
+         WHERE id = $1`,
+        [row.id],
+      );
+
+      const negAmount = -Number(row.amount_held_cents);
+      await client.query(
+        `INSERT INTO escrow.ledger_entries (escrow_order_id, entry_type, amount_cents, counterparty_type, idempotency_key)
+         VALUES ($1, 'DELIVERY_RELEASE', $2, 'SELLER', $3)`,
+        [row.id, negAmount, `release:${row.id}:${Date.now()}`],
+      );
+
+      const holds = await client.query<{ offer_id: string; qty: number }>(
+        `SELECT offer_id, qty FROM orders.stock_holds
+         WHERE order_id = $1 AND status = 'CONVERTED' AND kind = 'HARD'`,
+        [row.order_id],
+      );
+
+      for (const h of holds.rows) {
+        await client.query(
+          `UPDATE catalog.offers
+           SET reserved_qty = GREATEST(reserved_qty - $1, 0), updated_at = now()
+           WHERE id = $2`,
+          [h.qty, h.offer_id],
+        );
+        await client.query(
+          `UPDATE orders.stock_holds SET status = 'RELEASED' WHERE order_id = $1 AND offer_id = $2 AND status = 'CONVERTED'`,
+          [row.order_id, h.offer_id],
+        );
+      }
+
+      const orderId = row.order_id;
+      await client.query(
+        `UPDATE orders.orders SET status = 'PARTIALLY_REFUNDED', updated_at = now() WHERE id = $1`,
+        [orderId],
+      );
+
+      await client.query('COMMIT');
+      console.log(`[worker] silent-released escrow ${row.id} for order ${orderId}`);
+    } catch (err) {
+      await client.query('ROLLBACK');
+      console.error(`[worker] silent-release failed for escrow ${row.id}`, err);
+    } finally {
+      client.release();
+    }
   }
 }
 

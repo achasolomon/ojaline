@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import Redis from 'ioredis';
 
 export interface OfferCounters {
@@ -56,7 +56,7 @@ return {redis.call('HGET', offer, 'available'), redis.call('HGET', offer, 'reser
 
 @Injectable()
 export class ReservationGate {
-  constructor(private readonly redis: Redis) {}
+  constructor(@Inject(Redis) private readonly redis: Redis) {}
 
   private offerKey(offerId: string): string {
     return `oj:offers:${offerId}`;

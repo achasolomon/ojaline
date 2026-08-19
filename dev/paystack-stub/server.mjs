@@ -82,6 +82,29 @@ const server = createServer(async (req, res) => {
     return json(res, 200, { status: true });
   }
 
+  if (req.method === 'POST' && url.pathname.startsWith('/mock-pay/')) {
+    const reference = decodeURIComponent(url.pathname.split('/').pop());
+    const tx = transactions.get(reference);
+    if (!tx) return json(res, 404, { status: false, message: 'Unknown reference' });
+    transactions.set(reference, { ...tx, status: 'success' });
+
+    const webhookUrl = process.env.API_WEBHOOK_URL ?? 'http://host.docker.internal:3000/webhook/paystack';
+    const payload = JSON.stringify({ event: 'charge.success', data: { reference, amount: tx.amount, currency: 'NGN', status: 'success' } });
+    try {
+      const u = new URL(webhookUrl);
+      const httpMod = u.protocol === 'https:' ? await import('node:https') : await import('node:http');
+      await new Promise((resolve, reject) => {
+        const req2 = httpMod.request({ hostname: u.hostname, port: u.port, path: u.pathname, method: 'POST', headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) } }, (res2) => { res2.resume(); res2.on('end', resolve); });
+        req2.on('error', reject);
+        req2.write(payload);
+        req2.end();
+      });
+    } catch (err) {
+      return json(res, 502, { status: false, error: err.message });
+    }
+    return json(res, 200, { status: true, message: `webhook sent for ${reference}` });
+  }
+
   if (req.method === 'GET' && url.pathname === '/captured') {
     return json(res, 200, { transactions: [...transactions.values()], webhooks });
   }

@@ -32,3 +32,6 @@ apps/mobile/.expo/
 
 # flyway
 flyway-local.conf
+
+# load test results
+scripts/load/results.json

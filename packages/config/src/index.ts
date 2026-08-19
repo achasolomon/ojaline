@@ -29,6 +29,9 @@ const envSchema = z.object({
   DB_PASSWORD: z.string().default('ojaline_app_dev_pw'),
   REDIS_URL: z.string().default('redis://localhost:6379'),
   API_PORT: z.coerce.number().default(3000),
+  PAYSTACK_SECRET_KEY: z.string().default('sk_test_ojaline_mock'),
+  PAYSTACK_BASE_URL: z.string().default('http://localhost:9202'),
+  PAYSTACK_WEBHOOK_SECRET: z.string().default('whsec_ojaline_dev'),
 });
 
 export type OjalineConfig = z.infer<typeof envSchema>;

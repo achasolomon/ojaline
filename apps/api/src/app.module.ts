@@ -4,11 +4,17 @@ import { Pool } from 'pg';
 import Redis from 'ioredis';
 import { loadConfig } from '@ojaline/config';
 import { HealthController } from './modules/health/health.controller.js';
-import { OutboxService } from './modules/outbox/outbox.service.js';
 import { ReservationGate } from './modules/reservation/reservation.gate.js';
 import { MetricsController } from './modules/metrics/metrics.controller.js';
 import { MetricsService } from './modules/metrics/metrics.service.js';
 import { ReservationsController } from './modules/reservation/reservations.controller.js';
+import { OrdersController } from './modules/orders/orders.controller.js';
+import { OrdersService } from './modules/orders/orders.service.js';
+import { OutboxService } from './modules/outbox/outbox.service.js';
+import { PaystackService } from './modules/paystack/paystack.service.js';
+import { WebhookController } from './modules/paystack/webhook.controller.js';
+import { CatalogController } from './modules/catalog/catalog.controller.js';
+import { CatalogService } from './modules/catalog/catalog.service.js';
 
 @Module({
   imports: [
@@ -16,7 +22,7 @@ import { ReservationsController } from './modules/reservation/reservations.contr
       pinoHttp: { level: process.env.LOG_LEVEL ?? 'info' },
     }),
   ],
-  controllers: [HealthController, MetricsController, ReservationsController],
+  controllers: [HealthController, MetricsController, ReservationsController, OrdersController, WebhookController, CatalogController],
   providers: [
     {
       provide: Pool,
@@ -41,7 +47,9 @@ import { ReservationsController } from './modules/reservation/reservations.contr
     OutboxService,
     ReservationGate,
     MetricsService,
+    OrdersService,
+    PaystackService,
+    CatalogService,
   ],
-  exports: [Pool, Redis, OutboxService, ReservationGate],
 })
 export class AppModule {}

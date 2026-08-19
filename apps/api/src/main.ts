@@ -6,7 +6,10 @@ import { AppModule } from './app.module.js';
 
 async function bootstrap(): Promise<void> {
   const config = loadConfig();
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: true,
+    rawBody: true,
+  });
   app.useLogger(app.get(Logger));
   app.enableShutdownHooks();
   await app.listen(config.API_PORT);
