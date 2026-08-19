@@ -13,6 +13,8 @@ interface CheckoutBody {
   buyer_id: string;
   items: Array<{ offer_id: string; qty: number; unit_price_cents: number }>;
   soft_hold_ids: string[];
+  window_start: string;
+  window_end: string;
 }
 
 interface ConfirmBody {
@@ -31,6 +33,8 @@ export class OrdersController {
       buyer_id: body.buyer_id,
       items: body.items,
       soft_hold_ids: body.soft_hold_ids,
+      window_start: body.window_start,
+      window_end: body.window_end,
     };
     return this.orders.createCheckout(input);
   }

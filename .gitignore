@@ -35,3 +35,7 @@ flyway-local.conf
 
 # load test results
 scripts/load/results.json
+
+# design artifacts
+ojaline.png
+ojaline_mobile_prototype.html

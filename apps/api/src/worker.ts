@@ -7,6 +7,7 @@ import { ReservationGate } from './modules/reservation/reservation.gate.js';
 const POLL_INTERVAL_MS = 2000;
 const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 const RELEASE_SWEEP_INTERVAL_MS = 60 * 1000;
+const DECISION_TIMEOUT_SWEEP_MS = 5 * 60 * 1000;
 const MAX_ATTEMPTS = 5;
 
 const DISPATCHERS: Partial<Record<EventType, (payload: unknown) => Promise<void>>> = {
@@ -67,13 +68,21 @@ async function main(): Promise<void> {
     }
   }, SWEEP_INTERVAL_MS);
 
-  const releaseSweep = setInterval(async () => {
+  const buyerTimeoutSweep = setInterval(async () => {
     try {
-      await sweepSilentRelease(pool);
+      await sweepBuyerConfirmationTimeout(pool);
     } catch (err) {
-      console.error('[worker] release sweep failed', err);
+      console.error('[worker] buyer-confirmation-timeout sweep failed', err);
     }
   }, RELEASE_SWEEP_INTERVAL_MS);
+
+  const decisionTimeoutSweep = setInterval(async () => {
+    try {
+      await sweepDecisionTimeouts(pool);
+    } catch (err) {
+      console.error('[worker] decision timeout sweep failed', err);
+    }
+  }, DECISION_TIMEOUT_SWEEP_MS);
 
   const stop = setInterval(async () => {
     try {
@@ -126,7 +135,8 @@ async function main(): Promise<void> {
   const shutdown = async () => {
     clearInterval(stop);
     clearInterval(sweep);
-    clearInterval(releaseSweep);
+    clearInterval(buyerTimeoutSweep);
+    clearInterval(decisionTimeoutSweep);
     await redis.quit();
     await pool.end();
     process.exit(0);
@@ -159,7 +169,7 @@ async function sweepExpiredSoftHolds(pool: Pool, gate: ReservationGate): Promise
   }
 }
 
-async function sweepSilentRelease(pool: Pool): Promise<void> {
+async function sweepBuyerConfirmationTimeout(pool: Pool): Promise<void> {
   const { rows } = await pool.query<{
     id: string;
     order_id: string;
@@ -227,10 +237,118 @@ async function sweepSilentRelease(pool: Pool): Promise<void> {
       );
 
       await client.query('COMMIT');
-      console.log(`[worker] silent-released escrow ${row.id} for order ${orderId}`);
+      console.log(`[worker] buyer-confirmation-timeout release for escrow ${row.id} order ${orderId}`);
     } catch (err) {
       await client.query('ROLLBACK');
-      console.error(`[worker] silent-release failed for escrow ${row.id}`, err);
+      console.error(`[worker] buyer-confirmation-timeout release failed for escrow ${row.id}`, err);
+    } finally {
+      client.release();
+    }
+  }
+}
+
+async function sweepDecisionTimeouts(pool: Pool): Promise<void> {
+  const { rows } = await pool.query<{
+    id: string;
+    window_start: string | null;
+    window_end: string | null;
+  }>(`
+    SELECT id, window_start, window_end
+    FROM orders.orders
+    WHERE status = 'PARTIALLY_DISPATCHED'
+      AND decision_deadline_at IS NOT NULL
+      AND decision_deadline_at < now()
+    LIMIT 50
+  `);
+
+  for (const row of rows) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const locked = await client.query<{ id: string }>(
+        `SELECT id FROM orders.orders
+         WHERE id = $1 AND status = 'PARTIALLY_DISPATCHED'
+         FOR UPDATE`,
+        [row.id],
+      );
+      if (locked.rowCount !== 1) {
+        await client.query('ROLLBACK');
+        continue;
+      }
+
+      await client.query(
+        `UPDATE orders.order_lines
+         SET status = 'CANCELLED', updated_at = now()
+         WHERE order_id = $1 AND status NOT IN ('CANCELLED', 'REFUNDED')`,
+        [row.id],
+      );
+
+      await client.query(
+        `UPDATE orders.orders
+         SET status = 'CANCELLED', decision_deadline_at = NULL, updated_at = now()
+         WHERE id = $1`,
+        [row.id],
+      );
+
+      await client.query(
+        `UPDATE orders.stock_holds
+         SET status = 'RELEASED'
+         WHERE order_id = $1 AND status IN ('CONVERTED', 'ACTIVE')`,
+        [row.id],
+      );
+
+      const holds = await client.query<{ offer_id: string; qty: number }>(
+        `SELECT offer_id, qty FROM orders.stock_holds
+         WHERE order_id = $1 AND status = 'RELEASED'`,
+        [row.id],
+      );
+      for (const h of holds.rows) {
+        await client.query(
+          `UPDATE catalog.offers
+           SET reserved_qty = GREATEST(reserved_qty - $1, 0), updated_at = now()
+           WHERE id = $2`,
+          [h.qty, h.offer_id],
+        );
+      }
+
+      const escrowRow = await client.query<{ id: string; amount_held_cents: string }>(
+        `SELECT id, amount_held_cents FROM escrow.escrow_orders
+         WHERE order_id = $1 AND status IN ('HELD', 'RELEASING')`,
+        [row.id],
+      );
+      if (escrowRow.rowCount !== 0) {
+        const esc = escrowRow.rows[0];
+        await client.query(
+          `UPDATE escrow.escrow_orders
+           SET status = 'RELEASED', released_at = now(), updated_at = now()
+           WHERE id = $1`,
+          [esc.id],
+        );
+        await client.query(
+          `INSERT INTO escrow.ledger_entries (escrow_order_id, entry_type, amount_cents, counterparty_type, idempotency_key)
+           VALUES ($1, 'DELIVERY_RELEASE', $2, 'BUYER', $3)`,
+          [esc.id, -Number(esc.amount_held_cents), `decision-timeout:${row.id}:${Date.now()}`],
+        );
+      }
+
+      if (row.window_start && row.window_end) {
+        const totalQty = holds.rows.reduce((sum, h) => sum + h.qty, 0);
+        if (totalQty > 0) {
+          await client.query(
+            `UPDATE fulfilment.capacity_slots
+             SET booked = GREATEST(booked - $1, 0)
+             WHERE window_start = $2 AND window_end = $3`,
+            [totalQty, row.window_start, row.window_end],
+          );
+        }
+      }
+
+      await client.query('COMMIT');
+      console.log(`[worker] auto-cancelled order ${row.id} (decision timeout)`);
+    } catch (err) {
+      await client.query('ROLLBACK');
+      console.error(`[worker] decision timeout sweep failed for order ${row.id}`, err);
     } finally {
       client.release();
     }

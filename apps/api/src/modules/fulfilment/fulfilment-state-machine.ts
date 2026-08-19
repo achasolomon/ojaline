@@ -35,7 +35,9 @@ export class FulfilmentStateMachine {
 
     await this.pool.query(
       `UPDATE orders.orders
-       SET status = 'PARTIALLY_DISPATCHED', updated_at = now()
+       SET status = 'PARTIALLY_DISPATCHED',
+           decision_deadline_at = now() + interval '24 hours',
+           updated_at = now()
        WHERE id = (SELECT order_id FROM orders.order_lines WHERE id = $1)
          AND status NOT IN ('CANCELLED', 'PARTIALLY_REFUNDED')`,
       [failure.line_id],
@@ -81,6 +83,8 @@ export class FulfilmentStateMachine {
         throw new BadRequestException('no valid lines found for the given IDs');
       }
 
+      let computedOrderStatus: string = order.status;
+
       switch (decision.action) {
         case 'CONTINUE': {
           for (const line of lines.rows) {
@@ -108,18 +112,28 @@ export class FulfilmentStateMachine {
             [decision.order_id],
           );
 
-          const newStatus = Number(remainingLines.rows[0].count) === 0 ? 'PARTIALLY_REFUNDED' : 'PARTIALLY_REFUNDED';
+          const newStatus = Number(remainingLines.rows[0].count) === 0 ? 'CANCELLED' : 'PARTIALLY_REFUNDED';
+          computedOrderStatus = newStatus;
           await client.query(
             `UPDATE orders.orders SET status = $1, updated_at = now() WHERE id = $2`,
             [newStatus, decision.order_id],
           );
 
-          await client.query(
-            `UPDATE escrow.escrow_orders
-             SET status = 'RELEASING', updated_at = now()
-             WHERE order_id = $1 AND status = 'HELD'`,
-            [decision.order_id],
-          );
+          if (newStatus === 'CANCELLED') {
+            await client.query(
+              `UPDATE escrow.escrow_orders
+               SET status = 'RELEASED', released_at = now(), updated_at = now()
+               WHERE order_id = $1 AND status IN ('HELD', 'RELEASING')`,
+              [decision.order_id],
+            );
+          } else {
+            await client.query(
+              `UPDATE escrow.escrow_orders
+               SET status = 'RELEASING', updated_at = now()
+               WHERE order_id = $1 AND status = 'HELD'`,
+              [decision.order_id],
+            );
+          }
 
           const escrowRow = await client.query<{ id: string; amount_held_cents: string }>(
             `SELECT id, amount_held_cents FROM escrow.escrow_orders WHERE order_id = $1`,
@@ -180,6 +194,7 @@ export class FulfilmentStateMachine {
           );
 
           if (Number(allCancelled.rows[0].count) === 0) {
+            computedOrderStatus = 'CANCELLED';
             await client.query(
               `UPDATE orders.orders SET status = 'CANCELLED', updated_at = now() WHERE id = $1`,
               [decision.order_id],
@@ -205,6 +220,7 @@ export class FulfilmentStateMachine {
               );
             }
           } else {
+            computedOrderStatus = 'PARTIALLY_REFUNDED';
             await client.query(
               `UPDATE orders.orders SET status = 'PARTIALLY_REFUNDED', updated_at = now() WHERE id = $1`,
               [decision.order_id],
@@ -234,6 +250,7 @@ export class FulfilmentStateMachine {
             );
           }
 
+          computedOrderStatus = 'PARTIALLY_DISPATCHED';
           await client.query(
             `UPDATE orders.orders SET status = 'PARTIALLY_DISPATCHED', updated_at = now() WHERE id = $1`,
             [decision.order_id],
@@ -258,7 +275,7 @@ export class FulfilmentStateMachine {
 
       return {
         order_id: decision.order_id,
-        order_status: decision.action === 'CANCEL' && lines.rowCount === 1 ? 'CANCELLED' : 'PARTIALLY_REFUNDED',
+        order_status: computedOrderStatus,
         affected_lines: decision.line_ids,
         action: decision.action,
       };

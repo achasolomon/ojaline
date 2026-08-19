@@ -17,6 +17,8 @@ export interface CreateCheckoutInput {
   buyer_id: string;
   items: CheckoutItem[];
   soft_hold_ids: string[];
+  window_start: string;
+  window_end: string;
 }
 
 export interface ConfirmPaymentInput {
@@ -84,6 +86,20 @@ export class OrdersService {
         throw new BadRequestException(`multi-seller gate rejected: ${gateResult.reason}`);
       }
 
+      const totalQty = input.items.reduce((sum, item) => sum + item.qty, 0);
+      const clusterId = gateItems[0].cluster_id;
+      const capacityResult = await this.multiSellerGate.checkCapacity(
+        clusterId,
+        input.window_start,
+        input.window_end,
+        totalQty,
+      );
+      if (capacityResult.available < totalQty) {
+        throw new BadRequestException(
+          `capacity exceeded: ${capacityResult.available} available, ${totalQty} requested for window ${input.window_start}–${input.window_end}`,
+        );
+      }
+
       const orderChannel = offerMap.get(offerIds[0])?.channel ?? 'RETAILER';
 
       const expiresAt = new Date(Date.now() + SOFT_HOLD_TTL_SECONDS * 1000);
@@ -106,8 +122,9 @@ export class OrdersService {
       const orderResult = await client.query<{ id: string }>(
         `INSERT INTO orders.orders
            (buyer_id, channel, status, multi_seller, checkout_session_id,
-            item_total_cents, delivery_fee_cents, landed_total_cents)
-         VALUES ($1, $2, 'CHECKOUT', $3, $4, $5, $6, $7)
+            item_total_cents, delivery_fee_cents, landed_total_cents,
+            window_start, window_end)
+         VALUES ($1, $2, 'CHECKOUT', $3, $4, $5, $6, $7, $8, $9)
          RETURNING id`,
         [
           input.buyer_id,
@@ -117,6 +134,8 @@ export class OrdersService {
           itemTotalCents,
           deliveryFeeCents,
           landedTotalCents,
+          input.window_start,
+          input.window_end,
         ],
       );
       const orderId = orderResult.rows[0].id;
@@ -157,6 +176,19 @@ export class OrdersService {
            VALUES ($1, $2, (SELECT seller_id FROM catalog.offers WHERE id = $2), $3, $4, 'PENDING', $5)`,
           [orderId, item.offer_id, item.qty, item.unit_price_cents, holdId],
         );
+      }
+
+      const capacityReserved = await this.multiSellerGate.reserveCapacity(
+        clusterId,
+        input.window_start,
+        input.window_end,
+        totalQty,
+      );
+      if (!capacityReserved) {
+        for (const h of holdKeys) {
+          await this.gate.releaseSoftHold(h.key, h.qty);
+        }
+        throw new ConflictException(`capacity no longer available for window ${input.window_start}–${input.window_end}`);
       }
 
       await client.query('COMMIT');

@@ -72,8 +72,9 @@ export class MultiSellerGate {
       seller_id: string;
       on_time_rate_30d: string;
       tier: string;
+      ops_override: boolean;
     }>(
-      `SELECT seller_id, on_time_rate_30d, tier
+      `SELECT seller_id, on_time_rate_30d, tier, ops_override
        FROM trust.seller_risk_tiers
        WHERE seller_id = ANY($1)`,
       [sellerIds],
@@ -84,14 +85,23 @@ export class MultiSellerGate {
     for (const sid of sellerIds) {
       const risk = riskMap.get(sid);
       if (!risk) {
-        this.logger.log({ sellerId: sid }, 'seller has no risk tier — treating as NEW (allowed)');
-        continue;
-      }
-      const rate = Number(risk.on_time_rate_30d);
-      if (rate < MIN_ON_TIME_RATE && risk.tier !== 'NEW') {
         return {
           allowed: false,
-          reason: `seller ${sid} on_time_rate ${rate} < ${MIN_ON_TIME_RATE}`,
+          reason: `seller ${sid} has no risk tier — requires Ops review`,
+          seller_count: sellers.size,
+          clusters: [...clusters],
+          capacity_ok: false,
+        };
+      }
+      const rate = Number(risk.on_time_rate_30d);
+      if (rate < MIN_ON_TIME_RATE) {
+        if (risk.tier === 'NEW' && risk.ops_override) {
+          this.logger.log({ sellerId: sid, rate }, 'new seller with Ops override — allowed');
+          continue;
+        }
+        return {
+          allowed: false,
+          reason: `seller ${sid} on_time_rate ${rate} < ${MIN_ON_TIME_RATE}${risk.tier === 'NEW' ? ' (no Ops override)' : ''}`,
           seller_count: sellers.size,
           clusters: [...clusters],
           capacity_ok: false,
