@@ -3,6 +3,61 @@ import type { EventType, EventPayload, OutboxEnvelope } from '@ojaline/contracts
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api';
 
+/* ── Offer types (Sprint 1 — derived from catalog.offers schema) ── */
+
+export type Channel = 'RETAILER' | 'WHOLESALE' | 'DIRECT' | 'OPEN';
+export type Perishability = 'SHELF_GT_7D' | 'SHELF_LT_7D';
+export type FulfilmentMode = 'INSTANT' | 'SCHEDULED' | 'MARKET_DAY';
+export type OfferStatus = 'ACTIVE' | 'PAUSED' | 'DELISTED';
+
+export interface Offer {
+  id: string;
+  seller_id: string;
+  channel: Channel;
+  sellable_qty: number;
+  min_order_qty: number;
+  perishability: Perishability;
+  fulfilment_modes: FulfilmentMode[];
+  cluster_id: string;
+  created_at: string;
+  product_name: string;
+  physical_ref: string;
+  price_cents: number | null;
+}
+
+export interface DiscoverOffersParams {
+  channel?: Channel;
+  cluster_id?: string;
+  perishability?: Perishability;
+  limit?: number;
+  offset?: number;
+}
+
+export interface DiscoverOffersResponse {
+  offers: Offer[];
+  total: number;
+}
+
+export interface CreateOfferRequest {
+  seller_id: string;
+  product_name: string;
+  physical_ref: string;
+  channel: Channel;
+  available_qty: number;
+  min_order_qty: number;
+  perishability: Perishability;
+  fulfilment_modes: FulfilmentMode[];
+  cluster_id: string;
+  price_cents: number;
+}
+
+export interface CreateOfferResponse {
+  offer_id: string;
+  lot_id: string;
+}
+
+/* ── HTTP helpers ── */
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -61,4 +116,25 @@ export async function getEnvelope<T extends EventType>(
 /** Placeholder auth surface. Sprint 1 replaces this with real OTP/phone flow. */
 export async function login(phoneOrEmail: string, _password: string): Promise<{ user_id: string }> {
   return postJson('/auth/login', { phone_or_email: phoneOrEmail });
+}
+
+/* ── Catalog API (Sprint 1) ── */
+
+export async function discoverOffers(params: DiscoverOffersParams = {}): Promise<DiscoverOffersResponse> {
+  const qs = new URLSearchParams();
+  if (params.channel) qs.set('channel', params.channel);
+  if (params.cluster_id) qs.set('cluster_id', params.cluster_id);
+  if (params.perishability) qs.set('perishability', params.perishability);
+  if (params.limit) qs.set('limit', String(params.limit));
+  if (params.offset) qs.set('offset', String(params.offset));
+  const query = qs.toString();
+  return getJson<DiscoverOffersResponse>(`/catalog/offers${query ? `?${query}` : ''}`);
+}
+
+export async function createOffer(body: CreateOfferRequest): Promise<CreateOfferResponse> {
+  return postJson<CreateOfferResponse>('/catalog/offers', body);
+}
+
+export async function getOfferById(id: string): Promise<Offer> {
+  return getJson<Offer>(`/catalog/offers/${id}`);
 }

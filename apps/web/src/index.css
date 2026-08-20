@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #008A3C;
+  --color-primary-dark: #006B30;
+  --color-primary-light: #EAF7EF;
+  --color-surface: #F7F8F7;
+  --color-border: #E6E8E6;
+  --color-danger: #D92D20;
+  --color-gold: #F5A623;
+  --color-text: #171717;
+  --color-text-secondary: #6B6B6B;
+}
+
+@layer base {
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+}
+
+@layer utilities {
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}

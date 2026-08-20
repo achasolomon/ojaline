@@ -1,37 +1,70 @@
-import { colors, type } from '@ojaline/design';
-import { BrowserRouter, Link, Route, Routes } from 'react-router-dom';
-import { Landing } from './pages/Landing';
-import { Login } from './pages/Login';
-import { Offers } from './pages/Offers';
+import { BrowserRouter, Route, Routes, Navigate, useLocation } from 'react-router-dom';
+import { BottomNav } from './components/BottomNav';
+import { DesktopLayout } from './components/desktop/DesktopLayout';
+import { useMediaQuery, DESKTOP_BREAKPOINT } from './lib/useMediaQuery';
+import Home from './pages/Home';
+import Login from './pages/Login';
+import Register from './pages/Register';
+import Otp from './pages/Otp';
+import ForgotPassword from './pages/ForgotPassword';
+import { ResetPassword } from './pages/ResetPassword';
+import Offers from './pages/Offers';
+import OfferDetail from './pages/OfferDetail';
+import CreateOffer from './pages/CreateOffer';
 
-const navStyle = { display: 'flex', gap: '1rem', padding: '1rem 2rem' } as const;
-const linkStyle = { color: colors.text, textDecoration: 'none', fontWeight: type.weight.medium } as const;
+const AUTH_PATHS = ['/login', '/register', '/otp', '/forgot', '/reset'];
+
+function AppShell() {
+  const location = useLocation();
+  const isDesktop = useMediaQuery(DESKTOP_BREAKPOINT);
+  const isAuth = AUTH_PATHS.includes(location.pathname);
+
+  if (isDesktop) {
+    return (
+      <DesktopLayout>
+        <main className="flex-1 overflow-y-auto">
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/offers" element={<Offers />} />
+            <Route path="/offers/new" element={<CreateOffer />} />
+            <Route path="/offers/:id" element={<OfferDetail />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/otp" element={<Otp />} />
+            <Route path="/forgot" element={<ForgotPassword />} />
+            <Route path="/reset" element={<ResetPassword />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </main>
+      </DesktopLayout>
+    );
+  }
+
+  return (
+    <div className="flex h-dvh flex-col bg-white">
+      <main className="flex-1 overflow-y-auto">
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/offers" element={<Offers />} />
+          <Route path="/offers/new" element={<CreateOffer />} />
+          <Route path="/offers/:id" element={<OfferDetail />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/otp" element={<Otp />} />
+          <Route path="/forgot" element={<ForgotPassword />} />
+          <Route path="/reset" element={<ResetPassword />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </main>
+      {!isAuth && <BottomNav />}
+    </div>
+  );
+}
 
 export function App() {
   return (
     <BrowserRouter>
-      <div
-        style={{
-          minHeight: '100vh',
-          backgroundColor: colors.bg,
-          color: colors.text,
-          fontFamily: type.family,
-        }}
-      >
-        <nav style={navStyle}>
-          <Link to="/" style={linkStyle}>Ojaline</Link>
-          <Link to="/offers" style={linkStyle}>Offers</Link>
-          <Link to="/login" style={linkStyle}>Sign in</Link>
-        </nav>
-        <main style={{ padding: '2rem' }}>
-          <Routes>
-            <Route path="/" element={<Landing />} />
-            <Route path="/offers" element={<Offers />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="*" element={<p>Page not found</p>} />
-          </Routes>
-        </main>
-      </div>
+      <AppShell />
     </BrowserRouter>
   );
 }

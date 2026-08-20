@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#008A3C" />
+  <title>Ojaline — Fresh from Farm to You</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Phone Frame (desktop) -->
+  <div class="phone-frame" id="app">
+    <!-- Status Bar (visual only) -->
+    <div class="status-bar" id="statusBar">
+      <span class="status-time">9:41</span>
+      <div class="status-icons">
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M1 4h2v8H1V4zm4-2h2v10H5V2zm4-2h2v12H9V0zm4 4h2v8h-2V4z"/></svg>
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><path d="M8 2.5c2.5 0 4.7 1 6.3 2.7l-1.4 1.4C11.7 5.4 10 4.7 8 4.7S4.3 5.4 3.1 6.6L1.7 5.2C3.3 3.5 5.5 2.5 8 2.5zM8 6c1.5 0 2.8.6 3.8 1.5L10.4 9C9.8 8.4 8.9 8 8 8s-1.8.4-2.4 1L4.2 7.5C5.2 6.6 6.5 6 8 6zm0 3.5c.6 0 1.1.2 1.5.6L8 11.6 6.5 10.1c.4-.4.9-.6 1.5-.6z"/></svg>
+        <svg width="24" height="12" viewBox="0 0 24 12" fill="currentColor"><rect x="0" y="2" width="20" height="8" rx="2" stroke="currentColor" stroke-width="1" fill="none"/><rect x="1.5" y="3.5" width="14" height="5" rx="1" fill="currentColor"/><path d="M21 4.5v3c.8-.4 1.3-1.2 1.3-2.1S21.8 3.7 21 4.5z"/></svg>
+      </div>
+    </div>
+
+    <!-- ===================== SCREENS ===================== -->
+    <div class="screens-container" id="screensContainer">
+
+      <!-- ========== AUTH: SPLASH ========== -->
+      <section class="screen auth-screen" id="screen-splash" data-screen="splash">
+        <div class="splash-content">
+          <div class="splash-logo">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+              <circle cx="24" cy="24" r="24" fill="#008A3C"/>
+              <path d="M24 10c-2 4-6 8-6 14 0 4 2.5 7 6 8 3.5-1 6-4 6-8 0-6-4-10-6-14z" fill="#fff"/>
+              <path d="M18 28c2 2 4 3 6 3s4-1 6-3" stroke="#EAF7EF" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            <h1>OJALINE</h1>
+          </div>
+          <p class="splash-tagline">Fresh from Farm to You</p>
+          <div class="splash-loader"></div>
+        </div>
+      </section>
+
+      <!-- ========== AUTH: WELCOME ========== -->
+      <section class="screen auth-screen" id="screen-welcome" data-screen="welcome">
+        <div class="auth-hero">
+          <div class="auth-hero-img">
+            <img src="https://images.unsplash.com/photo-1488459716781-31e578a92117?w=600&q=80" alt="Fresh produce" onerror="this.style.display='none'" />
+            <div class="auth-hero-overlay"></div>
+          </div>
+          <div class="auth-hero-text">
+            <div class="brand-mark">
+              <svg width="32" height="32" viewBox="0 0 48 48" fill="none">
+                <circle cx="24" cy="24" r="24" fill="#008A3C"/>
+                <path d="M24 10c-2 4-6 8-6 14 0 4 2.5 7 6 8 3.5-1 6-4 6-8 0-6-4-10-6-14z" fill="#fff"/>
+              </svg>
+              <span>OJALINE</span>
+            </div>
+            <h1>Welcome to Ojaline</h1>
+            <p>Shop fresh produce from trusted local sellers and farms.</p>
+          </div>
+        </div>
+        <div class="auth-actions">
+          <button class="btn btn-primary btn-full" data-nav="register">Create Account</button>
+          <button class="btn btn-outline btn-full" data-nav="login">Log In</button>
+        </div>
+      </section>
+
+      <!-- ========== AUTH: LOGIN ========== -->
+      <section class="screen auth-screen" id="screen-login" data-screen="login">
+        <div class="auth-header">
+          <button class="icon-btn" data-nav="welcome" aria-label="Back">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+        </div>
+        <div class="auth-body">
+          <h1>Welcome Back</h1>
+          <p class="auth-sub">Log in to continue shopping fresh produce</p>
+          <form id="loginForm" class="auth-form" autocomplete="on">
+            <div class="form-group">
+              <label for="loginEmail">Phone Number or Email</label>
+              <input type="text" id="loginEmail" name="email" placeholder="e.g. 0803 123 4567" required />
+            </div>
+            <div class="form-group">
+              <label for="loginPassword">Password</label>
+              <div class="input-with-icon">
+                <input type="password" id="loginPassword" name="password" placeholder="Enter password" required />
+                <button type="button" class="toggle-password" aria-label="Toggle password visibility">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="form-row">
+              <a href="#" class="link" data-nav="forgot">Forgot Password?</a>
+            </div>
+            <button type="submit" class="btn btn-primary btn-full">Log In</button>
+          </form>
+          <div class="auth-divider"><span>or</span></div>
+          <button class="btn btn-outline btn-full btn-google" id="googleLogin">
+            <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.6 9.2c0-.6-.1-1.2-.2-1.8H9v3.4h4.8c-.2 1.1-.8 2-1.8 2.6v2.2h2.9c1.7-1.6 2.7-3.9 2.7-6.4z"/><path fill="#34A853" d="M9 18c2.4 0 4.5-.8 6-2.2l-2.9-2.2c-.8.5-1.8.9-3.1.9-2.4 0-4.4-1.6-5.1-3.8H.9v2.3C2.4 15.9 5.5 18 9 18z"/><path fill="#FBBC05" d="M3.9 10.7c-.2-.5-.3-1.1-.3-1.7s.1-1.2.3-1.7V4.9H.9C.3 6.1 0 7.5 0 9s.3 2.9.9 4.1l3-2.4z"/><path fill="#EA4335" d="M9 3.6c1.3 0 2.5.5 3.4 1.3l2.5-2.5C13.5.9 11.4 0 9 0 5.5 0 2.4 2.1.9 5.1l3 2.3C4.6 5.2 6.6 3.6 9 3.6z"/></svg>
+            Continue with Google
+          </button>
+          <p class="auth-footer">Don't have an account? <a href="#" class="link" data-nav="register">Create Account</a></p>
+        </div>
+      </section>
+
+      <!-- ========== AUTH: REGISTER ========== -->
+      <section class="screen auth-screen" id="screen-register" data-screen="register">
+        <div class="auth-header">
+          <button class="icon-btn" data-nav="welcome" aria-label="Back">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+        </div>
+        <div class="auth-body">
+          <h1>Create Your Account</h1>
+          <p class="auth-sub">Join thousands shopping fresh from farms</p>
+          <form id="registerForm" class="auth-form">
+            <div class="form-group">
+              <label for="regName">Full Name</label>
+              <input type="text" id="regName" name="name" placeholder="Amaka Okafor" required />
+            </div>
+            <div class="form-group">
+              <label for="regPhone">Phone Number</label>
+              <input type="tel" id="regPhone" name="phone" placeholder="+234 803 123 4567" required />
+            </div>
+            <div class="form-group">
+              <label for="regEmail">Email</label>
+              <input type="email" id="regEmail" name="email" placeholder="amaka@example.com" required />
+            </div>
+            <div class="form-group">
+              <label for="regPassword">Password</label>
+              <input type="password" id="regPassword" name="password" placeholder="Min. 8 characters" required minlength="8" />
+            </div>
+            <div class="form-group">
+              <label for="regConfirm">Confirm Password</label>
+              <input type="password" id="regConfirm" name="confirm" placeholder="Re-enter password" required />
+            </div>
+            <button type="submit" class="btn btn-primary btn-full">Create Account</button>
+          </form>
+          <p class="auth-footer">Already have an account? <a href="#" class="link" data-nav="login">Log In</a></p>
+        </div>
+      </section>
+
+      <!-- ========== AUTH: OTP ========== -->
+      <section class="screen auth-screen" id="screen-otp" data-screen="otp">
+        <div class="auth-header">
+          <button class="icon-btn" data-nav="register" aria-label="Back">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+        </div>
+        <div class="auth-body">
+          <h1>Verify Your Number</h1>
+          <p class="auth-sub">Enter the 6-digit code sent to<br><strong id="otpPhoneDisplay">your phone number</strong></p>
+          <form id="otpForm" class="auth-form">
+            <div class="otp-inputs" id="otpInputs">
+              <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" class="otp-box" aria-label="Digit 1" />
+              <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" class="otp-box" aria-label="Digit 2" />
+              <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" class="otp-box" aria-label="Digit 3" />
+              <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" class="otp-box" aria-label="Digit 4" />
+              <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" class="otp-box" aria-label="Digit 5" />
+              <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" class="otp-box" aria-label="Digit 6" />
+            </div>
+            <button type="submit" class="btn btn-primary btn-full">Verify</button>
+          </form>
+          <p class="auth-footer">Didn't receive the code? <a href="#" class="link" id="resendOtp">Resend</a> <span id="otpCountdown"></span></p>
+        </div>
+      </section>
+
+      <!-- ========== AUTH: FORGOT ========== -->
+      <section class="screen auth-screen" id="screen-forgot" data-screen="forgot">
+        <div class="auth-header">
+          <button class="icon-btn" data-nav="login" aria-label="Back">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+        </div>
+        <div class="auth-body">
+          <h1>Forgot Password?</h1>
+          <p class="auth-sub">Enter your phone number or email and we'll help you reset your password.</p>
+          <form id="forgotForm" class="auth-form">
+            <div class="form-group">
+              <label for="forgotEmail">Phone Number or Email</label>
+              <input type="text" id="forgotEmail" name="email" placeholder="e.g. 0803 123 4567" required />
+            </div>
+            <button type="submit" class="btn btn-primary btn-full">Send Reset Code</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ========== AUTH: RESET ========== -->
+      <section class="screen auth-screen" id="screen-reset" data-screen="reset">
+        <div class="auth-header">
+          <button class="icon-btn" data-nav="login" aria-label="Back">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+        </div>
+        <div class="auth-body">
+          <h1>Create New Password</h1>
+          <p class="auth-sub">Your new password must be different from previous passwords.</p>
+          <form id="resetForm" class="auth-form">
+            <div class="form-group">
+              <label for="newPassword">New Password</label>
+              <input type="password" id="newPassword" name="password" placeholder="Min. 8 characters" required minlength="8" />
+            </div>
+            <div class="form-group">
+              <label for="confirmNewPassword">Confirm Password</label>
+              <input type="password" id="confirmNewPassword" name="confirm" placeholder="Re-enter password" required />
+            </div>
+            <button type="submit" class="btn btn-primary btn-full">Reset Password</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ========== HOME ========== -->
+      <section class="screen main-screen" id="screen-home" data-screen="home">
+        <header class="app-header">
+          <div class="header-brand">
+            <svg width="28" height="28" viewBox="0 0 48 48" fill="none">
+              <circle cx="24" cy="24" r="24" fill="#008A3C"/>
+              <path d="M24 10c-2 4-6 8-6 14 0 4 2.5 7 6 8 3.5-1 6-4 6-8 0-6-4-10-6-14z" fill="#fff"/>
+            </svg>
+            <span class="brand-name">OJALINE</span>
+          </div>
+          <button class="icon-btn notification-btn" aria-label="Notifications">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span class="badge badge-red">3</span>
+          </button>
+        </header>
+
+        <div class="location-bar">
+          <button class="location-selector" aria-label="Change delivery location">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#008A3C" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            <div>
+              <span class="loc-label">Deliver to</span>
+              <span class="loc-value">Sabo, Yaba, Lagos <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></span>
+            </div>
+          </button>
+        </div>
+
+        <div class="search-bar-wrap">
+          <div class="search-bar">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+            <input type="search" id="homeSearch" placeholder="Search for produce, sellers, categories..." aria-label="Search" />
+            <button class="search-btn" aria-label="Search">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="scroll-content home-content">
+          <!-- Hero Banner -->
+          <div class="hero-banner">
+            <div class="hero-text">
+              <h2>Fresh from<br>Farm to You</h2>
+              <p>Trusted sellers. Fair prices.<br>Real value.</p>
+              <button class="btn btn-white btn-sm" data-nav="categories">Shop Now</button>
+            </div>
+            <div class="hero-img">
+              <img src="https://images.unsplash.com/photo-1605000797499-95a51c5269b0?w=400&q=80" alt="Farmer with produce" onerror="this.parentElement.classList.add('no-img')" />
+            </div>
+          </div>
+
+          <!-- Delivery Features -->
+          <div class="feature-row">
+            <button class="feature-item">
+              <div class="feature-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#008A3C" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+              </div>
+              <span>Market Day<br><small>(Wholesale)</small></span>
+            </button>
+            <button class="feature-item">
+              <div class="feature-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#008A3C" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+              </div>
+              <span>Instant<br>Delivery</span>
+            </button>
+            <button class="feature-item">
+              <div class="feature-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#008A3C" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+              </div>
+              <span>Scheduled<br>Delivery</span>
+            </button>
+            <button class="feature-item">
+              <div class="feature-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#008A3C" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>
+              </div>
+              <span>Direct<br>From Farm</span>
+            </button>
+          </div>
+
+          <!-- Shop by Category -->
+          <div class="section">
+            <div class="section-header">
+              <h3>Shop by Category</h3>
+              <a href="#" class="see-all" data-nav="categories">See all</a>
+            </div>
+            <div class="category-scroll" id="homeCategories">
+              <!-- Filled by JS -->
+            </div>
+          </div>
+
+          <!-- Top Picks -->
+          <div class="section">
+            <div class="section-header">
+              <h3>Top Picks for You</h3>
+              <a href="#" class="see-all" data-nav="categories">See all</a>
+            </div>
+            <div class="product-scroll" id="topPicks">
+              <!-- Filled by JS -->
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== CATEGORIES ========== -->
+      <section class="screen main-screen" id="screen-categories" data-screen="categories">
+        <header class="app-header page-header">
+          <button class="icon-btn" data-nav="home" aria-label="Back">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <h1 class="page-title">Categories</h1>
+          <button class="icon-btn cart-btn" data-nav="cart" aria-label="Cart">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+            <span class="badge badge-red cart-badge">0</span>
+          </button>
+        </header>
+        <div class="scroll-content">
+          <div class="categories-grid" id="categoriesGrid">
+            <!-- Filled by JS -->
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== PRODUCT DETAIL ========== -->
+      <section class="screen main-screen" id="screen-product" data-screen="product">
+        <header class="app-header page-header transparent-header">
+          <button class="icon-btn icon-btn-light" data-nav="categories" aria-label="Back">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <div class="header-actions">
+            <button class="icon-btn icon-btn-light" aria-label="Share">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98"/></svg>
+            </button>
+            <button class="icon-btn icon-btn-light" id="favoriteBtn" aria-label="Favorite">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            </button>
+          </div>
+        </header>
+        <div class="scroll-content product-detail-content">
+          <div class="product-gallery">
+            <img id="productMainImg" src="" alt="Product" onerror="this.src='https://via.placeholder.com/400x300?text=Product'" />
+            <div class="gallery-dots">
+              <span class="dot active"></span>
+              <span class="dot"></span>
+              <span class="dot"></span>
+            </div>
+            <span class="product-tag" id="productTag">FRESH</span>
+          </div>
+          <div class="product-info">
+            <h1 id="productName">Fresh Tomatoes</h1>
+            <p class="product-seller">by <span id="productSeller">Adebola Farms</span> <svg class="verified" width="14" height="14" viewBox="0 0 24 24" fill="#008A3C"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></p>
+            <div class="product-price-row">
+              <div>
+                <span class="price" id="productPrice">₦1,200</span>
+                <span class="unit" id="productUnit"> / basket (10kg)</span>
+              </div>
+              <span class="badge badge-retailer" id="productType">RETAILER</span>
+            </div>
+            <div class="product-meta">
+              <span>Minimum order: <strong id="productMin">5kg</strong></span>
+              <span>Available: <strong id="productStock">120kg</strong></span>
+            </div>
+            <div class="delivery-badges">
+              <span class="d-badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> Instant Delivery</span>
+              <span class="d-badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg> Market Day (Eligible)</span>
+              <span class="d-badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7H4a2 2 0 00-2 2v10a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg> SHELF &gt; 7 days</span>
+            </div>
+            <div class="about-item">
+              <h4>About this item</h4>
+              <p id="productDesc">Fresh, locally grown tomatoes. Perfect for soups, stews and sauces.</p>
+            </div>
+            <div class="qty-selector-row">
+              <div class="qty-selector" id="productQtySelector">
+                <button class="qty-btn" id="qtyMinus" aria-label="Decrease quantity">−</button>
+                <span class="qty-value" id="qtyValue">10 kg</span>
+                <button class="qty-btn" id="qtyPlus" aria-label="Increase quantity">+</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="fixed-bottom-action">
+          <button class="btn btn-primary btn-full" id="addToCartBtn">Add to Cart</button>
+        </div>
+      </section>
+
+      <!-- ========== CART ========== -->
+      <section class="screen main-screen" id="screen-cart" data-screen="cart">
+        <header class="app-header page-header">
+          <button class="icon-btn" data-nav="home" aria-label="Back">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <h1 class="page-title">Your Cart <span id="cartCountTitle">(0)</span></h1>
+          <button class="text-btn" id="editCartBtn">Edit</button>
+        </header>
+        <div class="scroll-content cart-content">
+          <div id="cartItems" class="cart-items">
+            <!-- Filled by JS -->
+          </div>
+          <div id="cartEmpty" class="empty-state" style="display:none;">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="1.5"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+            <h3>Your cart is empty</h3>
+            <p>Start shopping for fresh produce.</p>
+            <button class="btn btn-primary" data-nav="home">Shop Now</button>
+          </div>
+          <div id="cartFooter" class="cart-footer-section">
+            <div class="delivery-options">
+              <h4>Delivery Option</h4>
+              <label class="radio-option selected">
+                <input type="radio" name="delivery" value="instant" checked />
+                <div class="radio-content">
+                  <div class="radio-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#008A3C" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                  </div>
+                  <div>
+                    <strong>Instant Delivery</strong>
+                    <span>Within 2–3 hours</span>
+                  </div>
+                </div>
+                <span class="radio-check"></span>
+              </label>
+              <label class="radio-option">
+                <input type="radio" name="delivery" value="market" />
+                <div class="radio-content">
+                  <div class="radio-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                  </div>
+                  <div>
+                    <strong>Market Day Delivery</strong>
+                    <span>Next market day (Mon, Wed, Fri)</span>
+                  </div>
+                </div>
+                <span class="radio-check"></span>
+              </label>
+            </div>
+            <div class="cart-summary">
+              <div class="summary-row">
+                <span>Subtotal</span>
+                <span id="cartSubtotal">₦0</span>
+              </div>
+              <div class="summary-row">
+                <span>Delivery Fee</span>
+                <span id="cartDelivery">₦1,200</span>
+              </div>
+              <div class="summary-row total">
+                <span>Total</span>
+                <span id="cartTotal">₦0</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="fixed-bottom-action" id="cartAction">
+          <button class="btn btn-primary btn-full" id="proceedCheckout" data-nav="checkout">Proceed to Checkout</button>
+        </div>
+      </section>
+
+      <!-- ========== CHECKOUT ========== -->
+      <section class="screen main-screen" id="screen-checkout" data-screen="checkout">
+        <header class="app-header page-header">
+          <button class="icon-btn" data-nav="cart" aria-label="Back">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <h1 class="page-title">Checkout</h1>
+          <div style="width:40px"></div>
+        </header>
+        <div class="scroll-content checkout-content">
+          <!-- Progress -->
+          <div class="checkout-progress">
+            <div class="progress-step done">
+              <div class="step-dot"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M5 12l5 5L20 7"/></svg></div>
+              <span>Review</span>
+            </div>
+            <div class="progress-line done"></div>
+            <div class="progress-step active">
+              <div class="step-dot"></div>
+              <span>Payment</span>
+            </div>
+            <div class="progress-line"></div>
+            <div class="progress-step">
+              <div class="step-dot"></div>
+              <span>Confirm</span>
+            </div>
+          </div>
+
+          <div class="order-summary-card">
+            <h4>Order Summary</h4>
+            <div class="summary-row">
+              <span id="checkoutItemCount">2 items</span>
+              <span id="checkoutSubtotal">₦43,000</span>
+            </div>
+            <div class="summary-row">
+              <span>Delivery Fee</span>
+              <span>₦1,200</span>
+            </div>
+            <div class="summary-row total">
+              <span>Total</span>
+              <span id="checkoutTotal">₦44,200</span>
+            </div>
+          </div>
+
+          <div class="payment-section">
+            <h4>Payment Method</h4>
+            <label class="radio-option selected payment-option">
+              <input type="radio" name="payment" value="paystack" checked />
+              <div class="radio-content">
+                <div class="paystack-brand">
+                  <span class="paystack-logo">paystack</span>
+                </div>
+                <strong>Pay with Paystack</strong>
+              </div>
+              <span class="radio-check"></span>
+            </label>
+            <label class="radio-option payment-option">
+              <input type="radio" name="payment" value="card" />
+              <div class="radio-content">
+                <div class="card-brands">
+                  <span class="visa">VISA</span>
+                  <span class="mc">●●</span>
+                </div>
+                <strong>Card</strong>
+              </div>
+              <span class="radio-check"></span>
+            </label>
+            <label class="radio-option payment-option">
+              <input type="radio" name="payment" value="transfer" />
+              <div class="radio-content">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+                <strong>Bank Transfer</strong>
+              </div>
+              <span class="radio-check"></span>
+            </label>
+          </div>
+
+          <div class="security-note">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#008A3C" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+            <span>Payment is secure and encrypted</span>
+          </div>
+
+          <div class="stock-hold-card">
+            <div class="hold-icon">⏱</div>
+            <div>
+              <strong>Two-phase stock hold active</strong>
+              <p>Your items are reserved for <span id="stockTimer">08:00</span> minutes</p>
+            </div>
+          </div>
+        </div>
+        <div class="fixed-bottom-action">
+          <button class="btn btn-primary btn-full" id="payBtn">Pay ₦44,200</button>
+          <p class="terms-text">By continuing, you agree to Ojaline's <a href="#">Terms & Conditions</a></p>
+        </div>
+      </section>
+
+      <!-- ========== ORDER TRACKING ========== -->
+      <section class="screen main-screen" id="screen-tracking" data-screen="tracking">
+        <header class="app-header page-header">
+          <button class="icon-btn" data-nav="orders" aria-label="Back">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <h1 class="page-title">Order Tracking</h1>
+          <button class="text-btn">Help</button>
+        </header>
+        <div class="scroll-content tracking-content">
+          <div class="order-status-card">
+            <div class="status-top">
+              <span class="order-id" id="trackOrderId">Order #OJ-2026-0813-0012</span>
+              <span class="status-badge in-progress">In Progress</span>
+            </div>
+            <p class="est-delivery">Estimated delivery<br><strong>Today, 2:00 PM – 4:00 PM</strong></p>
+            <div class="tracking-timeline" id="trackingTimeline">
+              <div class="timeline-step done">
+                <div class="tl-dot"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M5 12l5 5L20 7"/></svg></div>
+                <span>Paid</span>
+              </div>
+              <div class="tl-line done"></div>
+              <div class="timeline-step done">
+                <div class="tl-dot"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M5 12l5 5L20 7"/></svg></div>
+                <span>Confirmed</span>
+              </div>
+              <div class="tl-line done"></div>
+              <div class="timeline-step current">
+                <div class="tl-dot"></div>
+                <span>Dispatched</span>
+              </div>
+              <div class="tl-line"></div>
+              <div class="timeline-step">
+                <div class="tl-dot"></div>
+                <span>Delivered</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-card">
+            <h4>Your Order</h4>
+            <div id="trackOrderItems">
+              <!-- Filled by JS -->
+            </div>
+          </div>
+
+          <div class="section-card">
+            <h4>Delivery Address</h4>
+            <div class="address-row">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#008A3C" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              <div>
+                <strong>Sabo, Yaba, Lagos</strong>
+                <p>House 12, Kudiri Abiola Way.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-card">
+            <h4>Rider</h4>
+            <div class="rider-row">
+              <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&q=80" alt="Rider" class="rider-avatar" onerror="this.src='https://via.placeholder.com/48'" />
+              <div class="rider-info">
+                <strong>Tunde Adeyemi</strong>
+                <span class="rating">4.8 ★</span>
+              </div>
+              <button class="btn btn-outline btn-sm">Call</button>
+            </div>
+          </div>
+
+          <button class="btn btn-outline btn-full" id="viewPodBtn">View Proof of Delivery (PoD)</button>
+        </div>
+      </section>
+
+      <!-- ========== MY ORDERS ========== -->
+      <section class="screen main-screen" id="screen-orders" data-screen="orders">
+        <header class="app-header page-header">
+          <div style="width:40px"></div>
+          <h1 class="page-title">My Orders</h1>
+          <div style="width:40px"></div>
+        </header>
+        <div class="order-tabs">
+          <button class="order-tab active" data-filter="all">All</button>
+          <button class="order-tab" data-filter="in-progress">In Progress</button>
+          <button class="order-tab" data-filter="delivered">Completed</button>
+          <button class="order-tab" data-filter="cancelled">Cancelled</button>
+        </div>
+        <div class="scroll-content">
+          <div class="orders-list" id="ordersList">
+            <!-- Filled by JS -->
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== MESSAGES (placeholder) ========== -->
+      <section class="screen main-screen" id="screen-messages" data-screen="messages">
+        <header class="app-header page-header">
+          <div style="width:40px"></div>
+          <h1 class="page-title">Messages</h1>
+          <div style="width:40px"></div>
+        </header>
+        <div class="scroll-content">
+          <div class="empty-state">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <h3>No messages yet</h3>
+            <p>Conversations with sellers will appear here.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== ACCOUNT / PROFILE ========== -->
+      <section class="screen main-screen" id="screen-account" data-screen="account">
+        <header class="app-header page-header">
+          <div style="width:40px"></div>
+          <h1 class="page-title">My Profile</h1>
+          <button class="icon-btn" aria-label="Settings">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </button>
+        </header>
+        <div class="scroll-content profile-content">
+          <div class="profile-header">
+            <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&q=80" alt="Amaka Okafor" class="profile-avatar" onerror="this.src='https://via.placeholder.com/80'" />
+            <h2>Amaka Okafor</h2>
+            <p class="profile-email">amakaofor@gmail.com</p>
+            <p class="profile-phone">+234 803 123 4567</p>
+            <span class="verified-badge">Verified</span>
+          </div>
+
+          <div class="menu-section">
+            <h4>Account</h4>
+            <a href="#" class="menu-item">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              <span>Addresses</span>
+              <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+            </a>
+            <a href="#" class="menu-item">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><path d="M1 10h22"/></svg>
+              <span>Payment Methods</span>
+              <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+            </a>
+            <a href="#" class="menu-item">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+              <span>Notifications</span>
+              <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+            </a>
+            <a href="#" class="menu-item">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              <span>Language</span>
+              <span class="menu-value">English</span>
+              <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+            </a>
+          </div>
+
+          <div class="menu-section">
+            <h4>Support</h4>
+            <a href="#" class="menu-item">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
+              <span>Help Center</span>
+              <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+            </a>
+            <a href="#" class="menu-item">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              <span>Chat with Support</span>
+              <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+            </a>
+            <a href="#" class="menu-item">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+              <span>About Ojaline</span>
+              <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+            </a>
+          </div>
+
+          <div class="menu-section">
+            <a href="#" class="menu-item" id="goSellerDashboard">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>
+              <span>Seller Dashboard</span>
+              <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+            </a>
+          </div>
+
+          <button class="btn btn-logout" id="logoutBtn">Log Out</button>
+        </div>
+      </section>
+
+      <!-- ========== SELLER DASHBOARD ========== -->
+      <section class="screen main-screen" id="screen-seller" data-screen="seller">
+        <header class="app-header page-header">
+          <button class="icon-btn" data-nav="account" aria-label="Menu">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+          </button>
+          <h1 class="page-title">Seller Dashboard</h1>
+          <button class="icon-btn notification-btn" aria-label="Notifications">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span class="badge badge-red">2</span>
+          </button>
+        </header>
+        <div class="scroll-content seller-content">
+          <div class="seller-profile-card">
+            <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&q=80" alt="Adebola Farms" class="seller-avatar" onerror="this.src='https://via.placeholder.com/56'" />
+            <div>
+              <h3>Adebola Farms</h3>
+              <p>Seller ID: OJ-88321</p>
+              <span class="rating">4.7 ★ <small>(128 reviews)</small></span>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-header">
+              <h3>Today's Overview</h3>
+              <a href="#" class="see-all">View all</a>
+            </div>
+            <div class="overview-grid">
+              <div class="overview-card">
+                <span class="ov-label">Orders</span>
+                <span class="ov-value">12</span>
+              </div>
+              <div class="overview-card">
+                <span class="ov-label">Sales</span>
+                <span class="ov-value">₦85,400</span>
+              </div>
+              <div class="overview-card">
+                <span class="ov-label">Pending</span>
+                <span class="ov-value">3</span>
+              </div>
+              <div class="overview-card">
+                <span class="ov-label">Rating</span>
+                <span class="ov-value">4.7 ★</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="section">
+            <h3>Quick Actions</h3>
+            <div class="quick-actions">
+              <button class="qa-btn">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#008A3C" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+                <span>Create Offer</span>
+              </button>
+              <button class="qa-btn">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#008A3C" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                <span>My Offers</span>
+              </button>
+              <button class="qa-btn">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#008A3C" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+                <span>Orders</span>
+              </button>
+              <button class="qa-btn">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#008A3C" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><path d="M1 10h22"/></svg>
+                <span>Payouts</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="section">
+            <h3>Performance (30 days)</h3>
+            <div class="perf-card">
+              <div class="perf-row">
+                <div>
+                  <span class="perf-label">Sales</span>
+                  <span class="perf-value">₦1,248,000</span>
+                  <span class="perf-change up">↑ 18%</span>
+                </div>
+                <div class="mini-chart">
+                  <svg width="80" height="36" viewBox="0 0 80 36">
+                    <polyline points="0,30 10,25 20,28 30,18 40,22 50,12 60,15 70,8 80,10" fill="none" stroke="#008A3C" stroke-width="2"/>
+                  </svg>
+                </div>
+              </div>
+              <div class="perf-stats">
+                <div>
+                  <span class="perf-label">Orders</span>
+                  <span class="perf-value-sm">156 <span class="up">↑ 12%</span></span>
+                </div>
+                <div>
+                  <span class="perf-label">Fulfilment Rate</span>
+                  <span class="perf-value-sm">97% <span class="up">↑ 5%</span></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Seller bottom nav -->
+        <nav class="bottom-nav seller-nav">
+          <button class="nav-item active" data-nav="seller">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            <span>Dashboard</span>
+          </button>
+          <button class="nav-item">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            <span>Offers</span>
+          </button>
+          <button class="nav-item">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+            <span>Orders</span>
+          </button>
+          <button class="nav-item">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            <span>Earnings</span>
+          </button>
+          <button class="nav-item">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+            <span>More</span>
+          </button>
+        </nav>
+      </section>
+
+    </div><!-- /screens-container -->
+
+    <!-- Bottom Navigation (Customer) -->
+    <nav class="bottom-nav" id="bottomNav">
+      <button class="nav-item active" data-nav="home">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>
+        <span>Home</span>
+      </button>
+      <button class="nav-item" data-nav="categories">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        <span>Categories</span>
+      </button>
+      <button class="nav-item" data-nav="orders">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+        <span>Orders</span>
+      </button>
+      <button class="nav-item" data-nav="messages">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span>Messages</span>
+      </button>
+      <button class="nav-item" data-nav="account">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span>Account</span>
+      </button>
+    </nav>
+
+    <!-- Toast -->
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <!-- Modal: Proof of Delivery -->
+    <div class="modal-overlay" id="podModal" hidden>
+      <div class="modal">
+        <div class="modal-header">
+          <h3>Proof of Delivery</h3>
+          <button class="icon-btn" id="closePodModal" aria-label="Close">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="pod-placeholder">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#008A3C" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+            <p>Photo of delivered items + signature</p>
+            <p class="pod-meta">Delivered · Aug 10, 2026 · 3:42 PM</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Payment Processing Overlay -->
+    <div class="overlay" id="paymentOverlay" hidden>
+      <div class="overlay-content">
+        <div class="spinner"></div>
+        <p id="overlayText">Processing payment...</p>
+      </div>
+    </div>
+
+  </div><!-- /phone-frame -->
+
+  <script src="script.js"></script>
+</body>
+</html>
