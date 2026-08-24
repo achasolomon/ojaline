@@ -41,6 +41,12 @@ export function OfferCard({ offer, onClick }: OfferCardProps) {
 
       <p className="mb-2 text-xs text-textSecondary">{offer.physical_ref}</p>
 
+      {offer.seller_name && (
+        <p className="mb-2 text-xs text-textSecondary">
+          Sold by <span className="font-medium text-text">{offer.seller_name}</span>
+        </p>
+      )}
+
       <div className="mb-2 flex flex-wrap gap-1.5">
         <span className="rounded bg-surface px-1.5 py-0.5 text-[10px] font-medium text-textSecondary">
           Min order: {offer.min_order_qty}

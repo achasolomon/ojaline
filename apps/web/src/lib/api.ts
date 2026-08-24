@@ -3,16 +3,24 @@ import type { EventType, EventPayload, OutboxEnvelope } from '@ojaline/contracts
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api';
 
-/* ── Offer types (Sprint 1 — derived from catalog.offers schema) ── */
+/* ── Offer types ── */
 
 export type Channel = 'RETAILER' | 'WHOLESALE' | 'DIRECT' | 'OPEN';
 export type Perishability = 'SHELF_GT_7D' | 'SHELF_LT_7D';
 export type FulfilmentMode = 'INSTANT' | 'SCHEDULED' | 'MARKET_DAY';
 export type OfferStatus = 'ACTIVE' | 'PAUSED' | 'DELISTED';
 
+export interface OfferImage {
+  id: string;
+  storage_key: string;
+  kind?: 'REFERENCE_PHOTO' | 'GALLERY';
+  is_primary?: boolean;
+}
+
 export interface Offer {
   id: string;
   seller_id: string;
+  seller_name: string;
   channel: Channel;
   sellable_qty: number;
   min_order_qty: number;
@@ -23,12 +31,26 @@ export interface Offer {
   product_name: string;
   physical_ref: string;
   price_cents: number | null;
+  category_id: string | null;
+  primary_image: OfferImage | null;
+  images?: OfferImage[];
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  perishability_default: Perishability;
+  offer_count: number;
 }
 
 export interface DiscoverOffersParams {
   channel?: Channel;
   cluster_id?: string;
   perishability?: Perishability;
+  category_id?: string;
+  q?: string;
+  price_min?: number;
+  price_max?: number;
   limit?: number;
   offset?: number;
 }
@@ -49,6 +71,7 @@ export interface CreateOfferRequest {
   fulfilment_modes: FulfilmentMode[];
   cluster_id: string;
   price_cents: number;
+  category_id?: string;
 }
 
 export interface CreateOfferResponse {
@@ -96,9 +119,7 @@ async function safeText(res: Response): Promise<string> {
 }
 
 /**
- * Fetches a raw outbox envelope (e.g. from a debug/replay endpoint) and
- * validates it against the shared contract, so the client never trusts
- * a malformed event (ADR-003/008).
+ * Fetches a raw outbox envelope and validates it against the shared contract.
  */
 export async function getEnvelope<T extends EventType>(
   path: string,
@@ -113,22 +134,29 @@ export async function getEnvelope<T extends EventType>(
   return result.envelope as OutboxEnvelope & { payload: EventPayload<T> };
 }
 
-/** Placeholder auth surface. Sprint 1 replaces this with real OTP/phone flow. */
 export async function login(phoneOrEmail: string, _password: string): Promise<{ user_id: string }> {
   return postJson('/auth/login', { phone_or_email: phoneOrEmail });
 }
 
-/* ── Catalog API (Sprint 1) ── */
+/* ── Catalog API ── */
 
 export async function discoverOffers(params: DiscoverOffersParams = {}): Promise<DiscoverOffersResponse> {
   const qs = new URLSearchParams();
   if (params.channel) qs.set('channel', params.channel);
   if (params.cluster_id) qs.set('cluster_id', params.cluster_id);
   if (params.perishability) qs.set('perishability', params.perishability);
+  if (params.category_id) qs.set('category_id', params.category_id);
+  if (params.q) qs.set('q', params.q);
+  if (params.price_min != null) qs.set('price_min', String(params.price_min));
+  if (params.price_max != null) qs.set('price_max', String(params.price_max));
   if (params.limit) qs.set('limit', String(params.limit));
   if (params.offset) qs.set('offset', String(params.offset));
   const query = qs.toString();
   return getJson<DiscoverOffersResponse>(`/catalog/offers${query ? `?${query}` : ''}`);
+}
+
+export async function getCategories(): Promise<Category[]> {
+  return getJson<Category[]>('/catalog/categories');
 }
 
 export async function createOffer(body: CreateOfferRequest): Promise<CreateOfferResponse> {

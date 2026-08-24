@@ -1,18 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { naira } from '@ojaline/design';
-import { discoverOffers } from '../lib/api';
-import type { Offer } from '../lib/api';
+import { discoverOffers, getCategories, type Offer, type Category } from '../lib/api';
 import { useMediaQuery, DESKTOP_BREAKPOINT } from '../lib/useMediaQuery';
 import { DesktopHome } from '../components/desktop/DesktopHome';
-
-const CATEGORIES = [
-  { name: 'Fresh Vegetables', image: 'https://images.unsplash.com/photo-1597362925123-77861d3fbac7?w=120&q=80' },
-  { name: 'Fresh Fruits', image: 'https://images.unsplash.com/photo-1619546813926-a78fa6372cd2?w=120&q=80' },
-  { name: 'Grains & Cereals', image: 'https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?w=120&q=80' },
-  { name: 'Tubers & Roots', image: 'https://images.unsplash.com/photo-1518977676601-b53f82ber40?w=120&q=80' },
-  { name: 'Oils & Condiments', image: 'https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=120&q=80' },
-];
 
 const FEATURES = [
   { label: 'Market Day', sublabel: '(Wholesale)', icon: 'calendar' },
@@ -66,20 +57,32 @@ export default function Home() {
 function MobileHome() {
   const navigate = useNavigate();
   const [picks, setPicks] = useState<Offer[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     let cancelled = false;
-    discoverOffers({ limit: 6 })
-      .then((res) => {
-        if (!cancelled) setPicks(res.offers);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    Promise.all([
+      discoverOffers({ limit: 6 }),
+      getCategories(),
+    ]).then(([offersRes, cats]) => {
+      if (!cancelled) {
+        setPicks(offersRes.offers);
+        setCategories(cats);
+      }
+    }).catch(() => {}).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
     return () => { cancelled = true; };
   }, []);
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      navigate(`/offers?q=${encodeURIComponent(searchQuery.trim())}`);
+    }
+  };
 
   return (
     <div className="flex flex-col h-full bg-white">
@@ -125,28 +128,40 @@ function MobileHome() {
 
         {/* Search bar */}
         <div className="px-4 pb-3">
-          <div className="flex items-center bg-surface border border-border rounded-xl px-3 gap-2">
+          <form onSubmit={handleSearch} className="flex items-center bg-surface border border-border rounded-xl px-3 gap-2">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" strokeWidth="2">
               <circle cx="11" cy="11" r="8"/>
               <path d="M21 21l-4.35-4.35"/>
             </svg>
             <input
               type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search for produce, sellers, categories..."
               className="flex-1 border-none bg-transparent text-sm outline-none py-2.5 text-text placeholder:text-[#9CA3AF]"
             />
-            <button type="button" className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center border-none cursor-pointer">
+            <button type="submit" className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center border-none cursor-pointer">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5">
                 <circle cx="11" cy="11" r="8"/>
                 <path d="M21 21l-4.35-4.35"/>
               </svg>
             </button>
-          </div>
+          </form>
         </div>
 
         {/* Hero Banner */}
-        <div className="mx-4 mb-4 bg-gradient-to-br from-primary-dark to-primary rounded-2xl p-5 flex items-center min-h-[160px] relative overflow-hidden">
-          <div className="flex-1 z-10 text-white">
+        <div className="mx-4 mb-4 bg-gradient-to-br from-primary-dark to-primary rounded-2xl p-5 min-h-[160px] relative overflow-hidden">
+          {/* Hero image — fades into the gradient */}
+          <img
+            src="/images/hero-produce.jpg"
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover"
+            style={{
+              maskImage: 'linear-gradient(to right, transparent 0%, transparent 20%, black 60%, black 100%)',
+              WebkitMaskImage: 'linear-gradient(to right, transparent 0%, transparent 20%, black 60%, black 100%)',
+            }}
+          />
+          <div className="relative z-10 text-white">
             <h2 className="text-[22px] font-bold leading-tight mb-1.5">Fresh from<br/>Farm to You</h2>
             <p className="text-[13px] opacity-90 mb-3.5 leading-snug">Trusted sellers. Fair prices.<br/>Real value.</p>
             <button
@@ -156,13 +171,6 @@ function MobileHome() {
             >
               Shop Now
             </button>
-          </div>
-          <div className="w-[120px] h-[120px] rounded-full overflow-hidden shrink-0 border-[3px] border-white/30">
-            <img
-              src="https://images.unsplash.com/photo-1605000797499-95a51c5269b0?w=400&q=80"
-              alt="Farmer with produce"
-              className="w-full h-full object-cover"
-            />
           </div>
         </div>
 
@@ -194,20 +202,22 @@ function MobileHome() {
             </button>
           </div>
           <div className="flex gap-4 px-4 overflow-x-auto scrollbar-none">
-            {CATEGORIES.map((cat) => (
+            {categories.map((cat) => (
               <button
-                key={cat.name}
+                key={cat.id}
                 type="button"
-                onClick={() => navigate('/offers')}
+                onClick={() => navigate(`/offers?category_id=${cat.id}`)}
                 className="flex flex-col items-center gap-1.5 bg-transparent border-none cursor-pointer min-w-16 shrink-0"
               >
-                <img
-                  src={cat.image}
-                  alt={cat.name}
-                  className="w-14 h-14 rounded-full object-cover bg-surface border-2 border-border"
-                  onError={(e) => { e.currentTarget.src = `https://via.placeholder.com/56?text=${cat.name[0]}`; }}
-                />
-                <span className="text-xs font-medium text-text">{cat.name}</span>
+                <div className="w-14 h-14 rounded-full bg-surface border-2 border-border flex items-center justify-center text-lg">
+                  {cat.name.includes('Vegetable') ? '🥬' :
+                   cat.name.includes('Fruit') ? '🍎' :
+                   cat.name.includes('Grain') || cat.name.includes('Cereal') ? '🌾' :
+                   cat.name.includes('Tuber') ? '🍠' :
+                   cat.name.includes('Oil') ? '🫒' : '📦'}
+                </div>
+                <span className="text-xs font-medium text-text text-center leading-tight">{cat.name}</span>
+                <span className="text-[10px] text-textSecondary">{cat.offer_count} items</span>
               </button>
             ))}
           </div>
@@ -245,7 +255,7 @@ function MobileHome() {
                   </div>
                   <div className="p-2.5">
                     <div className="text-[13px] font-semibold mb-0.5 truncate">{offer.product_name}</div>
-                    <div className="text-[11px] text-textSecondary mb-1.5">{offer.physical_ref}</div>
+                    <div className="text-[11px] text-textSecondary mb-1">{offer.seller_name || 'Seller'}</div>
                     <div className="text-sm font-bold text-primary">
                       {offer.price_cents != null ? naira.format(offer.price_cents / 100) : '—'}
                     </div>
@@ -254,6 +264,23 @@ function MobileHome() {
               ))}
             </div>
           )}
+        </div>
+
+        {/* Trust strip */}
+        <div className="mx-4 mb-6 bg-primary-light rounded-xl p-4">
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { icon: '✓', label: 'Verified Sellers' },
+              { icon: '⚡', label: 'Fast Delivery' },
+              { icon: '▣', label: 'Secure Payments' },
+              { icon: '★', label: 'Quality Guarantee' },
+            ].map((item) => (
+              <div key={item.label} className="flex items-center gap-2">
+                <span className="text-primary text-sm font-bold">{item.icon}</span>
+                <span className="text-xs font-medium text-text">{item.label}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </main>
     </div>

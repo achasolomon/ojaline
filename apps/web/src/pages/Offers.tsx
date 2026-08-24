@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@ojaline/design';
 import { discoverOffers } from '../lib/api';
 import type { Offer, Channel, Perishability, DiscoverOffersParams } from '../lib/api';
@@ -23,6 +23,10 @@ const PAGE_SIZE = 20;
 
 export default function Offers() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const urlQuery = searchParams.get('q') || '';
+  const urlCategoryId = searchParams.get('category_id') || '';
+
   const [offers, setOffers] = useState<Offer[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -42,6 +46,8 @@ export default function Offers() {
     };
     if (channelFilter) params.channel = channelFilter;
     if (perishabilityFilter) params.perishability = perishabilityFilter;
+    if (urlQuery) params.q = urlQuery;
+    if (urlCategoryId) params.category_id = urlCategoryId;
 
     discoverOffers(params)
       .then((res) => {
@@ -60,14 +66,16 @@ export default function Offers() {
     return () => {
       cancelled = true;
     };
-  }, [channelFilter, perishabilityFilter, offset]);
+  }, [channelFilter, perishabilityFilter, offset, urlQuery, urlCategoryId]);
 
   const hasMore = offset + PAGE_SIZE < total;
 
   return (
     <div className="flex flex-col h-full bg-white">
       <header className="flex items-center justify-between border-b border-border px-4 py-3">
-        <h1 className="text-lg font-semibold text-text">Browse Offers</h1>
+        <h1 className="text-lg font-semibold text-text">
+          {urlQuery ? `Search: "${urlQuery}"` : 'Browse Offers'}
+        </h1>
         <Button size="sm" onClick={() => navigate('/offers/new')}>+ New Offer</Button>
       </header>
 

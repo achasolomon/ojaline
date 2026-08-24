@@ -1,22 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { discoverOffers, type Offer, type Channel } from '../../lib/api';
+import { discoverOffers, getCategories, type Offer, type Category, type Channel } from '../../lib/api';
 import { naira } from '@ojaline/design';
 import { DesktopHero } from './DesktopHero';
 import { ServiceBenefits } from './ServiceBenefits';
 
-const CATEGORY_CARDS = [
-  { name: 'Vegetables', count: '1,200+', bg: 'radial-gradient(circle at 28% 55%,#e74f32 0 10%,transparent 10.5%),radial-gradient(circle at 54% 40%,#6ea33e 0 16%,transparent 16.5%),radial-gradient(circle at 73% 65%,#efa722 0 12%,transparent 12.5%),linear-gradient(145deg,#f1f6ea,#dcebd1)' },
-  { name: 'Fruits', count: '850+', bg: 'radial-gradient(circle at 28% 55%,#e74f32 0 10%,transparent 10.5%),radial-gradient(circle at 54% 40%,#6ea33e 0 16%,transparent 16.5%),radial-gradient(circle at 73% 65%,#efa722 0 12%,transparent 12.5%),linear-gradient(145deg,#f1f6ea,#dcebd1)' },
-  { name: 'Grains & Cereals', count: '650+', bg: 'radial-gradient(circle at 28% 55%,#e74f32 0 10%,transparent 10.5%),radial-gradient(circle at 54% 40%,#6ea33e 0 16%,transparent 16.5%),radial-gradient(circle at 73% 65%,#efa722 0 12%,transparent 12.5%),linear-gradient(145deg,#f1f6ea,#dcebd1)' },
-  { name: 'Tubers', count: '480+', bg: 'radial-gradient(circle at 28% 55%,#e74f32 0 10%,transparent 10.5%),radial-gradient(circle at 54% 40%,#6ea33e 0 16%,transparent 16.5%),radial-gradient(circle at 73% 65%,#efa722 0 12%,transparent 12.5%),linear-gradient(145deg,#f1f6ea,#dcebd1)' },
-  { name: 'Meat & Poultry', count: '320+', bg: 'radial-gradient(circle at 28% 55%,#e74f32 0 10%,transparent 10.5%),radial-gradient(circle at 54% 40%,#6ea33e 0 16%,transparent 16.5%),radial-gradient(circle at 73% 65%,#efa722 0 12%,transparent 12.5%),linear-gradient(145deg,#f1f6ea,#dcebd1)' },
-  { name: 'Fish & Seafood', count: '280+', bg: 'radial-gradient(circle at 28% 55%,#e74f32 0 10%,transparent 10.5%),radial-gradient(circle at 54% 40%,#6ea33e 0 16%,transparent 16.5%),radial-gradient(circle at 73% 65%,#efa722 0 12%,transparent 12.5%),linear-gradient(145deg,#f1f6ea,#dcebd1)' },
-  { name: 'Spices & Herbs', count: '540+', bg: 'radial-gradient(circle at 28% 55%,#e74f32 0 10%,transparent 10.5%),radial-gradient(circle at 54% 40%,#6ea33e 0 16%,transparent 16.5%),radial-gradient(circle at 73% 65%,#efa722 0 12%,transparent 12.5%),linear-gradient(145deg,#f1f6ea,#dcebd1)' },
-  { name: 'Oils & Sauces', count: '350+', bg: 'radial-gradient(circle at 28% 55%,#e74f32 0 10%,transparent 10.5%),radial-gradient(circle at 54% 40%,#6ea33e 0 16%,transparent 16.5%),radial-gradient(circle at 73% 65%,#efa722 0 12%,transparent 12.5%),linear-gradient(145deg,#f1f6ea,#dcebd1)' },
-];
-
 const PRODUCT_PLACEHOLDER_BG = 'radial-gradient(circle at 30% 45%,#e34e32 0 12%,transparent 12.5%),radial-gradient(circle at 58% 62%,#d8442f 0 13%,transparent 13.5%),radial-gradient(circle at 72% 33%,#f0a21f 0 9%,transparent 9.5%),radial-gradient(circle at 45% 25%,#69a03b 0 12%,transparent 12.5%),linear-gradient(145deg,#f4f7ef,#dfead8)';
+
+const CATEGORY_PLACEHOLDER_BG: Record<string, string> = {
+  'Fresh Vegetables': 'linear-gradient(145deg,#e8f5e9,#c8e6c9)',
+  'Fresh Fruits': 'linear-gradient(145deg,#fce4ec,#f8bbd0)',
+  'Grains & Cereals': 'linear-gradient(145deg,#fff8e1,#ffecb3)',
+  'Tubers & Roots': 'linear-gradient(145deg,#fff3e0,#ffe0b2)',
+  'Oils & Condiments': 'linear-gradient(145deg,#fffde7,#fff9c4)',
+};
 
 const CHANNEL_FILTERS: { label: string; value: Channel | 'ALL' }[] = [
   { label: 'All Categories', value: 'ALL' },
@@ -34,23 +31,32 @@ const LOCATION_FILTERS = [
 export function DesktopHome() {
   const navigate = useNavigate();
   const [offers, setOffers] = useState<Offer[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [channelFilter, setChannelFilter] = useState<Channel | 'ALL'>('ALL');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [locationFilter, setLocationFilter] = useState('ALL');
   const [priceMin, setPriceMin] = useState('');
   const [priceMax, setPriceMax] = useState('');
   const [filterApplied, setFilterApplied] = useState(false);
+
+  useEffect(() => {
+    getCategories().then(setCategories).catch(() => {});
+  }, []);
 
   const loadOffers = useCallback(async () => {
     setLoading(true);
     try {
       const params: Parameters<typeof discoverOffers>[0] = { limit: 10 };
       if (channelFilter !== 'ALL') params.channel = channelFilter;
+      if (selectedCategoryId) params.category_id = selectedCategoryId;
+      if (priceMin) params.price_min = Number(priceMin) * 100;
+      if (priceMax) params.price_max = Number(priceMax) * 100;
       const res = await discoverOffers(params);
       setOffers(res.offers);
     } catch { /* skip */ }
     setLoading(false);
-  }, [channelFilter]);
+  }, [channelFilter, selectedCategoryId, priceMin, priceMax]);
 
   useEffect(() => { loadOffers(); }, [loadOffers]);
 
@@ -61,6 +67,7 @@ export function DesktopHome() {
 
   const clearFilters = () => {
     setChannelFilter('ALL');
+    setSelectedCategoryId(null);
     setLocationFilter('ALL');
     setPriceMin('');
     setPriceMax('');
@@ -86,11 +93,25 @@ export function DesktopHome() {
               <input
                 type="radio"
                 name="category"
-                checked={channelFilter === f.value}
-                onChange={() => setChannelFilter(f.value)}
+                checked={channelFilter === f.value && !selectedCategoryId}
+                onChange={() => { setChannelFilter(f.value); setSelectedCategoryId(null); }}
                 className="accent-primary mr-1.5"
               />
               {f.label}
+            </label>
+          ))}
+
+          <h4 className="text-[10px] font-extrabold text-text-secondary mt-[18px] mb-2.5">Product Category</h4>
+          {categories.map((cat) => (
+            <label key={cat.id} className="block text-[10px] text-[#475149] my-2 cursor-pointer">
+              <input
+                type="radio"
+                name="product_category"
+                checked={selectedCategoryId === cat.id}
+                onChange={() => setSelectedCategoryId(selectedCategoryId === cat.id ? null : cat.id)}
+                className="accent-primary mr-1.5"
+              />
+              {cat.name} <span className="text-text-secondary">({cat.offer_count})</span>
             </label>
           ))}
 
@@ -145,16 +166,19 @@ export function DesktopHome() {
             <span className="text-[10px] text-primary font-extrabold cursor-pointer hover:underline">See all categories →</span>
           </div>
           <div className="grid grid-cols-8 gap-[9px]">
-            {CATEGORY_CARDS.map((cat) => (
+            {categories.map((cat) => (
               <button
-                key={cat.name}
+                key={cat.id}
                 type="button"
-                onClick={() => navigate('/offers')}
-                className="bg-white border border-border rounded-[9px] p-[9px] text-center cursor-pointer hover:shadow-md transition"
+                onClick={() => setSelectedCategoryId(selectedCategoryId === cat.id ? null : cat.id)}
+                className={`bg-white border rounded-[9px] p-[9px] text-center cursor-pointer hover:shadow-md transition ${selectedCategoryId === cat.id ? 'border-primary shadow-md' : 'border-border'}`}
               >
-                <div className="h-[64px] rounded-[7px] mb-[7px]" style={{ background: cat.bg }} />
+                <div
+                  className="h-[64px] rounded-[7px] mb-[7px]"
+                  style={{ background: CATEGORY_PLACEHOLDER_BG[cat.name] || 'linear-gradient(145deg,#f1f6ea,#dcebd1)' }}
+                />
                 <b className="block text-[9px] text-text">{cat.name}</b>
-                <span className="text-[8px] text-text-secondary">{cat.count}</span>
+                <span className="text-[8px] text-text-secondary">{cat.offer_count}+ items</span>
               </button>
             ))}
           </div>
@@ -192,16 +216,21 @@ export function DesktopHome() {
                     key={offer.id}
                     className="bg-white border border-border rounded-[9px] overflow-hidden relative group"
                   >
-                    {/* Heart button */}
                     <button
                       type="button"
                       className="absolute right-2 top-[7px] border-none bg-white rounded-full w-[26px] h-[26px] shadow-[0_2px_8px_rgba(0,0,0,0.01)] text-sm cursor-pointer hover:scale-110 transition z-10"
                     >
                       ♡
                     </button>
-                    {/* Product image */}
-                    <div className="h-[145px]" style={{ background: PRODUCT_PLACEHOLDER_BG }} />
-                    {/* Info */}
+                    <div
+                      className="h-[145px] bg-cover bg-center"
+                      style={{
+                        backgroundImage: offer.primary_image?.storage_key
+                          ? `url(/api/media/${offer.primary_image.storage_key})`
+                          : `none`,
+                        background: offer.primary_image?.storage_key ? undefined : PRODUCT_PLACEHOLDER_BG,
+                      }}
+                    />
                     <div className="p-[9px]">
                       <div className="text-[10px] font-extrabold text-text">{offer.product_name}</div>
                       <div className="text-[8px] text-text-secondary">{offer.physical_ref}</div>
@@ -214,7 +243,7 @@ export function DesktopHome() {
                         ★ 4.8 <span className="text-text-secondary">(120)</span>
                       </div>
                       <div className="text-[8px] text-[#566159] mt-1.5">
-                        Mama Grace Farms <span className="text-primary">✓</span>
+                        {offer.seller_name || 'Seller'} <span className="text-primary">✓</span>
                       </div>
                       <button
                         type="button"

@@ -77,18 +77,18 @@ ON CONFLICT DO NOTHING;
 -- 5. LOTS (seller inventory)
 -- ================================================================
 
-INSERT INTO catalog.lots (id, seller_id, product_name, physical_ref) VALUES
+INSERT INTO catalog.lots (id, seller_id, product_name, physical_ref, category_id) VALUES
   -- Adebola Farms
-  ('f1000000-0000-4000-8000-000000000001', 'a1000000-0000-4000-8000-000000000001', 'Fresh Tomatoes', 'Grade A, Ibadan origin'),
-  ('f1000000-0000-4000-8000-000000000002', 'a1000000-0000-4000-8000-000000000001', 'Ripe Plantain', 'Foreign plantain, premium'),
-  ('f1000000-0000-4000-8000-000000000003', 'a1000000-0000-4000-8000-000000000001', 'White Yam', 'Oyo State yam, large tubers'),
+  ('f1000000-0000-4000-8000-000000000001', 'a1000000-0000-4000-8000-000000000001', 'Fresh Tomatoes', 'Grade A, Ibadan origin', (SELECT id FROM catalog.categories WHERE name = 'Fresh Vegetables')),
+  ('f1000000-0000-4000-8000-000000000002', 'a1000000-0000-4000-8000-000000000001', 'Ripe Plantain', 'Foreign plantain, premium', (SELECT id FROM catalog.categories WHERE name = 'Fresh Fruits')),
+  ('f1000000-0000-4000-8000-000000000003', 'a1000000-0000-4000-8000-000000000001', 'White Yam', 'Oyo State yam, large tubers', (SELECT id FROM catalog.categories WHERE name = 'Tubers & Roots')),
   -- Iya Bisi Foods
-  ('f1000000-0000-4000-8000-000000000004', 'a1000000-0000-4000-8000-000000000002', 'Local Rice (Ofada)', 'Ofada rice, short grain'),
-  ('f1000000-0000-4000-8000-000000000005', 'a1000000-0000-4000-8000-000000000002', 'Palm Oil', 'Borno State red palm oil'),
-  ('f1000000-0000-4000-8000-000000000006', 'a1000000-0000-4000-8000-000000000002', 'Fresh Peppers', 'Scotch bonnet & habanero mix'),
+  ('f1000000-0000-4000-8000-000000000004', 'a1000000-0000-4000-8000-000000000002', 'Local Rice (Ofada)', 'Ofada rice, short grain', (SELECT id FROM catalog.categories WHERE name = 'Grains & Cereals')),
+  ('f1000000-0000-4000-8000-000000000005', 'a1000000-0000-4000-8000-000000000002', 'Palm Oil', 'Borno State red palm oil', (SELECT id FROM catalog.categories WHERE name = 'Oils & Condiments')),
+  ('f1000000-0000-4000-8000-000000000006', 'a1000000-0000-4000-8000-000000000002', 'Fresh Peppers', 'Scotch bonnet & habanero mix', (SELECT id FROM catalog.categories WHERE name = 'Fresh Vegetables')),
   -- Green Valley Farms
-  ('f1000000-0000-4000-8000-000000000007', 'a1000000-0000-4000-8000-000000000003', 'Mixed Vegetables', 'Carrot, green bean, cabbage mix'),
-  ('f1000000-0000-4000-8000-000000000008', 'a1000000-0000-4000-8000-000000000003', 'Ofada Rice', 'Direct from Ogun farms')
+  ('f1000000-0000-4000-8000-000000000007', 'a1000000-0000-4000-8000-000000000003', 'Mixed Vegetables', 'Carrot, green bean, cabbage mix', (SELECT id FROM catalog.categories WHERE name = 'Fresh Vegetables')),
+  ('f1000000-0000-4000-8000-000000000008', 'a1000000-0000-4000-8000-000000000003', 'Ofada Rice', 'Direct from Ogun farms', (SELECT id FROM catalog.categories WHERE name = 'Grains & Cereals'))
 ON CONFLICT DO NOTHING;
 
 -- ================================================================

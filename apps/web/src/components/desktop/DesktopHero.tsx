@@ -8,6 +8,18 @@ export function DesktopHero() {
       <div className="grid gap-[17px]" style={{ gridTemplateColumns: 'minmax(0,1fr) 290px' }}>
         {/* Hero Banner */}
         <div className="h-[325px] rounded-[14px] overflow-hidden relative bg-gradient-to-br from-[#056e31] via-[#07883f] to-[#79aa76] text-white">
+          {/* Hero image — fades into the green gradient */}
+          <img
+            src="/images/hero-produce.jpg"
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover"
+            style={{
+              maskImage: 'linear-gradient(to right, transparent 0%, transparent 30%, black 55%, black 100%)',
+              WebkitMaskImage: 'linear-gradient(to right, transparent 0%, transparent 30%, black 55%, black 100%)',
+            }}
+          />
+
+          {/* Text content */}
           <div className="relative z-[3] w-[52%] p-[43px]">
             <div className="text-[11px] font-extrabold uppercase tracking-[1px]">Trusted local marketplace</div>
             <h1 className="text-[41px] leading-[1.03] mt-2 mb-3.5">Fresh from<br/>Farm to You</h1>
@@ -28,20 +40,11 @@ export function DesktopHero() {
               <button
                 type="button"
                 onClick={() => navigate('/offers?channel=WHOLESALE')}
-                className="border-0 rounded-[7px] px-[17px] py-[11px] text-[11px] font-extrabold bg-transparent text-white border border-white ml-[7px] cursor-pointer hover:bg-white/10 transition"
+                className="rounded-[7px] px-[17px] py-[11px] text-[11px] font-extrabold bg-transparent text-white border border-white ml-[7px] cursor-pointer hover:bg-white/10 transition"
               >
                 Explore Market Day
               </button>
             </div>
-          </div>
-
-          {/* Decorative produce visual */}
-          <div className="absolute right-[3%] bottom-[-15px] w-[44%] h-[85%]"
-            style={{
-              background: 'radial-gradient(circle at 30% 62%, #e65337 0 8%, transparent 8.5%), radial-gradient(circle at 48% 68%, #f1a722 0 10%, transparent 10.5%), radial-gradient(circle at 67% 55%, #8eb947 0 14%, transparent 14.5%), radial-gradient(circle at 78% 70%, #5f9d3d 0 13%, transparent 13.5%), radial-gradient(circle at 48% 35%, #4b9b3d 0 18%, transparent 18.5%)'
-            }}
-          >
-            <div className="absolute inset-[28%_18%_0] bg-[#b36d39]" style={{ clipPath: 'polygon(4% 15%, 96% 15%, 83% 100%, 17% 100%)' }} />
           </div>
 
           {/* Trust card overlay */}
@@ -79,11 +82,12 @@ export function DesktopHero() {
               Shop Market Day
             </button>
           </div>
-          {/* Market image placeholder */}
+          {/* Market image */}
           <div
-            className="h-[145px]"
+            className="h-[145px] bg-cover bg-center"
             style={{
-              background: 'radial-gradient(circle at 25% 58%, #e34d32 0 12%, transparent 12.5%), radial-gradient(circle at 45% 68%, #efa821 0 13%, transparent 13.5%), radial-gradient(circle at 63% 48%, #70a63e 0 17%, transparent 17.5%), linear-gradient(145deg, #eff6e5, #dce9c7)'
+              backgroundImage: 'url(/images/market-day.jpg)',
+              backgroundColor: '#dce9c7',
             }}
           />
           <div className="flex justify-between px-4 py-3 border-t border-border text-[10px]">

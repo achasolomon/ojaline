@@ -10,6 +10,10 @@ export class CatalogController {
     @Query('channel') channel?: string,
     @Query('cluster_id') clusterId?: string,
     @Query('perishability') perishability?: string,
+    @Query('category_id') categoryId?: string,
+    @Query('q') q?: string,
+    @Query('price_min') priceMin?: string,
+    @Query('price_max') priceMax?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ) {
@@ -17,10 +21,19 @@ export class CatalogController {
       channel: channel || undefined,
       cluster_id: clusterId || undefined,
       perishability: perishability || undefined,
+      category_id: categoryId || undefined,
+      q: q || undefined,
+      price_min: priceMin ? parseInt(priceMin, 10) : undefined,
+      price_max: priceMax ? parseInt(priceMax, 10) : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
       offset: offset ? parseInt(offset, 10) : undefined,
     };
     return this.catalog.discoverOffers(query);
+  }
+
+  @Get('categories')
+  async getCategories() {
+    return this.catalog.getCategories();
   }
 
   @Get('offers/:id')
@@ -41,6 +54,7 @@ export class CatalogController {
       fulfilment_modes: string[];
       cluster_id: string;
       price_cents: number;
+      category_id?: string;
     },
   ) {
     return this.catalog.createOffer(body);
