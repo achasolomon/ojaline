@@ -68,29 +68,28 @@ export function DesktopHero() {
 
         {/* Market Day Sidebar */}
         <aside className="bg-white border border-border rounded-[14px] overflow-hidden hidden xl:flex flex-col">
-          <div className="p-5">
+          <div className="p-4">
             <div className="text-[10px] text-text-secondary font-extrabold uppercase tracking-wide">MARKET DAY</div>
-            <h2 className="mt-1 mb-0 text-primary text-[24px] leading-tight">Wholesale<br/>Prices</h2>
-            <p className="text-[11px] text-text-secondary leading-[1.5] mt-1.5">
+            <h2 className="mt-1 mb-0 text-primary text-[20px] leading-tight">Wholesale Prices</h2>
+            <p className="text-[11px] text-text-secondary leading-[1.5] mt-1">
               Save more when you buy in bulk from trusted market sellers.
             </p>
             <button
               type="button"
               onClick={() => navigate('/offers?channel=WHOLESALE')}
-              className="mt-4 bg-primary text-white text-[11px] font-extrabold rounded-[7px] px-[17px] py-[11px] border-none cursor-pointer hover:bg-primary-dark transition"
+              className="mt-3 bg-primary text-white text-[11px] font-extrabold rounded-[7px] px-[17px] py-2 border-none cursor-pointer hover:bg-primary-dark transition"
             >
               Shop Market Day
             </button>
           </div>
-          {/* Market image */}
           <div
-            className="h-[145px] bg-cover bg-center"
+            className="h-[110px] bg-cover bg-center"
             style={{
               backgroundImage: 'url(/images/market-day.jpeg)',
               backgroundColor: '#dce9c7',
             }}
           />
-          <div className="flex justify-between px-4 py-3 border-t border-border text-[10px]">
+          <div className="flex justify-between px-4 py-2 border-t border-border text-[10px]">
             <span className="text-text-secondary">▣ Next Market Day</span>
             <b className="text-text">Sat, 24 May</b>
           </div>
