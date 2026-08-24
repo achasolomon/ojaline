@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { discoverOffers, type Offer, type Channel } from '../../lib/api';
 import { naira } from '@ojaline/design';
+import { DesktopHero } from './DesktopHero';
+import { ServiceBenefits } from './ServiceBenefits';
 
 const CATEGORY_CARDS = [
   { name: 'Vegetables', count: '1,200+', bg: 'radial-gradient(circle at 28% 55%,#e74f32 0 10%,transparent 10.5%),radial-gradient(circle at 54% 40%,#6ea33e 0 16%,transparent 16.5%),radial-gradient(circle at 73% 65%,#efa722 0 12%,transparent 12.5%),linear-gradient(145deg,#f1f6ea,#dcebd1)' },
@@ -65,8 +67,12 @@ export function DesktopHome() {
   };
 
   return (
-    <div className="max-w-[1480px] mx-auto px-6 pb-[45px]">
-      <div className="grid gap-[19px]" style={{ gridTemplateColumns: '210px 1fr' }}>
+    <div>
+      <DesktopHero />
+      <ServiceBenefits />
+
+      <div className="max-w-[1480px] mx-auto px-6 pb-[45px]">
+        <div className="grid gap-[19px]" style={{ gridTemplateColumns: '210px 1fr' }}>
         {/* ── LEFT SIDEBAR ── */}
         <aside id="filter" className="bg-white border border-border rounded-[10px] p-4 h-max sticky top-[135px]">
           <div className="flex justify-between text-[12px] font-black text-text">
@@ -243,6 +249,7 @@ export function DesktopHome() {
             ))}
           </div>
         </div>
+      </div>
       </div>
     </div>
   );
