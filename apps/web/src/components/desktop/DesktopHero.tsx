@@ -86,7 +86,7 @@ export function DesktopHero() {
           <div
             className="h-[145px] bg-cover bg-center"
             style={{
-              backgroundImage: 'url(/images/market-day.jpg)',
+              backgroundImage: 'url(/images/market-day.jpeg)',
               backgroundColor: '#dce9c7',
             }}
           />

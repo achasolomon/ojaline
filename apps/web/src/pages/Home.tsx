@@ -174,6 +174,31 @@ function MobileHome() {
           </div>
         </div>
 
+        {/* Market Day card — mobile */}
+        <div className="mx-4 mb-4 bg-white border border-border rounded-2xl overflow-hidden lg:hidden">
+          <div className="p-4">
+            <span className="text-[10px] text-textSecondary font-extrabold uppercase tracking-wide">MARKET DAY</span>
+            <h3 className="text-primary text-lg font-bold mt-1 mb-1">Wholesale Prices</h3>
+            <p className="text-xs text-textSecondary leading-relaxed mb-3">
+              Save more when you buy in bulk from trusted market sellers.
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate('/offers?channel=WHOLESALE')}
+              className="bg-primary text-white text-xs font-bold rounded-lg px-4 py-2 border-none cursor-pointer"
+            >
+              Shop Market Day
+            </button>
+          </div>
+          <div
+            className="h-32 bg-cover bg-center"
+            style={{
+              backgroundImage: 'url(/images/market-day.jpeg)',
+              backgroundColor: '#dce9c7',
+            }}
+          />
+        </div>
+
         {/* Feature Row */}
         <div className="flex gap-2 px-4 pb-5">
           {FEATURES.map((f) => (
