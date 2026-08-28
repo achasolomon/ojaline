@@ -33,7 +33,7 @@ export function DesktopHeader() {
           <div className="text-[11px] text-text-secondary">
             <span className="text-primary text-[20px] float-left mr-2 leading-none">⌖</span>
             Deliver to
-            <b className="block text-[13px] text-text mt-0.5 font-semibold cursor-pointer hover:text-primary">Sabo, Yaba, Lagos▾</b>
+            <b className="block text-[13px] text-text mt-0.5 font-semibold">Sabo, Yaba, Lagos</b>
           </div>
 
           {/* Search */}

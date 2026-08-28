@@ -9,11 +9,11 @@ BEGIN;
 -- ================================================================
 
 -- Sellers
-INSERT INTO pii.users (id, phone, full_name) VALUES
-  ('a1000000-0000-4000-8000-000000000001', '+2348031234567', 'Adebola Akinwale'),
-  ('a1000000-0000-4000-8000-000000000002', '+2348057654321', 'Bisi Olatunji'),
-  ('a1000000-0000-4000-8000-000000000003', '+2348091112233', 'Chidi Eze')
-ON CONFLICT (phone) DO NOTHING;
+INSERT INTO pii.users (id, phone, full_name, seller_type) VALUES
+  ('a1000000-0000-4000-8000-000000000001', '+2348031234567', 'Adebola Akinwale', 'FARMER'),
+  ('a1000000-0000-4000-8000-000000000002', '+2348057654321', 'Bisi Olatunji', 'MARKET_WOMAN'),
+  ('a1000000-0000-4000-8000-000000000003', '+2348091112233', 'Chidi Eze', 'STORE')
+ON CONFLICT (phone) DO UPDATE SET seller_type = EXCLUDED.seller_type;
 
 -- Buyer
 INSERT INTO pii.users (id, phone, full_name) VALUES
@@ -39,12 +39,12 @@ ON CONFLICT DO NOTHING;
 -- 2. CATEGORIES
 -- ================================================================
 
-INSERT INTO catalog.categories (id, name, perishability_default) VALUES
-  ('c1000000-0000-4000-8000-000000000001', 'Fresh Vegetables', 'SHELF_LT_7D'),
-  ('c1000000-0000-4000-8000-000000000002', 'Fresh Fruits', 'SHELF_LT_7D'),
-  ('c1000000-0000-4000-8000-000000000003', 'Grains & Cereals', 'SHELF_GT_7D'),
-  ('c1000000-0000-4000-8000-000000000004', 'Tubers & Roots', 'SHELF_GT_7D'),
-  ('c1000000-0000-4000-8000-000000000005', 'Oils & Condiments', 'SHELF_GT_7D')
+INSERT INTO catalog.categories (id, name, perishability_default, image_url) VALUES
+  ('c1000000-0000-4000-8000-000000000001', 'Fresh Vegetables', 'SHELF_LT_7D', 'fresh-vegetables.jpg'),
+  ('c1000000-0000-4000-8000-000000000002', 'Fresh Fruits', 'SHELF_LT_7D', 'fruits.jpg'),
+  ('c1000000-0000-4000-8000-000000000003', 'Grains & Cereals', 'SHELF_GT_7D', 'grains-cerals.jpg'),
+  ('c1000000-0000-4000-8000-000000000004', 'Tubers & Roots', 'SHELF_GT_7D', 'tubers.jpg'),
+  ('c1000000-0000-4000-8000-000000000005', 'Oils & Condiments', 'SHELF_GT_7D', 'oil-condiments.jpg')
 ON CONFLICT (name) DO NOTHING;
 
 -- Grade standards (minimal)
@@ -57,10 +57,10 @@ ON CONFLICT (category_id, version) DO NOTHING;
 -- 3. CLUSTERS (Lagos neighborhoods)
 -- ================================================================
 
-INSERT INTO catalog.clusters (id, name, lga, centroid) VALUES
-  ('d1000000-0000-4000-8000-000000000001', 'Yaba', 'Lagos Mainland', ST_SetSRID(ST_MakePoint(3.3896, 6.5158), 4326)::geography),
-  ('d1000000-0000-4000-8000-000000000002', 'Surulere', 'Surulere', ST_SetSRID(ST_MakePoint(3.3574, 6.5269), 4326)::geography),
-  ('d1000000-0000-4000-8000-000000000003', 'Ikeja', 'Ikeja', ST_SetSRID(ST_MakePoint(3.3515, 6.6018), 4326)::geography)
+INSERT INTO catalog.clusters (id, name, lga, state, centroid) VALUES
+  ('d1000000-0000-4000-8000-000000000001', 'Yaba', 'Lagos Mainland', 'Lagos', ST_SetSRID(ST_MakePoint(3.3896, 6.5158), 4326)::geography),
+  ('d1000000-0000-4000-8000-000000000002', 'Surulere', 'Surulere', 'Lagos', ST_SetSRID(ST_MakePoint(3.3574, 6.5269), 4326)::geography),
+  ('d1000000-0000-4000-8000-000000000003', 'Ikeja', 'Ikeja', 'Lagos', ST_SetSRID(ST_MakePoint(3.3515, 6.6018), 4326)::geography)
 ON CONFLICT DO NOTHING;
 
 -- ================================================================
@@ -95,30 +95,30 @@ ON CONFLICT DO NOTHING;
 -- 6. OFFERS (varied channels, perishability, fulfilment)
 -- ================================================================
 
-INSERT INTO catalog.offers (id, seller_id, channel, lot_id, available_qty, min_order_qty, perishability, fulfilment_modes, geo, cluster_id) VALUES
+INSERT INTO catalog.offers (id, seller_id, channel, lot_id, available_qty, min_order_qty, perishability, fulfilment_modes, geo, cluster_id, market_id) VALUES
   -- Fresh Tomatoes — RETAILER, perishable, instant+scheduled
-  ('11000000-0000-4000-8000-000000000001', 'a1000000-0000-4000-8000-000000000001', 'RETAILER', 'f1000000-0000-4000-8000-000000000001', 500, 5, 'SHELF_LT_7D', ARRAY['INSTANT','SCHEDULED'], ST_SetSRID(ST_MakePoint(3.3896, 6.5158), 4326)::geography, 'd1000000-0000-4000-8000-000000000001'),
+  ('11000000-0000-4000-8000-000000000001', 'a1000000-0000-4000-8000-000000000001', 'RETAILER', 'f1000000-0000-4000-8000-000000000001', 500, 5, 'SHELF_LT_7D', ARRAY['INSTANT','SCHEDULED'], ST_SetSRID(ST_MakePoint(3.3896, 6.5158), 4326)::geography, 'd1000000-0000-4000-8000-000000000001', 'e1000000-0000-4000-8000-000000000001'),
 
   -- Ripe Plantain — DIRECT, perishable, instant
-  ('11000000-0000-4000-8000-000000000002', 'a1000000-0000-4000-8000-000000000001', 'DIRECT', 'f1000000-0000-4000-8000-000000000002', 200, 10, 'SHELF_LT_7D', ARRAY['INSTANT'], ST_SetSRID(ST_MakePoint(3.3896, 6.5158), 4326)::geography, 'd1000000-0000-4000-8000-000000000001'),
+  ('11000000-0000-4000-8000-000000000002', 'a1000000-0000-4000-8000-000000000001', 'DIRECT', 'f1000000-0000-4000-8000-000000000002', 200, 10, 'SHELF_LT_7D', ARRAY['INSTANT'], ST_SetSRID(ST_MakePoint(3.3896, 6.5158), 4326)::geography, 'd1000000-0000-4000-8000-000000000001', 'e1000000-0000-4000-8000-000000000001'),
 
   -- White Yam — RETAILER, shelf-stable, market day
-  ('11000000-0000-4000-8000-000000000003', 'a1000000-0000-4000-8000-000000000001', 'RETAILER', 'f1000000-0000-4000-8000-000000000003', 300, 10, 'SHELF_GT_7D', ARRAY['MARKET_DAY','SCHEDULED'], ST_SetSRID(ST_MakePoint(3.3896, 6.5158), 4326)::geography, 'd1000000-0000-4000-8000-000000000001'),
+  ('11000000-0000-4000-8000-000000000003', 'a1000000-0000-4000-8000-000000000001', 'RETAILER', 'f1000000-0000-4000-8000-000000000003', 300, 10, 'SHELF_GT_7D', ARRAY['MARKET_DAY','SCHEDULED'], ST_SetSRID(ST_MakePoint(3.3896, 6.5158), 4326)::geography, 'd1000000-0000-4000-8000-000000000001', 'e1000000-0000-4000-8000-000000000001'),
 
   -- Local Rice — WHOLESALE, shelf-stable, all modes
-  ('11000000-0000-4000-8000-000000000004', 'a1000000-0000-4000-8000-000000000002', 'WHOLESALE', 'f1000000-0000-4000-8000-000000000004', 1000, 50, 'SHELF_GT_7D', ARRAY['INSTANT','SCHEDULED','MARKET_DAY'], ST_SetSRID(ST_MakePoint(3.3574, 6.5269), 4326)::geography, 'd1000000-0000-4000-8000-000000000002'),
+  ('11000000-0000-4000-8000-000000000004', 'a1000000-0000-4000-8000-000000000002', 'WHOLESALE', 'f1000000-0000-4000-8000-000000000004', 1000, 50, 'SHELF_GT_7D', ARRAY['INSTANT','SCHEDULED','MARKET_DAY'], ST_SetSRID(ST_MakePoint(3.3574, 6.5269), 4326)::geography, 'd1000000-0000-4000-8000-000000000002', 'e1000000-0000-4000-8000-000000000002'),
 
   -- Palm Oil — WHOLESALE, shelf-stable, market day+scheduled
-  ('11000000-0000-4000-8000-000000000005', 'a1000000-0000-4000-8000-000000000002', 'WHOLESALE', 'f1000000-0000-4000-8000-000000000005', 800, 20, 'SHELF_GT_7D', ARRAY['MARKET_DAY','SCHEDULED'], ST_SetSRID(ST_MakePoint(3.3574, 6.5269), 4326)::geography, 'd1000000-0000-4000-8000-000000000002'),
+  ('11000000-0000-4000-8000-000000000005', 'a1000000-0000-4000-8000-000000000002', 'WHOLESALE', 'f1000000-0000-4000-8000-000000000005', 800, 20, 'SHELF_GT_7D', ARRAY['MARKET_DAY','SCHEDULED'], ST_SetSRID(ST_MakePoint(3.3574, 6.5269), 4326)::geography, 'd1000000-0000-4000-8000-000000000002', 'e1000000-0000-4000-8000-000000000002'),
 
   -- Fresh Peppers — RETAILER, perishable, instant
-  ('11000000-0000-4000-8000-000000000006', 'a1000000-0000-4000-8000-000000000002', 'RETAILER', 'f1000000-0000-4000-8000-000000000006', 150, 2, 'SHELF_LT_7D', ARRAY['INSTANT'], ST_SetSRID(ST_MakePoint(3.3574, 6.5269), 4326)::geography, 'd1000000-0000-4000-8000-000000000002'),
+  ('11000000-0000-4000-8000-000000000006', 'a1000000-0000-4000-8000-000000000002', 'RETAILER', 'f1000000-0000-4000-8000-000000000006', 150, 2, 'SHELF_LT_7D', ARRAY['INSTANT'], ST_SetSRID(ST_MakePoint(3.3574, 6.5269), 4326)::geography, 'd1000000-0000-4000-8000-000000000002', 'e1000000-0000-4000-8000-000000000002'),
 
   -- Mixed Vegetables — OPEN, perishable, instant+scheduled
-  ('11000000-0000-4000-8000-000000000007', 'a1000000-0000-4000-8000-000000000003', 'OPEN', 'f1000000-0000-4000-8000-000000000007', 400, 3, 'SHELF_LT_7D', ARRAY['INSTANT','SCHEDULED'], ST_SetSRID(ST_MakePoint(3.3515, 6.6018), 4326)::geography, 'd1000000-0000-4000-8000-000000000003'),
+  ('11000000-0000-4000-8000-000000000007', 'a1000000-0000-4000-8000-000000000003', 'OPEN', 'f1000000-0000-4000-8000-000000000007', 400, 3, 'SHELF_LT_7D', ARRAY['INSTANT','SCHEDULED'], ST_SetSRID(ST_MakePoint(3.3515, 6.6018), 4326)::geography, 'd1000000-0000-4000-8000-000000000003', 'e1000000-0000-4000-8000-000000000003'),
 
   -- Ofada Rice — DIRECT, shelf-stable, market day
-  ('11000000-0000-4000-8000-000000000008', 'a1000000-0000-4000-8000-000000000003', 'DIRECT', 'f1000000-0000-4000-8000-000000000008', 600, 25, 'SHELF_GT_7D', ARRAY['MARKET_DAY'], ST_SetSRID(ST_MakePoint(3.3515, 6.6018), 4326)::geography, 'd1000000-0000-4000-8000-000000000003')
+  ('11000000-0000-4000-8000-000000000008', 'a1000000-0000-4000-8000-000000000003', 'DIRECT', 'f1000000-0000-4000-8000-000000000008', 600, 25, 'SHELF_GT_7D', ARRAY['MARKET_DAY'], ST_SetSRID(ST_MakePoint(3.3515, 6.6018), 4326)::geography, 'd1000000-0000-4000-8000-000000000003', 'e1000000-0000-4000-8000-000000000003')
 ON CONFLICT DO NOTHING;
 
 -- ================================================================
@@ -134,5 +134,41 @@ INSERT INTO catalog.offer_price_history (offer_id, new_price_cents) VALUES
   ('11000000-0000-4000-8000-000000000006', 150000),   -- Fresh Peppers: ₦1,500/kg
   ('11000000-0000-4000-8000-000000000007', 180000),   -- Mixed Vegetables: ₦1,800/kg
   ('11000000-0000-4000-8000-000000000008', 350000);   -- Ofada Rice: ₦3,500/10kg
+
+-- ================================================================
+-- 8. MARKET-SELLERS (which sellers sell at which markets)
+-- ================================================================
+
+INSERT INTO catalog.market_sellers (market_id, seller_id) VALUES
+  ('e1000000-0000-4000-8000-000000000001', 'a1000000-0000-4000-8000-000000000001'),  -- Adebola → Yaba Monday Market
+  ('e1000000-0000-4000-8000-000000000002', 'a1000000-0000-4000-8000-000000000002'),  -- Bisi → Surulere Wednesday Market
+  ('e1000000-0000-4000-8000-000000000003', 'a1000000-0000-4000-8000-000000000003')   -- Chidi → Ikeja Friday Market
+ON CONFLICT DO NOTHING;
+
+-- ================================================================
+-- 9. SELLER PROFILES
+-- ================================================================
+
+INSERT INTO catalog.seller_profiles (user_id, seller_type, bio) VALUES
+  ('a1000000-0000-4000-8000-000000000001', 'FARMER', 'Fresh produce directly from my farm in Oyo State'),
+  ('a1000000-0000-4000-8000-000000000002', 'MARKET_WOMAN', 'Trusted supplier of grains, oils and peppers'),
+  ('a1000000-0000-4000-8000-000000000003', 'STORE', 'Quality vegetables and rice from local farms')
+ON CONFLICT (user_id) DO NOTHING;
+
+-- ================================================================
+-- 10. OFFER MEDIA (product images)
+-- ================================================================
+-- Place images in apps/web/public/images/products/
+
+INSERT INTO catalog.offer_media (offer_id, kind, storage_key, is_primary) VALUES
+  ('11000000-0000-4000-8000-000000000001', 'REFERENCE_PHOTO', 'tomatooo.jpg', TRUE),
+  ('11000000-0000-4000-8000-000000000002', 'REFERENCE_PHOTO', 'platain.jpg', TRUE),
+  ('11000000-0000-4000-8000-000000000003', 'REFERENCE_PHOTO', 'yam.jpg', TRUE),
+  ('11000000-0000-4000-8000-000000000004', 'REFERENCE_PHOTO', 'local-rice.jpg', TRUE),
+  ('11000000-0000-4000-8000-000000000005', 'REFERENCE_PHOTO', 'palm-oil.jpg', TRUE),
+  ('11000000-0000-4000-8000-000000000006', 'REFERENCE_PHOTO', 'pepper.jpg', TRUE),
+  ('11000000-0000-4000-8000-000000000007', 'REFERENCE_PHOTO', 'mix-vegetables.jpg', TRUE),
+  ('11000000-0000-4000-8000-000000000008', 'REFERENCE_PHOTO', 'ofada-rice.jpg', TRUE)
+ON CONFLICT DO NOTHING;
 
 COMMIT;

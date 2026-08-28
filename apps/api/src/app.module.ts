@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
 import { LoggerModule } from 'nestjs-pino';
-import { Pool } from 'pg';
 import Redis from 'ioredis';
 import { loadConfig } from '@ojaline/config';
+import { DatabaseModule } from './modules/database/database.module.js';
 import { HealthController } from './modules/health/health.controller.js';
 import { ReservationGate } from './modules/reservation/reservation.gate.js';
 import { MetricsController } from './modules/metrics/metrics.controller.js';
@@ -18,28 +18,27 @@ import { CatalogService } from './modules/catalog/catalog.service.js';
 import { MultiSellerGate } from './modules/fulfilment/multi-seller-gate.js';
 import { FulfilmentStateMachine } from './modules/fulfilment/fulfilment-state-machine.js';
 import { FulfilmentController } from './modules/fulfilment/fulfilment.controller.js';
+import { MediaController } from './modules/media/media.controller.js';
+import { ChatModule } from './modules/chat/chat.module.js';
+import { EscrowReleaseService } from './modules/escrow/escrow-release.service.js';
+import { EscrowController } from './modules/escrow/escrow.controller.js';
+import { AddressesModule } from './modules/addresses/addresses.module.js';
+import { PushService } from './modules/push/push.service.js';
+import { PushController } from './modules/push/push.controller.js';
+import { ToSEnforcementService } from './modules/tos/tos.service.js';
+import { ToSController } from './modules/tos/tos.controller.js';
 
 @Module({
   imports: [
     LoggerModule.forRoot({
       pinoHttp: { level: process.env.LOG_LEVEL ?? 'info' },
     }),
+    DatabaseModule,
+    ChatModule,
+    AddressesModule,
   ],
-  controllers: [HealthController, MetricsController, ReservationsController, OrdersController, WebhookController, CatalogController, FulfilmentController],
+  controllers: [HealthController, MetricsController, ReservationsController, OrdersController, WebhookController, CatalogController, FulfilmentController, MediaController, EscrowController, PushController, ToSController],
   providers: [
-    {
-      provide: Pool,
-      useFactory: () => {
-        const c = loadConfig();
-        return new Pool({
-          host: c.DB_HOST,
-          port: c.DB_PORT,
-          database: c.DB_NAME,
-          user: c.DB_USER,
-          password: c.DB_PASSWORD,
-        });
-      },
-    },
     {
       provide: Redis,
       useFactory: () => {
@@ -55,6 +54,9 @@ import { FulfilmentController } from './modules/fulfilment/fulfilment.controller
     CatalogService,
     MultiSellerGate,
     FulfilmentStateMachine,
+    EscrowReleaseService,
+    PushService,
+    ToSEnforcementService,
   ],
 })
 export class AppModule {}

@@ -4,7 +4,7 @@ const NAV_ITEMS = [
   { path: '/', label: 'Home', icon: 'home' },
   { path: '/categories', label: 'Categories', icon: 'categories' },
   { path: '/orders', label: 'Orders', icon: 'orders' },
-  { path: '/messages', label: 'Messages', icon: 'messages' },
+  { path: '/chat', label: 'Messages', icon: 'messages' },
   { path: '/account', label: 'Account', icon: 'account' },
 ] as const;
 

@@ -37,6 +37,11 @@ export function LandedCost({ unitPriceKobo, qty, deliveryFeeKobo, className = ''
           </div>
         </div>
       </div>
+      <div className="mt-3 rounded-lg bg-primaryLight p-2.5">
+        <p className="text-[11px] text-primary font-medium">
+          🔒 Buyer Protection applies when you pay through Ojaline. Orders paid outside the platform forfeit refunds, dispute resolution, and delivery tracking.
+        </p>
+      </div>
     </div>
   );
 }

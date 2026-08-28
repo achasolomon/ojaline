@@ -39,7 +39,7 @@ export function DesktopHero() {
               </button>
               <button
                 type="button"
-                onClick={() => navigate('/offers?channel=WHOLESALE')}
+                onClick={() => navigate('/market-days')}
                 className="rounded-[7px] px-[17px] py-[11px] text-[11px] font-extrabold bg-transparent text-white border border-white ml-[7px] cursor-pointer hover:bg-white/10 transition"
               >
                 Explore Market Day
@@ -76,7 +76,7 @@ export function DesktopHero() {
             </p>
             <button
               type="button"
-              onClick={() => navigate('/offers?channel=WHOLESALE')}
+              onClick={() => navigate('/market-days')}
               className="mt-3 bg-primary text-white text-[11px] font-extrabold rounded-[7px] px-[17px] py-2 border-none cursor-pointer hover:bg-primary-dark transition"
             >
               Shop Market Day
