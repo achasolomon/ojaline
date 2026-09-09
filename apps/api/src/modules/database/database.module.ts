@@ -1,5 +1,6 @@
 import { Module, Global } from '@nestjs/common';
 import { Pool } from 'pg';
+import Redis from 'ioredis';
 import { loadConfig } from '@ojaline/config';
 
 @Global()
@@ -18,7 +19,14 @@ import { loadConfig } from '@ojaline/config';
         });
       },
     },
+    {
+      provide: Redis,
+      useFactory: () => {
+        const c = loadConfig();
+        return new Redis(c.REDIS_URL);
+      },
+    },
   ],
-  exports: [Pool],
+  exports: [Pool, Redis],
 })
 export class DatabaseModule {}

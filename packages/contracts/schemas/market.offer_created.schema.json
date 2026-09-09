@@ -1,0 +1,48 @@
+{
+  "event_type": "market.offer_created",
+  "schema_version": 1,
+  "type": "object",
+  "properties": {
+    "offer_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "seller_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "seller_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "product_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "price_cents": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "unit": {
+      "type": "string"
+    },
+    "channel": {
+      "type": "string"
+    },
+    "market_name": {
+      "type": "string"
+    },
+    "image_key": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "offer_id",
+    "seller_id",
+    "seller_name",
+    "product_name",
+    "price_cents"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

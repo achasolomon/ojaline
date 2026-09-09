@@ -1,0 +1,27 @@
+{
+  "event_type": "market.seller_online",
+  "schema_version": 1,
+  "type": "object",
+  "properties": {
+    "seller_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "seller_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "seller_type": {
+      "type": "string"
+    },
+    "market_name": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "seller_id",
+    "seller_name"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

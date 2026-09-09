@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getMarketById, type MarketDetail } from '../lib/api';
+import { Icon, type IconName } from '../components/icons';
 
 const SELLER_TYPE_LABELS: Record<string, string> = {
   FARMER: 'Farmers',
@@ -9,11 +10,11 @@ const SELLER_TYPE_LABELS: Record<string, string> = {
   PROCESSOR: 'Processors',
 };
 
-const SELLER_TYPE_ICONS: Record<string, string> = {
-  FARMER: '🌾',
-  MARKET_WOMAN: '🧺',
-  STORE: '🏪',
-  PROCESSOR: '⚙️',
+const SELLER_TYPE_ICONS: Record<string, IconName> = {
+  FARMER: 'leaf',
+  MARKET_WOMAN: 'basket',
+  STORE: 'store',
+  PROCESSOR: 'settings',
 };
 
 export default function MarketDetail() {
@@ -34,7 +35,7 @@ export default function MarketDetail() {
 
   if (loading) {
     return (
-      <div className="max-w-[1480px] mx-auto px-6 py-6">
+      <div className="max-w-[1200px] mx-auto px-6 py-6">
         <div className="animate-pulse space-y-4">
           <div className="h-5 bg-surface rounded w-48" />
           <div className="h-8 bg-surface rounded w-64" />
@@ -46,7 +47,7 @@ export default function MarketDetail() {
 
   if (!market) {
     return (
-      <div className="max-w-[1480px] mx-auto px-6 py-6">
+      <div className="max-w-[1200px] mx-auto px-6 py-6">
         <p className="text-sm text-text-secondary">Market not found.</p>
       </div>
     );
@@ -58,7 +59,7 @@ export default function MarketDetail() {
     : market.seller_groups?.[activeTab] || [];
 
   return (
-    <div className="max-w-[1480px] mx-auto px-6 py-6">
+    <div className="max-w-[1200px] mx-auto px-6 py-6">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-xs text-text-secondary mb-4">
         <span className="cursor-pointer hover:text-primary" onClick={() => navigate('/')}>Home</span>
@@ -103,13 +104,13 @@ export default function MarketDetail() {
               key={type}
               type="button"
               onClick={() => setActiveTab(type)}
-              className={`shrink-0 px-4 py-2 rounded-lg border text-xs font-bold transition cursor-pointer ${
+              className={`shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-lg border text-xs font-bold transition cursor-pointer ${
                 activeTab === type
                   ? 'border-primary bg-primary text-white'
                   : 'border-border bg-white text-text hover:bg-surface'
               }`}
             >
-              {SELLER_TYPE_ICONS[type]} {SELLER_TYPE_LABELS[type] || type} ({market.seller_groups[type].length})
+              <Icon name={SELLER_TYPE_ICONS[type] || 'user'} size={13} /> {SELLER_TYPE_LABELS[type] || type} ({market.seller_groups[type].length})
             </button>
           ))}
         </div>
@@ -124,8 +125,8 @@ export default function MarketDetail() {
             onClick={() => navigate(`/sellers/${seller.id}`)}
           >
             <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-full bg-primary-light flex items-center justify-center text-sm font-bold text-primary shrink-0">
-                {SELLER_TYPE_ICONS[seller.seller_type || ''] || '👤'}
+              <div className="w-10 h-10 rounded-full bg-primary-light text-primary flex items-center justify-center shrink-0">
+                <Icon name={SELLER_TYPE_ICONS[seller.seller_type || ''] || 'user'} size={18} />
               </div>
               <div>
                 <h3 className="text-sm font-bold text-text">{seller.full_name}</h3>
@@ -138,7 +139,7 @@ export default function MarketDetail() {
               <span className="text-[10px] text-text-secondary">
                 {market.product_count} products at this market
               </span>
-              <span className="text-[10px] font-bold text-primary">View Products →</span>
+              <span className="flex items-center gap-0.5 text-[10px] font-bold text-primary">View Products <Icon name="arrowRight" size={12} /></span>
             </div>
           </article>
         ))}

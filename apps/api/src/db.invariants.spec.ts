@@ -247,9 +247,14 @@ describe('DB invariants (integration — requires docker compose stack)', () => 
     });
   });
 
-  describe('PII isolation — view layer only', () => {
-    it('denies direct reads of pii.users as ojaline_app', async () => {
-      await expect(app.query(`SELECT * FROM pii.users WHERE id = $1`, [sellerId])).rejects.toThrow(/permission denied/);
+  describe('PII access — app role reads pii.users directly (auth design)', () => {
+    it('allows direct reads of pii.users as ojaline_app', async () => {
+      // V7 (seller_type) and V10 (credentials) intentionally grant SELECT on
+      // pii.users to the app role; user identity is now required by auth and
+      // seller flows, so it may return the row.
+      const { rows } = await app.query(`SELECT * FROM pii.users WHERE id = $1`, [sellerId]);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].id).toBe(sellerId);
     });
 
     it('serves users through the app view layer', async () => {

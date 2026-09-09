@@ -1,9 +1,32 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Icon } from '../icons';
+import { getCartCount, subscribeCart } from '../../lib/cart';
+import { getUnreadCount, subscribeNotifications } from '../../lib/notifications';
+import { isLoggedIn, AUTH_EVENT, getUser } from '../../lib/session';
 
 export function DesktopHeader() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
+  const [cartCount, setCartCount] = useState(() => getCartCount());
+  const [unreadCount, setUnreadCount] = useState(() => getUnreadCount());
+  const [authed, setAuthed] = useState(() => isLoggedIn());
+  const [userName, setUserName] = useState(() => getUser()?.full_name?.split(' ')[0] ?? '');
+
+  useEffect(() => {
+    const unsubCart = subscribeCart((items) => setCartCount(items.reduce((s, i) => s + i.qty, 0)));
+    const unsubNotif = subscribeNotifications((list) => setUnreadCount(list.filter((n) => !n.read).length));
+    const onAuth = () => {
+      setAuthed(isLoggedIn());
+      setUserName(getUser()?.full_name?.split(' ')[0] ?? '');
+    };
+    window.addEventListener(AUTH_EVENT, onAuth);
+    return () => {
+      unsubCart();
+      unsubNotif();
+      window.removeEventListener(AUTH_EVENT, onAuth);
+    };
+  }, []);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -14,26 +37,19 @@ export function DesktopHeader() {
     <header>
       <div className="h-1 bg-primary" />
       <div className="bg-white border-b border-border">
-        <div className="max-w-[1480px] mx-auto h-[74px] grid items-center px-[30px]" style={{ gridTemplateColumns: '205px 190px minmax(300px,1fr) auto', gap: '18px' }}>
+        <div className="max-w-[1200px] mx-auto h-[74px] grid items-center px-[30px]" style={{ gridTemplateColumns: '205px 190px minmax(300px,1fr) auto', gap: '18px' }}>
           {/* Logo */}
-          <a href="/" className="flex items-center gap-2.5 no-underline">
-            <div className="w-[38px] h-[38px] rounded-full bg-primary text-white grid place-items-center font-black text-lg shrink-0">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <circle cx="12" cy="12" r="4"/>
-                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
-              </svg>
-            </div>
-            <div>
-              <span className="text-[22px] font-black text-primary tracking-tight leading-none">OJALINE</span>
-              <span className="block text-[8px] font-semibold text-text-secondary tracking-wide">From Farm to You</span>
-            </div>
+          <a href="/" className="flex items-center no-underline">
+            <img src="/images/logo_green.png" alt="Kika" className="h-[38px] w-auto object-contain" />
           </a>
 
           {/* Location */}
-          <div className="text-[11px] text-text-secondary">
-            <span className="text-primary text-[20px] float-left mr-2 leading-none">⌖</span>
-            Deliver to
-            <b className="block text-[13px] text-text mt-0.5 font-semibold">Sabo, Yaba, Lagos</b>
+          <div className="text-[11px] text-text-secondary flex items-center gap-1.5">
+            <Icon name="pin" size={17} className="text-primary shrink-0" />
+            <div>
+              Deliver to
+              <b className="block text-[13px] text-text mt-0.5 font-semibold">Sabo, Yaba, Lagos</b>
+            </div>
           </div>
 
           {/* Search */}
@@ -52,23 +68,33 @@ export function DesktopHeader() {
 
           {/* Actions */}
           <div className="flex gap-4 items-center">
-            <button type="button" onClick={() => navigate('/offers/new')} className="text-[11px] whitespace-nowrap bg-transparent border-none cursor-pointer text-text hover:text-primary transition">
-              <span className="text-[19px] mr-1">♧</span>Sell
+            <button type="button" onClick={() => navigate('/offers/new')} className="text-[11px] whitespace-nowrap bg-transparent border-none cursor-pointer text-text hover:text-primary transition flex items-center">
+              <Icon name="store" size={16} className="mr-1" />Sell
             </button>
-            <button type="button" className="text-[11px] whitespace-nowrap bg-transparent border-none cursor-pointer text-text hover:text-primary transition">
-              <span className="text-[19px] mr-1">?</span>Help
+            <button type="button" onClick={() => navigate('/help')} className="text-[11px] whitespace-nowrap bg-transparent border-none cursor-pointer text-text hover:text-primary transition flex items-center">
+              <Icon name="help" size={16} className="mr-1" />Help
             </button>
-            <button type="button" className="relative text-[11px] whitespace-nowrap bg-transparent border-none cursor-pointer text-text hover:text-primary transition">
-              <span className="text-[19px] mr-1">♧</span>Notifications<sup className="absolute -top-1 -right-1 bg-[#df3535] text-white rounded-full px-1 py-px text-[8px] leading-none not-italic">3</sup>
+            {authed && (
+              <button type="button" onClick={() => navigate('/notifications')} className="relative px-4 py-1.5 text-[11px] whitespace-nowrap bg-transparent border-none cursor-pointer text-text hover:text-primary transition flex items-center">
+                <Icon name="bell" size={16} className="mr-1" />Notifications
+                {unreadCount > 0 && <sup className="absolute top-0 -right-0.5 bg-[#df3535] text-white rounded-full px-1.5 py-px text-[8px] leading-none not-italic">{unreadCount}</sup>}
+              </button>
+            )}
+            {authed && (
+              <button type="button" onClick={() => navigate('/chat')} className="text-[11px] whitespace-nowrap bg-transparent border-none cursor-pointer text-text hover:text-primary transition flex items-center">
+                <Icon name="message" size={16} className="mr-1" />Messages
+              </button>
+            )}
+            <button type="button" onClick={() => navigate('/cart')} className="relative px-4 py-1.5 text-[11px] whitespace-nowrap bg-transparent border-none cursor-pointer text-text hover:text-primary transition flex items-center">
+              <Icon name="cart" size={16} className="mr-1" />Cart
+              {cartCount > 0 && <sup className="absolute top-0 -right-0.5 bg-[#df3535] text-white rounded-full px-1.5 py-px text-[8px] leading-none not-italic">{cartCount}</sup>}
             </button>
-            <button type="button" className="text-[11px] whitespace-nowrap bg-transparent border-none cursor-pointer text-text hover:text-primary transition">
-              <span className="text-[19px] mr-1">▢</span>Messages
-            </button>
-            <button type="button" className="relative text-[11px] whitespace-nowrap bg-transparent border-none cursor-pointer text-text hover:text-primary transition">
-              <span className="text-[19px] mr-1">🛒</span>Cart<sup className="absolute -top-1 -right-1 bg-[#df3535] text-white rounded-full px-1 py-px text-[8px] leading-none not-italic">2</sup>
-            </button>
-            <button type="button" className="text-[11px] whitespace-nowrap bg-transparent border-none cursor-pointer text-text hover:text-primary transition">
-              <span className="text-[19px] mr-1">♙</span>Account▾
+            <button
+              type="button"
+              onClick={() => navigate(authed ? '/account' : '/login')}
+              className="text-[11px] whitespace-nowrap bg-transparent border-none cursor-pointer text-text hover:text-primary transition flex items-center"
+            >
+              <Icon name="user" size={16} className="mr-1" />{authed && userName ? userName : 'Sign in'}
             </button>
           </div>
         </div>

@@ -32,6 +32,18 @@ const envSchema = z.object({
   PAYSTACK_SECRET_KEY: z.string().default('sk_test_ojaline_mock'),
   PAYSTACK_BASE_URL: z.string().default('http://localhost:9202'),
   PAYSTACK_WEBHOOK_SECRET: z.string().default('whsec_ojaline_dev'),
+  AUTH_JWT_SECRET: z.string().default('ojaline_dev_jwt_secret_change_me'),
+  AUTH_JWT_TTL: z.string().default('7d'),
+  SMTP_HOST: z.string().default('localhost'),
+  SMTP_PORT: z.coerce.number().default(1025),
+  SMTP_USER: z.string().default(''),
+  SMTP_PASS: z.string().default(''),
+  AUTH_APP_URL: z.string().default('http://localhost:5173'),
+  API_PUBLIC_URL: z.string().default('http://localhost:3000'),
+  GOOGLE_OAUTH_CLIENT_ID: z.string().default(''),
+  GOOGLE_OAUTH_CLIENT_SECRET: z.string().default(''),
+  FACEBOOK_APP_ID: z.string().default(''),
+  FACEBOOK_APP_SECRET: z.string().default(''),
 });
 
 export type OjalineConfig = z.infer<typeof envSchema>;

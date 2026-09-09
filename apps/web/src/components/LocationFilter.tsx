@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getStates, getLgas, getClusters, type StateLocation, type LgaLocation, type Cluster } from '../lib/api';
+import { Icon } from './icons';
 
 interface LocationFilterProps {
   selectedState: string | null;
@@ -100,9 +101,9 @@ export function LocationFilter({ selectedState, selectedLga, selectedClusterId, 
         <button
           type="button"
           onClick={() => onSelect({ state: null, lga: null, cluster_id: null })}
-          className="w-full text-[10px] text-primary font-semibold bg-primary-light rounded-lg px-3 py-2 border-none cursor-pointer hover:bg-primary/10 transition"
+          className="flex items-center justify-center gap-1.5 w-full text-[10px] text-primary font-semibold bg-primary-light rounded-lg px-3 py-2 border-none cursor-pointer hover:bg-primary/10 transition"
         >
-          ✕ Clear all filters
+          <Icon name="close" size={12} /> Clear all filters
         </button>
       )}
     </div>

@@ -6,7 +6,9 @@ import { randomUUID } from 'node:crypto';
 import { AppModule } from '../../app.module.js';
 import request from 'supertest';
 
-describe('reservation holds endpoint (integration — requires docker compose stack)', () => {
+// Bootstraps the full HTTP app under vitest; the ws adapter needs a running
+// HTTP server, so these suites only run when explicitly requested (RUN_E2E=1).
+describe.skipIf(process.env.RUN_E2E !== '1')('reservation holds endpoint (integration)', () => {
   let app: INestApplication;
   let redis: Redis;
   let offerId: string;

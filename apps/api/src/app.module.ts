@@ -1,8 +1,7 @@
 import { Module } from '@nestjs/common';
 import { LoggerModule } from 'nestjs-pino';
-import Redis from 'ioredis';
-import { loadConfig } from '@ojaline/config';
 import { DatabaseModule } from './modules/database/database.module.js';
+import { AuthModule } from './modules/auth/auth.module.js';
 import { HealthController } from './modules/health/health.controller.js';
 import { ReservationGate } from './modules/reservation/reservation.gate.js';
 import { MetricsController } from './modules/metrics/metrics.controller.js';
@@ -27,6 +26,8 @@ import { PushService } from './modules/push/push.service.js';
 import { PushController } from './modules/push/push.controller.js';
 import { ToSEnforcementService } from './modules/tos/tos.service.js';
 import { ToSController } from './modules/tos/tos.controller.js';
+import { MarketRealtimeModule } from './modules/realtime/market-realtime.module.js';
+import { AdsModule } from './modules/ads/ads.module.js';
 
 @Module({
   imports: [
@@ -34,18 +35,14 @@ import { ToSController } from './modules/tos/tos.controller.js';
       pinoHttp: { level: process.env.LOG_LEVEL ?? 'info' },
     }),
     DatabaseModule,
+    AuthModule,
     ChatModule,
     AddressesModule,
+    MarketRealtimeModule,
+    AdsModule,
   ],
   controllers: [HealthController, MetricsController, ReservationsController, OrdersController, WebhookController, CatalogController, FulfilmentController, MediaController, EscrowController, PushController, ToSController],
   providers: [
-    {
-      provide: Redis,
-      useFactory: () => {
-        const c = loadConfig();
-        return new Redis(c.REDIS_URL);
-      },
-    },
     OutboxService,
     ReservationGate,
     MetricsService,

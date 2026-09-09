@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getUserConversations, type Conversation } from '../lib/api';
-
-const DEMO_USER_ID = '7c068a1a-fcca-4c91-a3e3-a0a96adfba12';
+import { getUserId } from '../lib/session';
+import { Icon } from '../components/icons';
 
 function timeAgo(dateStr: string | null): string {
   if (!dateStr) return '';
@@ -22,8 +22,10 @@ export default function ConversationsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const userId = getUserId();
+    if (!userId) return undefined;
     let cancelled = false;
-    getUserConversations(DEMO_USER_ID).then((convos) => {
+    getUserConversations(userId).then((convos) => {
       if (!cancelled) setConversations(convos);
     }).catch(() => {}).finally(() => {
       if (!cancelled) setLoading(false);
@@ -44,13 +46,21 @@ export default function ConversationsPage() {
 
       <div className="flex-1 overflow-y-auto">
         {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="w-5 h-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <div>
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 border-b border-border px-4 py-3">
+                <div className="h-11 w-11 shrink-0 animate-pulse rounded-full bg-surface" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="h-3.5 w-2/5 animate-pulse rounded bg-surface" />
+                  <div className="h-3 w-3/5 animate-pulse rounded bg-surface" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : conversations.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
             <div className="w-14 h-14 rounded-full bg-primary-light flex items-center justify-center mb-3">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#008A3C" strokeWidth="2">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#22A34A" strokeWidth="2">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
               </svg>
             </div>
@@ -66,8 +76,8 @@ export default function ConversationsPage() {
                 onClick={() => navigate(`/chat/${conv.id}`)}
                 className="w-full flex items-center gap-3 px-4 py-3 border-b border-border text-left cursor-pointer bg-white hover:bg-surface transition"
               >
-                <div className="w-11 h-11 rounded-full bg-primary-light flex items-center justify-center text-lg shrink-0">
-                  👤
+                <div className="w-11 h-11 rounded-full bg-primary-light text-primary flex items-center justify-center shrink-0">
+                  <Icon name="user" size={20} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">

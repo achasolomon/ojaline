@@ -1,0 +1,30 @@
+{
+  "event_type": "marketing.ad_removed",
+  "schema_version": 1,
+  "type": "object",
+  "properties": {
+    "ad_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "seller_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "REPORTED",
+        "MANUAL",
+        "EXPIRED"
+      ]
+    }
+  },
+  "required": [
+    "ad_id",
+    "seller_id",
+    "reason"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

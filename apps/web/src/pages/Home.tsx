@@ -2,13 +2,18 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { naira } from '@ojaline/design';
 import {
-  discoverOffers, getCategories, getBatchOffers, getTopSellers,
-  getRecentlyViewedIds, ACTIVE_CITIES,
-  type Offer, type Category, type TopSeller,
+  discoverOffers, getCategories, getBatchOffers, getRecentlyViewedIds, mediaUrl,
+  prefetchOffer,
+  ACTIVE_CITIES,
+  type Offer, type Category,
 } from '../lib/api';
+import { PROMO_SLIDES, promoImageUrl } from '../lib/promos';
 import { useMediaQuery, DESKTOP_BREAKPOINT } from '../lib/useMediaQuery';
 import { DesktopHome } from '../components/desktop/DesktopHome';
-import { MeetFarmers } from '../components/MeetFarmers';
+import { MarketBuzz } from '../components/MarketBuzz';
+import { MobileProductSkeleton } from '../components/Loading';
+import { HomeAdBanner } from '../components/HomeAdBanner';
+import { Icon, type IconName } from '../components/icons';
 
 const FEATURES = [
   { label: 'Market Day', sublabel: '(Wholesale)', icon: 'calendar' },
@@ -17,10 +22,129 @@ const FEATURES = [
   { label: 'Direct', sublabel: 'From Farm', icon: 'home' },
 ] as const;
 
+function categoryIcon(name: string): IconName {
+  const n = name.toLowerCase();
+  if (n.includes('fruit') || n.includes('vegetable')) return 'leaf';
+  if (n.includes('grains') || n.includes('smoked') || n.includes('dried')) return 'box';
+  if (n.includes('tuber') || n.includes('root') || n.includes('swallow') || n.includes('soup')) return 'basket';
+  if (n.includes('oil')) return 'tag';
+  if (n.includes('spice')) return 'star';
+  return 'grid';
+}
+
+function CategoryImage({ src, icon }: { src: string; icon: IconName }) {
+  const [failed, setFailed] = useState(false);
+  if (failed || !src) return <Icon name={icon} size={22} />;
+  return (
+    <img
+      src={src}
+      alt=""
+      loading="lazy"
+      onError={() => setFailed(true)}
+      className="w-full h-full object-cover"
+    />
+  );
+}
+
+function MobileHero() {
+  const navigate = useNavigate();
+  const [index, setIndex] = useState(0);
+  const [failed, setFailed] = useState<Record<string, boolean>>({});
+  const slide = PROMO_SLIDES[index];
+  const src = promoImageUrl(slide);
+
+  const goTo = (i: number) => setIndex(((i % PROMO_SLIDES.length) + PROMO_SLIDES.length) % PROMO_SLIDES.length);
+
+  useEffect(() => {
+    const t = setInterval(() => setIndex((i) => (i + 1) % PROMO_SLIDES.length), 6000);
+    return () => clearInterval(t);
+  }, []);
+
+  return (
+    <div
+      className="mx-4 mb-4 rounded-2xl overflow-hidden relative min-h-[180px] text-white"
+      style={{ background: slide.gradient }}
+    >
+      <div className="absolute inset-0">
+        {failed[slide.id] || !src ? (
+          <div className="w-full h-full grid place-items-center bg-white/10">
+            <Icon name={slide.fallbackIcon} size={44} className="text-white/45" />
+          </div>
+        ) : (
+          <img
+            src={src}
+            alt={slide.image?.alt ?? ''}
+            decoding="async"
+            onError={() => setFailed((f) => ({ ...f, [slide.id]: true }))}
+            className="w-full h-full object-cover"
+          />
+        )}
+      </div>
+
+      {/* Subtle fade so the action buttons stay legible */}
+      <div
+        className="absolute inset-0"
+        style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.08), rgba(0,0,0,0.4))' }}
+      />
+
+      {/* Action buttons */}
+      <div className="absolute left-4 bottom-4 z-[3] flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => navigate(slide.href)}
+          className="rounded-lg bg-white text-primary text-xs font-semibold px-3.5 py-2 border-none cursor-pointer"
+        >
+          {slide.cta}
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate('/market-days')}
+          className="rounded-lg bg-secondary text-tertiary text-xs font-semibold px-3.5 py-2 border-none cursor-pointer"
+        >
+          Explore Market Day
+        </button>
+      </div>
+
+      {/* Arrows */}
+      <button
+        type="button"
+        aria-label="Previous promo"
+        onClick={() => goTo(index - 1)}
+        className="absolute left-1.5 top-1/2 -translate-y-1/2 z-[5] w-7 h-7 rounded-full bg-white/15 border border-white/30 text-white grid place-items-center cursor-pointer backdrop-blur-sm transition hover:bg-white/30"
+      >
+        <Icon name="chevronDown" size={14} className="rotate-90" />
+      </button>
+      <button
+        type="button"
+        aria-label="Next promo"
+        onClick={() => goTo(index + 1)}
+        className="absolute right-1.5 top-1/2 -translate-y-1/2 z-[5] w-7 h-7 rounded-full bg-white/15 border border-white/30 text-white grid place-items-center cursor-pointer backdrop-blur-sm transition hover:bg-white/30"
+      >
+        <Icon name="chevronDown" size={14} className="-rotate-90" />
+      </button>
+
+      {/* Dots */}
+      <div className="absolute z-[5] bottom-2.5 right-3 flex gap-1">
+        {PROMO_SLIDES.map((s, i) => (
+          <button
+            key={s.id}
+            type="button"
+            aria-label={`Go to ${s.title}`}
+            onClick={() => goTo(i)}
+            className={`h-1.5 rounded-full transition-all cursor-pointer border-none ${
+              i === index ? 'w-5 bg-white' : 'w-1.5 bg-white/50 hover:bg-white/80'
+            }`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function FeatureIcon({ icon }: { icon: string }) {
   if (icon === 'calendar') {
     return (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#008A3C" strokeWidth="2">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#22A34A" strokeWidth="2">
         <rect x="3" y="4" width="18" height="18" rx="2" />
         <path d="M16 2v4M8 2v4M3 10h18" />
       </svg>
@@ -28,21 +152,21 @@ function FeatureIcon({ icon }: { icon: string }) {
   }
   if (icon === 'bolt') {
     return (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#008A3C" strokeWidth="2">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#22A34A" strokeWidth="2">
         <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
       </svg>
     );
   }
   if (icon === 'clock') {
     return (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#008A3C" strokeWidth="2">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#22A34A" strokeWidth="2">
         <circle cx="12" cy="12" r="10" />
         <path d="M12 6v6l4 2" />
       </svg>
     );
   }
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#008A3C" strokeWidth="2">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#22A34A" strokeWidth="2">
       <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
       <path d="M9 22V12h6v10" />
     </svg>
@@ -58,6 +182,8 @@ function ProductScroll({ offers, onNavigate }: { offers: Offer[]; onNavigate: (i
           key={offer.id}
           type="button"
           onClick={() => onNavigate(offer.id)}
+          onMouseEnter={() => prefetchOffer(offer.id)}
+          onPointerDown={() => prefetchOffer(offer.id)}
           className="min-w-[140px] max-w-[150px] bg-white border border-border rounded-xl overflow-hidden cursor-pointer shrink-0 text-left p-0 transition-shadow hover:shadow-md relative"
         >
           {offer.negotiable && (
@@ -65,7 +191,7 @@ function ProductScroll({ offers, onNavigate }: { offers: Offer[]; onNavigate: (i
           )}
           <div className="w-full h-[110px] bg-surface overflow-hidden">
             {offer.primary_image?.storage_key ? (
-              <img src={`/api/media/${offer.primary_image.storage_key}`} alt={offer.product_name} className="w-full h-full object-cover" />
+              <img src={`/api/media/${offer.primary_image.storage_key}`} alt={offer.product_name} decoding="async" className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full flex items-center justify-center text-textSecondary text-xs">
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="opacity-30"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
@@ -77,6 +203,7 @@ function ProductScroll({ offers, onNavigate }: { offers: Offer[]; onNavigate: (i
             <div className="text-[11px] text-textSecondary mb-1">{offer.seller_name || 'Seller'}</div>
             <div className="text-sm font-bold text-primary">
               {offer.price_cents != null ? naira.format(offer.price_cents / 100) : '—'}
+              {offer.unit ? <span className="text-[11px] font-normal text-textSecondary"> / {offer.unit}</span> : null}
             </div>
           </div>
         </button>
@@ -102,42 +229,6 @@ function SectionHeader({ title, subtitle, onSeeAll }: { title: string; subtitle?
   );
 }
 
-/* ── Seller card for Top Sellers ── */
-function SellerCard({ seller }: { seller: TopSeller }) {
-  const navigate = useNavigate();
-  const typeEmoji: Record<string, string> = { FARMER: '🌾', MARKET_WOMAN: '🧺', STORE: '🏪' };
-  return (
-    <button
-      type="button"
-      onClick={() => navigate(`/sellers/${seller.id}`)}
-      className="min-w-[150px] bg-white border border-border rounded-xl p-3 cursor-pointer shrink-0 text-left transition-shadow hover:shadow-md"
-    >
-      <div className="flex items-center gap-2 mb-2">
-        <div className="w-10 h-10 rounded-full bg-primary-light flex items-center justify-center text-lg">
-          {typeEmoji[seller.seller_type] || '👤'}
-        </div>
-        <div className="min-w-0">
-          <div className="text-[12px] font-bold text-text truncate">{seller.name}</div>
-          <div className="text-[10px] text-textSecondary">{seller.seller_type?.replace('_', ' ')}</div>
-          {seller.market_name && (
-            <div className="text-[9px] text-textSecondary truncate">{seller.stall_number}, {seller.market_name}</div>
-          )}
-        </div>
-      </div>
-      <div className="flex items-center gap-1">
-        <span className="text-[11px] text-[#d48d09]">★ {Number(seller.avg_rating).toFixed(1)}</span>
-        <span className="text-[10px] text-textSecondary">({seller.review_count})</span>
-      </div>
-      {seller.member_since && (
-        <div className="text-[9px] text-textSecondary mt-1">Regular since {new Date(seller.member_since).getFullYear()}</div>
-      )}
-      {seller.completion_rate != null && (
-        <div className="text-[9px] text-primary mt-0.5">{seller.completion_rate}% in-app completion</div>
-      )}
-    </button>
-  );
-}
-
 export default function Home() {
   const isDesktop = useMediaQuery(DESKTOP_BREAKPOINT);
   if (isDesktop) return <DesktopHome />;
@@ -150,11 +241,9 @@ function MobileHome() {
   const [deals, setDeals] = useState<Offer[]>([]);
   const [wholesale, setWholesale] = useState<Offer[]>([]);
   const [newArrivals, setNewArrivals] = useState<Offer[]>([]);
-  const [topSellers, setTopSellers] = useState<TopSeller[]>([]);
   const [recommended, setRecommended] = useState<Offer[]>([]);
   const [recentlyViewed, setRecentlyViewed] = useState<Offer[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -164,90 +253,31 @@ function MobileHome() {
       getCategories(),
       discoverOffers({ channel: 'WHOLESALE', limit: 6 }),
       discoverOffers({ sort: 'newest', limit: 6 }),
-      getTopSellers(5),
       discoverOffers({ limit: 6 }),
       rvIds.length > 0 ? getBatchOffers(rvIds.slice(0, 6)) : Promise.resolve([]),
-    ]).then(([cats, ws, newest, sellers, rec, rv]) => {
+    ]).then(([cats, ws, newest, rec, rv]) => {
       if (cancelled) return;
       setCategories(cats);
       setDeals(rec.offers.slice(0, 6));
       setWholesale(ws.offers);
       setNewArrivals(newest.offers);
-      setTopSellers(sellers);
       setRecommended(rec.offers.slice(0, 6));
       setRecentlyViewed(rv);
     }).catch(() => {}).finally(() => {
-      if (!cancelled) setLoading(false);
+      if (!cancelled) setTimeout(() => setLoading(false), 650);
     });
 
     return () => { cancelled = true; };
   }, []);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchQuery.trim()) navigate(`/offers?q=${encodeURIComponent(searchQuery.trim())}`);
-  };
-
   return (
     <div className="flex flex-col h-full bg-white">
       <main className="flex-1 overflow-y-auto">
-        {/* Header */}
-        <header className="flex items-center justify-between px-4 py-2 bg-white">
-          <div className="flex items-center gap-2">
-            <svg width="28" height="28" viewBox="0 0 48 48" fill="none">
-              <circle cx="24" cy="24" r="24" fill="#008A3C"/>
-              <path d="M24 10c-2 4-6 8-6 14 0 4 2.5 7 6 8 3.5-1 6-4 6-8 0-6-4-10-6-14z" fill="#fff"/>
-            </svg>
-            <span className="text-lg font-bold text-primary tracking-tight">OJALINE</span>
-          </div>
-          <button type="button" className="relative w-10 h-10 flex items-center justify-center rounded-full">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-            </svg>
-            <span className="absolute top-1 right-1 min-w-4 h-4 rounded-full bg-danger text-white text-[10px] font-bold flex items-center justify-center px-1">3</span>
-          </button>
-        </header>
-
-        {/* Location bar */}
-        <div className="px-4 pb-2">
-          <div className="flex items-center gap-2">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#008A3C" strokeWidth="2">
-              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-              <circle cx="12" cy="10" r="3"/>
-            </svg>
-            <div>
-              <span className="block text-[11px] text-textSecondary">Deliver to</span>
-              <span className="text-[13px] font-semibold text-text">Sabo, Yaba, Lagos</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Search bar */}
-        <div className="px-4 pb-3">
-          <form onSubmit={handleSearch} className="flex items-center bg-surface border border-border rounded-xl px-3 gap-2">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" strokeWidth="2">
-              <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
-            </svg>
-            <input type="search" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search for produce, sellers, categories..."
-              className="flex-1 border-none bg-transparent text-sm outline-none py-2.5 text-text placeholder:text-[#9CA3AF]" />
-            <button type="submit" className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center border-none cursor-pointer">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-            </button>
-          </form>
-        </div>
-
         {/* Hero Banner */}
-        <div className="mx-4 mb-4 bg-gradient-to-br from-primary-dark to-primary rounded-2xl p-5 min-h-[160px] relative overflow-hidden">
-          <img src="/images/hero-produce.jpg" alt="" className="absolute inset-0 w-full h-full object-cover"
-            style={{ maskImage: 'linear-gradient(to right, transparent 0%, transparent 20%, black 60%, black 100%)', WebkitMaskImage: 'linear-gradient(to right, transparent 0%, transparent 20%, black 60%, black 100%)' }} />
-          <div className="relative z-10 text-white">
-            <h2 className="text-[22px] font-bold leading-tight mb-1.5">Fresh from<br/>Farm to You</h2>
-            <p className="text-[13px] opacity-90 mb-3.5 leading-snug">Trusted sellers. Fair prices.<br/>Real value.</p>
-            <button type="button" onClick={() => navigate('/offers')}
-              className="rounded-lg bg-white text-primary text-sm font-semibold px-4 py-2 border-none cursor-pointer">Shop Now</button>
-          </div>
+        <MobileHero />
+
+        <div className="mx-4 mb-4">
+          <HomeAdBanner />
         </div>
 
         {/* Market Day card */}
@@ -287,32 +317,60 @@ function MobileHome() {
           </div>
         </div>
 
+        {/* Live market buzz */}
+        {!loading && (
+          <div className="mb-2">
+            <MarketBuzz offers={deals.concat(wholesale, newArrivals).slice(0, 9)} />
+          </div>
+        )}
+
         {/* ── 1. Shop by Category ── */}
         <div className="pb-5">
           <SectionHeader title="Shop by Category" />
-          <div className="flex gap-4 px-4 overflow-x-auto scrollbar-none">
-            {categories.map((cat) => (
-              <button key={cat.id} type="button" onClick={() => navigate(`/offers?category_id=${cat.id}`)}
-                className="flex flex-col items-center gap-1.5 bg-transparent border-none cursor-pointer min-w-16 shrink-0">
-                <div className="w-14 h-14 rounded-full border-2 border-border overflow-hidden">
+          <div className="grid grid-cols-4 gap-x-2 gap-y-4 px-4">
+            {categories.slice(0, 8).map((cat) => (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => navigate(`/offers?category_id=${cat.id}`)}
+                aria-label={`Shop ${cat.name}`}
+                className="flex flex-col items-center gap-1.5 text-center bg-transparent border-none cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary rounded-xl"
+              >
+                <span className="w-14 h-14 rounded-full bg-primary-light text-primary flex items-center justify-center overflow-hidden">
                   {cat.image_url ? (
-                    <img src={`/api/media/${cat.image_url}`} alt={cat.name} className="w-full h-full object-cover" />
+                    <CategoryImage src={mediaUrl(cat.image_url) ?? ''} icon={categoryIcon(cat.name)} />
                   ) : (
-                    <div className="w-full h-full bg-surface flex items-center justify-center text-lg">📦</div>
+                    <Icon name={categoryIcon(cat.name)} size={22} />
                   )}
-                </div>
-                <span className="text-xs font-medium text-text text-center leading-tight">{cat.name}</span>
-                <span className="text-[10px] text-textSecondary">{cat.offer_count} items</span>
+                </span>
+                <span className="block w-full text-[11px] font-medium text-text leading-tight truncate">
+                  {cat.name}
+                </span>
               </button>
             ))}
-          </div>
+            {categories.length > 8 && (
+              <button
+                type="button"
+                onClick={() => navigate('/categories')}
+                aria-label="See all categories"
+                className="flex flex-col items-center gap-1.5 text-center bg-transparent border-none cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary rounded-xl"
+              >
+                <span className="w-14 h-14 rounded-full bg-surface border border-border text-textSecondary flex items-center justify-center">
+                  <Icon name="chevronRight" size={20} />
+                </span>
+                <span className="block w-full text-[11px] font-medium text-textSecondary truncate">
+                  See all
+                </span>
+              </button>
+            )}
+</div>
         </div>
 
         {/* ── 2. Deals / Flash Sales ── */}
         <div className="pb-5">
           <SectionHeader title="Deals & Offers" subtitle="Hot deals from trusted sellers" onSeeAll={() => navigate('/offers')} />
           {loading ? (
-            <div className="flex justify-center py-6"><div className="w-5 h-5 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>
+            <MobileProductSkeleton />
           ) : deals.length > 0 ? (
             <div className="px-4">
               <div className="bg-gradient-to-r from-[#ff4d4d] to-[#ff7b00] rounded-xl px-3 py-2 mb-3 inline-flex items-center gap-2">
@@ -328,7 +386,7 @@ function MobileHome() {
         <div className="pb-5">
           <SectionHeader title="Market Day Picks" subtitle="Wholesale prices on bulk orders" onSeeAll={() => navigate('/market-days')} />
           {loading ? (
-            <div className="flex justify-center py-6"><div className="w-5 h-5 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>
+            <MobileProductSkeleton />
           ) : wholesale.length > 0 ? (
             <ProductScroll offers={wholesale} onNavigate={(id) => navigate(`/offers/${id}`)} />
           ) : (
@@ -340,28 +398,13 @@ function MobileHome() {
         <div className="pb-5">
           <SectionHeader title="New Arrivals" subtitle="Freshly listed produce" onSeeAll={() => navigate('/offers')} />
           {loading ? (
-            <div className="flex justify-center py-6"><div className="w-5 h-5 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>
+            <MobileProductSkeleton />
           ) : newArrivals.length > 0 ? (
             <ProductScroll offers={newArrivals} onNavigate={(id) => navigate(`/offers/${id}`)} />
           ) : null}
         </div>
 
-        {/* ── 5. Top Sellers ── */}
-        <div className="pb-5">
-          <SectionHeader title="Top Sellers" subtitle="Highest rated in your area" />
-          {loading ? (
-            <div className="flex justify-center py-6"><div className="w-5 h-5 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>
-          ) : topSellers.length > 0 ? (
-            <div className="flex gap-3 px-4 overflow-x-auto scrollbar-none">
-              {topSellers.map((s) => <SellerCard key={s.id} seller={s} />)}
-            </div>
-          ) : null}
-        </div>
-
-        {/* ── 5b. Meet Our Sellers ── */}
-        <MeetFarmers sellers={topSellers} />
-
-        {/* ── 6. Recently Viewed ── */}
+        {/* ── 5. Recently Viewed ── */}
         {recentlyViewed.length > 0 && (
           <div className="pb-5">
             <SectionHeader title="Recently Viewed" />
@@ -373,7 +416,7 @@ function MobileHome() {
         <div className="pb-5">
           <SectionHeader title="Recommended for You" subtitle="Based on popular items" onSeeAll={() => navigate('/offers')} />
           {loading ? (
-            <div className="flex justify-center py-6"><div className="w-5 h-5 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>
+            <MobileProductSkeleton />
           ) : recommended.length > 0 ? (
             <ProductScroll offers={recommended} onNavigate={(id) => navigate(`/offers/${id}`)} />
           ) : null}
@@ -382,14 +425,14 @@ function MobileHome() {
         {/* Trust strip */}
         <div className="mx-4 mb-6 bg-primary-light rounded-xl p-4">
           <div className="grid grid-cols-2 gap-3">
-            {[
-              { icon: '✓', label: 'Verified Sellers' },
-              { icon: '⚡', label: 'Fast Delivery' },
-              { icon: '▣', label: 'Secure Payments' },
-              { icon: '★', label: 'Quality Guarantee' },
-            ].map((item) => (
+            {([
+              { icon: 'check', label: 'Verified Sellers' },
+              { icon: 'bolt', label: 'Fast Delivery' },
+              { icon: 'lock', label: 'Secure Payments' },
+              { icon: 'star', label: 'Quality Guarantee' },
+            ] as { icon: IconName; label: string }[]).map((item) => (
               <div key={item.label} className="flex items-center gap-2">
-                <span className="text-primary text-sm font-bold">{item.icon}</span>
+                <span className="text-primary w-5 h-5 grid place-items-center shrink-0"><Icon name={item.icon} size={15} /></span>
                 <span className="text-xs font-medium text-text">{item.label}</span>
               </div>
             ))}

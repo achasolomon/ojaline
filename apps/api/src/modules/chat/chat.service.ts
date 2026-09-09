@@ -75,10 +75,8 @@ export class ChatService {
 
     const detections = detectCircumvention(content);
     const warnings: string[] = [];
-    let blocked = false;
 
     if (detections.length > 0) {
-      blocked = true;
 
       const uniquePatterns = [...new Set(detections.map(d => d.name))];
       for (const patternName of uniquePatterns) {

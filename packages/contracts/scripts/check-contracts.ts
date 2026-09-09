@@ -46,6 +46,23 @@ const samples: Record<EventType, EventPayload<EventType>> = {
   'escrow.released': { escrow_order_id: uuid(), order_id: uuid(), reason: 'SILENT_24H' },
   'escrow.disputed': { escrow_order_id: uuid(), dispute_id: uuid(), type: 'QUALITY' },
   'notification.sent': { channel: 'SMS', recipient: '+2348000000001', template: 'order.confirmed' },
+  'market.seller_online': { seller_id: uuid(), seller_name: 'Bisi Olatunji', seller_type: 'MARKET_WOMAN' },
+  'market.offer_created': {
+    offer_id: uuid(), seller_id: uuid(), seller_name: 'Bisi Olatunji', product_name: 'Crayfish',
+    price_cents: 180000, unit: 'unit',
+  },
+  'market.offer_price_changed': {
+    offer_id: uuid(), seller_id: uuid(), seller_name: 'Bisi Olatunji', product_name: 'Crayfish',
+    old_price_cents: 180000, new_price_cents: 150000, unit: 'unit',
+  },
+  'marketing.ad_published': {
+    ad_id: uuid(), seller_id: uuid(), seller_name: 'Bisi Olatunji', title: 'Fresh Crayfish',
+    body: 'Market-day prices on bulk orders.', format: 'TOAST',
+    target_type: 'OFFER', target_id: uuid(),
+  },
+  'marketing.ad_removed': {
+    ad_id: uuid(), seller_id: uuid(), reason: 'REPORTED',
+  },
 };
 
 for (const [eventType, payload] of Object.entries(samples) as [EventType, EventPayload<EventType>][]) {

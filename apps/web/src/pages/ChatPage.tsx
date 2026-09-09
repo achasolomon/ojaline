@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { sendChatMessage, getChatMessages, type ChatMessage } from '../lib/api';
-
-const DEMO_USER_ID = '7c068a1a-fcca-4c91-a3e3-a0a96adfba12';
+import { getUserId } from '../lib/session';
+import { Icon } from '../components/icons';
 
 export default function ChatPage() {
   const { id: conversationId } = useParams();
@@ -12,25 +12,26 @@ export default function ChatPage() {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const userId = getUserId();
 
   useEffect(() => {
-    if (!conversationId) return;
+    if (!conversationId || !userId) return;
     let cancelled = false;
-    getChatMessages(conversationId, DEMO_USER_ID).then((msgs) => {
+    getChatMessages(conversationId, userId).then((msgs) => {
       if (!cancelled) setMessages(msgs);
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [conversationId]);
+  }, [conversationId, userId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   const handleSend = async () => {
-    if (!input.trim() || !conversationId) return;
+    if (!input.trim() || !conversationId || !userId) return;
     setSending(true);
     try {
-      const result = await sendChatMessage(conversationId, DEMO_USER_ID, input.trim());
+      const result = await sendChatMessage(conversationId, userId, input.trim());
       if (result.blocked) {
         setWarnings(result.warnings);
         setTimeout(() => setWarnings([]), 5000);
@@ -77,7 +78,7 @@ export default function ChatPage() {
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <div className="w-12 h-12 rounded-full bg-primary-light flex items-center justify-center mb-3">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#008A3C" strokeWidth="2">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#22A34A" strokeWidth="2">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
               </svg>
             </div>
@@ -86,7 +87,7 @@ export default function ChatPage() {
           </div>
         )}
         {messages.map((msg) => {
-          const isOwn = msg.sender_id === DEMO_USER_ID;
+          const isOwn = msg.sender_id === userId;
           const isSystem = msg.message_type === 'system';
           if (isSystem) {
             return (
@@ -136,8 +137,8 @@ export default function ChatPage() {
             </svg>
           </button>
         </div>
-        <p className="text-[9px] text-textSecondary mt-1.5 text-center">
-          🔒 Your conversation is logged for buyer protection. Phone numbers and external contact links are blocked.
+        <p className="flex items-center justify-center gap-1 text-[9px] text-textSecondary mt-1.5">
+          <Icon name="shield" size={11} /> Your conversation is logged for buyer protection. Phone numbers and external contact links are blocked.
         </p>
       </div>
     </div>

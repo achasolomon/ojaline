@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Query, Body, Inject } from '@nestjs/common';
+import { Controller, Get, Patch, Post, Param, Query, Body, Inject, NotFoundException } from '@nestjs/common';
 import { CatalogService, DiscoverOffersQuery } from './catalog.service.js';
 
 @Controller('catalog')
@@ -120,6 +120,17 @@ export class CatalogController {
     return this.catalog.findOfferById(id);
   }
 
+  @Patch('offers/:id/price')
+  async updateOfferPrice(
+    @Param('id') id: string,
+    @Body() body: { new_price_cents?: number },
+  ) {
+    if (!Number.isInteger(body.new_price_cents) || body.new_price_cents! < 0) {
+      throw new NotFoundException('Valid new_price_cents is required');
+    }
+    return this.catalog.updateOfferPrice(id, body.new_price_cents!);
+  }
+
   @Post('offers')
   async createOffer(
     @Body() body: {
@@ -134,6 +145,7 @@ export class CatalogController {
       cluster_id: string;
       price_cents: number;
       category_id?: string;
+      unit?: string;
     },
   ) {
     return this.catalog.createOffer(body);

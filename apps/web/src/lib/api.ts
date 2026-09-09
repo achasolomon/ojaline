@@ -3,6 +3,16 @@ import type { EventType, EventPayload, OutboxEnvelope } from '@ojaline/contracts
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api';
 
+/**
+ * Resolve a backend storage key (e.g. "fruits.jpg") into a fetchable URL.
+ * The API stores relative filenames and serves them from GET /media/:key.
+ */
+export function mediaUrl(key: string | null | undefined): string | null {
+  if (!key) return null;
+  if (/^https?:\/\//i.test(key) || key.startsWith('/')) return key;
+  return `${BASE_URL}/media/${key}`;
+}
+
 /* ── Offer types ── */
 
 export type Channel = 'RETAILER' | 'WHOLESALE' | 'DIRECT' | 'OPEN';
@@ -35,6 +45,7 @@ export interface Offer {
   primary_image: OfferImage | null;
   images?: OfferImage[];
   negotiable?: boolean;
+  unit?: string | null;
   stall_number?: string;
   market_name?: string;
   member_since?: string;
@@ -49,6 +60,8 @@ export interface Category {
   perishability_default: Perishability;
   offer_count: number;
   image_url: string | null;
+  menu_section?: string | null;
+  children?: Category[];
 }
 
 export interface DiscoverOffersParams {
@@ -81,6 +94,7 @@ export interface CreateOfferRequest {
   cluster_id: string;
   price_cents: number;
   category_id?: string;
+  unit?: string;
 }
 
 export interface CreateOfferResponse {
@@ -129,6 +143,17 @@ async function deleteJson<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+async function patchJson<T>(path: string, body: unknown, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: 'PATCH',
+    headers: { accept: 'application/json', 'content-type': 'application/json', ...init?.headers },
+    body: JSON.stringify(body),
+    ...init,
+  });
+  if (!res.ok) throw new ApiError(res.status, await safeText(res));
+  return (await res.json()) as T;
+}
+
 async function safeText(res: Response): Promise<string> {
   try {
     return await res.text();
@@ -153,8 +178,38 @@ export async function getEnvelope<T extends EventType>(
   return result.envelope as OutboxEnvelope & { payload: EventPayload<T> };
 }
 
-export async function login(phoneOrEmail: string, _password: string): Promise<{ user_id: string }> {
-  return postJson('/auth/login', { phone_or_email: phoneOrEmail });
+export interface AuthUser {
+  id: string;
+  phone: string | null;
+  email: string | null;
+  full_name: string;
+  status: string;
+  seller_type: string | null;
+  roles: string[];
+}
+
+export interface AuthSession {
+  token: string;
+  user: AuthUser;
+}
+
+export type OAuthProvider = 'google' | 'facebook';
+
+/** Full URL to kick off a provider's authorization flow (web redirect). */
+export function oauthAuthorizeUrl(provider: OAuthProvider): string {
+  return `${BASE_URL}/auth/oauth/${provider}/authorize`;
+}
+
+export async function login(phoneOrEmail: string, password: string): Promise<AuthSession> {
+  return postJson<AuthSession>('/auth/login', { phone_or_email: phoneOrEmail, password });
+}
+
+export async function register(input: { full_name: string; phone: string; email?: string; password: string }): Promise<AuthSession> {
+  return postJson<AuthSession>('/auth/register', input);
+}
+
+export async function getMe(token: string): Promise<AuthUser> {
+  return getJson<AuthUser>('/auth/me', { headers: { authorization: `Bearer ${token}` } });
 }
 
 /* ── Catalog API ── */
@@ -283,7 +338,9 @@ export async function createOffer(body: CreateOfferRequest): Promise<CreateOffer
   return postJson<CreateOfferResponse>('/catalog/offers', body);
 }
 
-export async function getOfferById(id: string): Promise<Offer> {
+const offerFetchCache = new Map<string, Promise<Offer>>();
+
+async function fetchOffer(id: string): Promise<Offer> {
   const raw = await getJson<any>(`/catalog/offers/${id}`);
   return {
     ...raw,
@@ -291,6 +348,22 @@ export async function getOfferById(id: string): Promise<Offer> {
       ? raw.images.find((i: any) => i.is_primary) ?? raw.images[0]
       : null,
   };
+}
+
+export function prefetchOffer(id: string): void {
+  if (offerFetchCache.has(id)) return;
+  const promise = fetchOffer(id).catch((err) => {
+    offerFetchCache.delete(id);
+    throw err;
+  });
+  offerFetchCache.set(id, promise);
+}
+
+export async function getOfferById(id: string): Promise<Offer> {
+  let promise = offerFetchCache.get(id);
+  if (!promise) prefetchOffer(id);
+  promise = offerFetchCache.get(id)!;
+  return promise;
 }
 
 /* ── Top Sellers ── */
@@ -325,7 +398,7 @@ export async function getBatchOffers(ids: string[]): Promise<Offer[]> {
 
 /* ── Recently Viewed (localStorage) ── */
 
-const RV_KEY = 'ojaline_recently_viewed';
+const RV_KEY = 'kika_recently_viewed';
 const RV_MAX = 10;
 
 export function trackView(offerId: string): void {
@@ -474,4 +547,94 @@ export interface SellerToSStatus {
 
 export async function getToSStatus(userId: string): Promise<SellerToSStatus> {
   return getJson<SellerToSStatus>(`/tos/status?user_id=${userId}`);
+}
+
+/* ── Marketplace Advertising (ADR-009) ── */
+
+export type AdFormat = 'TOAST' | 'BANNER';
+export type AdTargetType = 'OFFER' | 'SELLER' | 'NONE';
+export type AdStatus = 'ACTIVE' | 'PAUSED' | 'ENDED' | 'REMOVED';
+
+export interface Ad {
+  id: string;
+  seller_id: string;
+  seller_name?: string;
+  title: string;
+  body: string | null;
+  format: AdFormat;
+  image_key: string | null;
+  target_type: AdTargetType;
+  target_id: string | null;
+  category_id: string | null;
+  cluster_id: string | null;
+  channel: string | null;
+  status?: AdStatus;
+  starts_at: string;
+  ends_at: string;
+  max_impressions?: number | null;
+  impressions_shown?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateAdInput {
+  title: string;
+  body?: string;
+  format: AdFormat;
+  image_key?: string;
+  target_type: AdTargetType;
+  target_id?: string;
+  category_id?: string;
+  cluster_id?: string;
+  channel?: string;
+  max_impressions?: number;
+}
+
+export async function listAds(sellerId: string): Promise<Ad[]> {
+  return getJson<Ad[]>(`/ads?seller_id=${encodeURIComponent(sellerId)}`);
+}
+
+export async function createAd(sellerId: string, input: CreateAdInput): Promise<Ad> {
+  return postJson<Ad>(`/ads?seller_id=${encodeURIComponent(sellerId)}`, input);
+}
+
+export async function updateAd(sellerId: string, adId: string, patch: Partial<CreateAdInput> & { status?: AdStatus }): Promise<Ad> {
+  return patchJson<Ad>(`/ads/${adId}?seller_id=${encodeURIComponent(sellerId)}`, patch);
+}
+
+export async function deleteAd(sellerId: string, adId: string): Promise<{ ok: boolean; removed: boolean }> {
+  return deleteJson<{ ok: boolean; removed: boolean }>(`/ads/${adId}?seller_id=${encodeURIComponent(sellerId)}`);
+}
+
+export async function getActiveAds(params: { format?: AdFormat; cluster_id?: string; category_id?: string } = {}): Promise<Ad[]> {
+  const qs = new URLSearchParams();
+  if (params.format) qs.set('format', params.format);
+  if (params.cluster_id) qs.set('cluster_id', params.cluster_id);
+  if (params.category_id) qs.set('category_id', params.category_id);
+  const query = qs.toString();
+  return getJson<Ad[]>(`/ads/active${query ? `?${query}` : ''}`);
+}
+
+export async function reportAd(adId: string, userId: string | null, reason: string): Promise<{ ok: boolean; removed: boolean }> {
+  const qs = userId ? `?user_id=${encodeURIComponent(userId)}` : '';
+  return postJson<{ ok: boolean; removed: boolean }>(`/ads/${adId}/report${qs}`, { reason });
+}
+
+/**
+ * Convert a picked File into the base64 + mime body the media endpoint expects.
+ */
+export async function fileToBase64(file: File): Promise<{ data: string; mime: string }> {
+  const buf = await file.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return { data: btoa(binary), mime: file.type || 'image/jpeg' };
+}
+
+export async function uploadImage(data: string, mime: string): Promise<string> {
+  const res = await postJson<{ storage_key: string }>('/media', { data, mime });
+  return res.storage_key;
 }

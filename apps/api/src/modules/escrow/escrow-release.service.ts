@@ -71,9 +71,9 @@ export class EscrowReleaseService {
           );
 
           await this.outbox.enqueue(client, 'escrow.released', escrow.order_id, {
+            escrow_order_id: escrow.id,
             order_id: escrow.order_id,
-            seller_id: sellerId,
-            amount_cents: amountCents,
+            reason: 'SILENT_24H',
           });
 
           await client.query('COMMIT');

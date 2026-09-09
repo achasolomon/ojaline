@@ -1,0 +1,50 @@
+{
+  "event_type": "market.offer_price_changed",
+  "schema_version": 1,
+  "type": "object",
+  "properties": {
+    "offer_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "seller_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "seller_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "product_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "old_price_cents": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "new_price_cents": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "unit": {
+      "type": "string"
+    },
+    "market_name": {
+      "type": "string"
+    },
+    "image_key": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "offer_id",
+    "seller_id",
+    "seller_name",
+    "product_name",
+    "old_price_cents",
+    "new_price_cents"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

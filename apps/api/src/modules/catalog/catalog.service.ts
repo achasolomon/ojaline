@@ -1,5 +1,6 @@
 import { Injectable, Inject, NotFoundException } from '@nestjs/common';
 import { Pool } from 'pg';
+import { MarketFeedService } from '../realtime/market-feed.service.js';
 
 export interface DiscoverOffersQuery {
   channel?: string;
@@ -16,7 +17,10 @@ export interface DiscoverOffersQuery {
 
 @Injectable()
 export class CatalogService {
-  constructor(@Inject(Pool) private readonly pool: Pool) {}
+  constructor(
+    @Inject(Pool) private readonly pool: Pool,
+    @Inject(MarketFeedService) private readonly feed: MarketFeedService,
+  ) {}
 
   async discoverOffers(query: DiscoverOffersQuery): Promise<{
     offers: Array<Record<string, unknown>>;
@@ -42,8 +46,11 @@ export class CatalogService {
       params.push(query.perishability);
     }
     if (query.category_id) {
-      conditions.push(`l.category_id = $${idx++}`);
+      conditions.push(
+        `(l.category_id = $${idx} OR l.category_id IN (SELECT id FROM catalog.categories WHERE parent_id = $${idx}))`,
+      );
       params.push(query.category_id);
+      idx++;
     }
     if (query.q) {
       conditions.push(`l.product_name ILIKE $${idx++}`);
@@ -90,6 +97,7 @@ export class CatalogService {
          o.cluster_id,
          o.created_at,
          o.negotiable,
+         o.unit,
          l.product_name,
          l.physical_ref,
          l.category_id,
@@ -133,6 +141,7 @@ export class CatalogService {
          o.cluster_id,
          o.created_at,
          o.negotiable,
+         o.unit,
          l.product_name,
          l.physical_ref,
          l.category_id,
@@ -183,15 +192,45 @@ export class CatalogService {
          c.name,
          c.perishability_default,
          c.image_url,
+         c.parent_id,
+         c.menu_section,
          COUNT(l.id)::int AS offer_count
        FROM catalog.categories c
        LEFT JOIN catalog.lots l ON l.category_id = c.id
        LEFT JOIN catalog.offers o ON o.lot_id = l.id AND o.status = 'ACTIVE'
          AND o.available_qty > o.reserved_qty + o.soft_held_qty
-        GROUP BY c.id, c.name, c.perishability_default, c.image_url
+       GROUP BY c.id, c.name, c.perishability_default, c.image_url, c.parent_id, c.menu_section
        ORDER BY c.name`,
     );
-    return rows;
+
+    const byParent = new Map<string | null, typeof rows>();
+    for (const r of rows) {
+      const key = r.parent_id ?? null;
+      if (!byParent.has(key)) byParent.set(key, []);
+      byParent.get(key)!.push(r);
+    }
+
+    const result: Array<Record<string, unknown>> = [];
+    for (const r of rows) {
+      if (r.parent_id) continue;
+      const children = (byParent.get(r.id) ?? []).map((ch) => ({
+        id: ch.id,
+        name: ch.name,
+        perishability_default: ch.perishability_default,
+        image_url: ch.image_url,
+        menu_section: ch.menu_section ?? null,
+        offer_count: ch.offer_count,
+      }));
+      result.push({
+        id: r.id,
+        name: r.name,
+        perishability_default: r.perishability_default,
+        image_url: r.image_url,
+        offer_count: r.offer_count,
+        children,
+      });
+    }
+    return result;
   }
 
   async createOffer(input: {
@@ -206,6 +245,7 @@ export class CatalogService {
     cluster_id: string;
     price_cents: number;
     category_id?: string;
+    unit?: string;
   }): Promise<{ offer_id: string; lot_id: string }> {
     const client = await this.pool.connect();
     try {
@@ -222,9 +262,9 @@ export class CatalogService {
       const { rows: offerRows } = await client.query(
         `INSERT INTO catalog.offers
            (seller_id, channel, lot_id, available_qty, min_order_qty,
-            perishability, fulfilment_modes, cluster_id, geo)
+            perishability, fulfilment_modes, cluster_id, geo, unit)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
-            ST_SetSRID(ST_MakePoint(3.3792, 6.5244), 4326)::geography)
+            ST_SetSRID(ST_MakePoint(3.3792, 6.5244), 4326)::geography, $9)
          RETURNING id`,
         [
           input.seller_id,
@@ -235,6 +275,7 @@ export class CatalogService {
           input.perishability,
           input.fulfilment_modes,
           input.cluster_id,
+          input.unit?.trim() || null,
         ],
       );
       const offerId: string = offerRows[0].id;
@@ -246,7 +287,62 @@ export class CatalogService {
       );
 
       await client.query('COMMIT');
+      void this.feed.announceOfferCreated(offerId, input.product_name, input.price_cents);
       return { offer_id: offerId, lot_id: lotId };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async updateOfferPrice(
+    offerId: string,
+    newPriceCents: number,
+  ): Promise<{ offer_id: string; old_price_cents: number; new_price_cents: number }> {
+    if (!Number.isInteger(newPriceCents) || newPriceCents < 0) {
+      throw new NotFoundException('Invalid price');
+    }
+
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const { rows } = await client.query(
+        `SELECT o.seller_id, l.product_name
+           FROM catalog.offers o
+           JOIN catalog.lots l ON l.id = o.lot_id
+          WHERE o.id = $1
+          FOR UPDATE`,
+        [offerId],
+      );
+      if (rows.length === 0) {
+        throw new NotFoundException(`Offer ${offerId} not found`);
+      }
+      const productName = String(rows[0].product_name);
+
+      const { rows: historyRows } = await client.query(
+        `SELECT new_price_cents
+           FROM catalog.offer_price_history
+          WHERE offer_id = $1
+          ORDER BY changed_at DESC, id DESC
+          LIMIT 1`,
+        [offerId],
+      );
+      const oldPriceCents = historyRows.length > 0 ? Number(historyRows[0].new_price_cents) : newPriceCents;
+
+      if (oldPriceCents !== newPriceCents) {
+        await client.query(
+          `INSERT INTO catalog.offer_price_history (offer_id, old_price_cents, new_price_cents)
+           VALUES ($1, $2, $3)`,
+          [offerId, oldPriceCents, newPriceCents],
+        );
+      }
+
+      await client.query('COMMIT');
+      void this.feed.announceOfferPriceChanged(offerId, productName, oldPriceCents, newPriceCents);
+      return { offer_id: offerId, old_price_cents: oldPriceCents, new_price_cents: newPriceCents };
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;

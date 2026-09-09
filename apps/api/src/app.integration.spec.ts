@@ -4,7 +4,9 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
 import request from 'supertest';
 
-describe('health endpoint (integration — requires docker compose stack)', () => {
+// Bootstraps the full HTTP app under vitest; the ws adapter needs a running
+// HTTP server, so these suites only run when explicitly requested (RUN_E2E=1).
+describe.skipIf(process.env.RUN_E2E !== '1')('health endpoint (integration)', () => {
   let app: INestApplication;
 
   beforeAll(async () => {

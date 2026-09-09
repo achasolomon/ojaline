@@ -1,16 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  discoverOffers, getCategories, getBatchOffers, getTopSellers,
+  discoverOffers, getCategories, getBatchOffers, mediaUrl, prefetchOffer,
   getRecentlyViewedIds, ACTIVE_CITIES,
-  type Offer, type Category, type Channel, type TopSeller,
+  type Offer, type Category, type Channel,
 } from '../../lib/api';
 import { naira } from '@ojaline/design';
+import { addToCart } from '../../lib/cart';
 import { DesktopHero } from './DesktopHero';
 import { ServiceBenefits } from './ServiceBenefits';
-import { MeetFarmers } from '../MeetFarmers';
-
-const PRODUCT_PLACEHOLDER_BG = 'radial-gradient(circle at 30% 45%,#e34e32 0 12%,transparent 12.5%),radial-gradient(circle at 58% 62%,#d8442f 0 13%,transparent 13.5%),radial-gradient(circle at 72% 33%,#f0a21f 0 9%,transparent 9.5%),radial-gradient(circle at 45% 25%,#69a03b 0 12%,transparent 12.5%),linear-gradient(145deg,#f4f7ef,#dfead8)';
+import { MarketBuzz } from '../MarketBuzz';
+import { ProductSkeletonGrid } from '../Loading';
+import { HomeAdBanner } from '../HomeAdBanner';
+import { Icon, type IconName } from '../icons';
 
 const CATEGORY_PLACEHOLDER_BG: Record<string, string> = {
   'Fresh Vegetables': 'linear-gradient(145deg,#e8f5e9,#c8e6c9)',
@@ -35,67 +37,122 @@ const LOCATION_FILTERS = [
 
 function ProductCard({ offer, index = 0 }: { offer: Offer; index?: number }) {
   const navigate = useNavigate();
+  const go = () => navigate(`/offers/${offer.id}`);
   return (
     <article
-      className="bg-white border border-border rounded-[11px] overflow-hidden relative group hover:shadow-[0_10px_30px_rgba(0,0,0,0.08)] hover:-translate-y-[2px] transition-all duration-300 animate-fade-up"
+      onClick={go}
+      role="button"
+      tabIndex={0}
+      onMouseEnter={() => prefetchOffer(offer.id)}
+      onPointerDown={() => prefetchOffer(offer.id)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } }}
+      className="bg-white border border-border rounded-[11px] overflow-hidden relative group hover:shadow-[0_10px_30px_rgba(0,0,0,0.08)] hover:-translate-y-[2px] transition-all duration-300 animate-fade-up cursor-pointer"
       style={{ animationDelay: `${Math.min(index * 40, 400)}ms` }}
     >
-      <button type="button" className="absolute right-2 top-[7px] z-10 border-none bg-white/90 backdrop-blur rounded-full w-[26px] h-[26px] shadow-[0_2px_8px_rgba(0,0,0,0.06)] text-sm cursor-pointer hover:scale-[1.15] hover:text-danger transition-all duration-200 opacity-0 group-hover:opacity-100">♡</button>
+      <button type="button" onClick={(e) => e.stopPropagation()} className="absolute right-2 top-[7px] z-10 border-none bg-white/90 backdrop-blur rounded-full w-[26px] h-[26px] shadow-[0_2px_8px_rgba(0,0,0,0.06)] text-sm cursor-pointer hover:scale-[1.15] hover:text-danger transition-all duration-200 opacity-0 group-hover:opacity-100">
+        <Icon name="heart" size={14} className="text-textSecondary" />
+      </button>
+      {offer.price_cents != null && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); addToCart(offer, offer.min_order_qty); }}
+          className="absolute right-[7px] bottom-[118px] z-10 border-none bg-primary text-white rounded-full w-[26px] h-[26px] shadow-[0_2px_8px_rgba(0,0,0,0.15)] flex items-center justify-center cursor-pointer hover:bg-primary-dark hover:scale-[1.15] transition-all duration-200 opacity-0 group-hover:opacity-100"
+          aria-label="Add to cart"
+        >
+          <Icon name="plus" size={14} />
+        </button>
+      )}
       {offer.negotiable && (
         <div className="absolute left-0 top-[7px] bg-[#f5a623] text-white text-[8px] font-bold px-2 py-0.5 rounded-r shadow-sm">Negotiable</div>
       )}
       <div className="h-[145px] bg-cover bg-center overflow-hidden">
         {offer.primary_image?.storage_key ? (
-          <img src={`/api/media/${offer.primary_image.storage_key}`} alt={offer.product_name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+          <img src={`/api/media/${offer.primary_image.storage_key}`} alt={offer.product_name} loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
         ) : (
-          <div className="w-full h-full" style={{ background: PRODUCT_PLACEHOLDER_BG }} />
+          <div className="w-full h-full bg-surface flex items-center justify-center">
+            <svg className="w-8 h-8 text-textSecondary opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+              <circle cx="15" cy="13" r="3" />
+            </svg>
+          </div>
         )}
       </div>
       <div className="p-[11px]">
         <div className="text-[11px] font-extrabold text-text leading-snug line-clamp-2">{offer.product_name}</div>
         <div className="text-[8px] text-text-secondary mt-0.5">{offer.physical_ref}</div>
         {offer.price_cents != null && (
-          <div className="text-[14px] font-black text-text mt-2 mb-0 tracking-tight">{naira.format(offer.price_cents / 100)}</div>
+          <div className="text-[14px] font-black text-text mt-2 mb-0 tracking-tight">
+            {naira.format(offer.price_cents / 100)}
+            {offer.unit ? <span className="text-[9px] font-semibold text-textSecondary"> / {offer.unit}</span> : null}
+          </div>
         )}
-        <div className="text-[8px] text-text-secondary mt-1">{offer.seller_name || 'Seller'} <span className="text-primary">✓</span></div>
-        <button type="button" onClick={() => navigate(`/offers/${offer.id}`)}
-          className="w-full mt-2 h-[30px] border border-primary rounded-[6px] bg-white text-primary text-[9px] font-extrabold cursor-pointer hover:bg-primary hover:text-white transition-all duration-200 active:scale-[0.98]">
-          View Details
-        </button>
+        <div className="text-[8px] text-text-secondary mt-1">{offer.seller_name || 'Seller'} <span className="text-primary"><Icon name="check" size={9} /></span></div>
+        <div onClick={(e) => e.stopPropagation()}>
+          <button type="button" onClick={go}
+            className="w-full mt-2 h-[30px] border border-primary rounded-[6px] bg-white text-primary text-[9px] font-extrabold cursor-pointer hover:bg-primary hover:text-white transition-all duration-200 active:scale-[0.98]">
+            View Details
+          </button>
+        </div>
       </div>
     </article>
   );
 }
 
-function SellerCard({ seller }: { seller: TopSeller }) {
-  const navigate = useNavigate();
-  const typeEmoji: Record<string, string> = { FARMER: '🌾', MARKET_WOMAN: '🧺', STORE: '🏪' };
+function ProductRail({ offers }: { offers: Offer[] }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  const scrollPrev = () => {
+    const el = ref.current;
+    if (el) el.scrollBy({ left: -el.clientWidth * 0.85, behavior: 'smooth' });
+  };
+  const scrollNext = () => {
+    const el = ref.current;
+    if (el) el.scrollBy({ left: el.clientWidth * 0.85, behavior: 'smooth' });
+  };
+
   return (
-    <button type="button" onClick={() => navigate(`/sellers/${seller.id}`)}
-      className="min-w-[180px] bg-white border border-border rounded-[9px] p-4 cursor-pointer shrink-0 text-left hover:shadow-md transition">
-      <div className="flex items-center gap-3 mb-2">
-        <div className="w-10 h-10 rounded-full bg-primary-light flex items-center justify-center text-lg">
-          {typeEmoji[seller.seller_type] || '👤'}
-        </div>
-        <div className="min-w-0">
-          <div className="text-[11px] font-extrabold text-text truncate">{seller.name}</div>
-          <div className="text-[9px] text-text-secondary">{seller.seller_type?.replace('_', ' ')}</div>
-          {seller.market_name && (
-            <div className="text-[8px] text-text-secondary truncate">{seller.stall_number}, {seller.market_name}</div>
-          )}
-        </div>
+    <div className="relative">
+      <div ref={ref} className="flex gap-[11px] overflow-x-auto scrollbar-none pb-1">
+        {offers.map((o, i) => (
+          <div key={o.id} className="w-[205px] shrink-0">
+            <ProductCard offer={o} index={i} />
+          </div>
+        ))}
       </div>
-      <div className="flex items-center gap-1">
-        <span className="text-[10px] text-[#d48d09]">★ {Number(seller.avg_rating).toFixed(1)}</span>
-        <span className="text-[9px] text-text-secondary">({seller.review_count} reviews)</span>
-      </div>
-      {seller.member_since && (
-        <div className="text-[8px] text-text-secondary mt-1">Regular since {new Date(seller.member_since).getFullYear()}</div>
-      )}
-      {seller.completion_rate != null && (
-        <div className="text-[8px] text-primary mt-0.5">{seller.completion_rate}% in-app completion</div>
-      )}
-    </button>
+      <button
+        type="button"
+        onClick={scrollPrev}
+        aria-label="Scroll left"
+        className="absolute left-[-8px] top-[54%] -translate-y-1/2 z-10 w-8 h-8 rounded-full border border-border bg-white text-text shadow-[0_4px_14px_rgba(0,0,0,0.12)] flex items-center justify-center cursor-pointer hover:bg-primary hover:text-white hover:border-primary transition-all duration-200"
+      >
+        <Icon name="chevronRight" size={16} className="rotate-180" />
+      </button>
+      <button
+        type="button"
+        onClick={scrollNext}
+        aria-label="Scroll right"
+        className="absolute right-[-8px] top-[54%] -translate-y-1/2 z-10 w-8 h-8 rounded-full border border-border bg-white text-text shadow-[0_4px_14px_rgba(0,0,0,0.12)] flex items-center justify-center cursor-pointer hover:bg-primary hover:text-white hover:border-primary transition-all duration-200"
+      >
+        <Icon name="chevronRight" size={16} />
+      </button>
+    </div>
+  );
+}
+
+function ProductRailSkeleton({ count = 5 }: { count?: number }) {
+  return (
+    <div className="flex gap-[11px] overflow-hidden">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="w-[205px] shrink-0 bg-white border border-border rounded-[11px] overflow-hidden animate-pulse-soft">
+          <div className="h-[145px] shimmer" />
+          <div className="p-[11px]">
+            <div className="h-2.5 bg-surface rounded w-3/4 mb-1.5" />
+            <div className="h-2 bg-surface rounded w-1/2 mb-2" />
+            <div className="h-3 bg-surface rounded w-2/3" />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -106,7 +163,7 @@ function SectionHeader({ title, subtitle, onSeeAll }: { title: string; subtitle?
         <h2 className="text-lg font-black m-0 text-text">{title}</h2>
         {subtitle && <p className="text-[10px] text-text-secondary mt-1 mb-0">{subtitle}</p>}
       </div>
-      {onSeeAll && <span className="text-[10px] text-primary font-extrabold cursor-pointer hover:underline" onClick={onSeeAll}>See all →</span>}
+      {onSeeAll && <span className="text-[10px] text-primary font-extrabold cursor-pointer hover:underline inline-flex items-center gap-0.5" onClick={onSeeAll}>See all <Icon name="arrowRight" size={11} /></span>}
     </div>
   );
 }
@@ -118,7 +175,6 @@ export function DesktopHome() {
   const [deals, setDeals] = useState<Offer[]>([]);
   const [wholesale, setWholesale] = useState<Offer[]>([]);
   const [newArrivals, setNewArrivals] = useState<Offer[]>([]);
-  const [topSellers, setTopSellers] = useState<TopSeller[]>([]);
   const [recommended, setRecommended] = useState<Offer[]>([]);
   const [recentlyViewed, setRecentlyViewed] = useState<Offer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -138,22 +194,20 @@ export function DesktopHome() {
       getCategories(),
       discoverOffers({ channel: 'WHOLESALE', limit: 6 }),
       discoverOffers({ sort: 'newest', limit: 6 }),
-      getTopSellers(5),
       discoverOffers({ limit: 6 }),
       discoverOffers({ limit: 10 }),
       rvIds.length > 0 ? getBatchOffers(rvIds.slice(0, 8)) : Promise.resolve([]),
-    ]).then(([cats, ws, newest, sellers, rec, popular, rv]) => {
+    ]).then(([cats, ws, newest, rec, popular, rv]) => {
       if (cancelled) return;
       setCategories(cats);
       setDeals(rec.offers.slice(0, 5));
       setWholesale(ws.offers);
       setNewArrivals(newest.offers);
-      setTopSellers(sellers);
       setRecommended(rec.offers.slice(0, 5));
       setOffers(popular.offers);
       setRecentlyViewed(rv);
     }).catch(() => {}).finally(() => {
-      if (!cancelled) setLoading(false);
+      if (!cancelled) setTimeout(() => setLoading(false), 650);
     });
     return () => { cancelled = true; };
   }, []);
@@ -193,7 +247,7 @@ export function DesktopHome() {
 
       {/* Coverage Strip */}
       <div className="bg-white border-b border-border">
-        <div className="max-w-[1480px] mx-auto px-6 py-3 flex items-center gap-4">
+        <div className="max-w-[1200px] mx-auto px-6 py-3 flex items-center gap-4">
           <span className="text-[10px] font-extrabold text-text-secondary uppercase tracking-wide shrink-0">Now in</span>
           <div className="flex gap-4 flex-wrap">
             {ACTIVE_CITIES.map((city) => (
@@ -206,7 +260,12 @@ export function DesktopHome() {
         </div>
       </div>
 
-      <div className="max-w-[1480px] mx-auto px-6 pb-[45px]">
+      {/* Live market buzz */}
+      <div className="max-w-[1200px] mx-auto px-6 pt-5">
+        <MarketBuzz offers={deals.concat(wholesale, newArrivals).slice(0, 9)} />
+      </div>
+
+      <div className="max-w-[1200px] mx-auto px-6 pb-[45px]">
         <div className="grid gap-[19px]" style={{ gridTemplateColumns: '220px minmax(0,1fr)' }}>
         {/* ── LEFT SIDEBAR ── */}
         <aside id="filter" className="bg-white border border-border rounded-[11px] p-4 flex flex-col self-start sticky top-[135px]">
@@ -253,7 +312,7 @@ export function DesktopHome() {
           </div>
           <button type="button" onClick={applyFilters}
             className="w-full border-none bg-primary text-white rounded-[6px] py-[10px] mt-3 text-[10px] font-extrabold cursor-pointer hover:bg-primary-dark transition-all duration-200 active:scale-[0.98]">
-            {filterApplied ? 'Filters Applied ✓' : 'Apply Filters'}
+            {filterApplied ? <span className="inline-flex items-center gap-1"><Icon name="check" size={13} /> Filters Applied</span> : 'Apply Filters'}
           </button>
 
           {/* ── Sidebar trust / help panel fills remaining space ── */}
@@ -279,8 +338,23 @@ export function DesktopHome() {
 
         {/* ── MAIN CONTENT ── */}
         <div>
+          <div className="mb-[19px]">
+            <HomeAdBanner />
+          </div>
+
           {/* Shop by Category */}
           <SectionHeader title="Shop by Category" subtitle="Browse fresh products from trusted local sellers" />
+          {loading ? (
+            <div className="grid grid-cols-8 gap-[9px]">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="bg-white border border-border rounded-[10px] p-[9px] animate-pulse-soft">
+                  <div className="h-[64px] rounded-[7px] mb-[7px] shimmer" />
+                  <div className="h-3 bg-surface rounded w-3/4 mb-1.5" />
+                  <div className="h-2 bg-surface rounded w-1/2" />
+                </div>
+              ))}
+            </div>
+          ) : (
           <div className="grid grid-cols-8 gap-[9px]">
             {categories.map((cat, i) => (
               <button key={cat.id} type="button" onClick={() => setSelectedCategoryId(selectedCategoryId === cat.id ? null : cat.id)}
@@ -288,7 +362,7 @@ export function DesktopHome() {
                 style={{ animationDelay: `${Math.min(i * 30, 240)}ms` }}>
                 <div className="h-[64px] rounded-[7px] mb-[7px] overflow-hidden">
                   {cat.image_url ? (
-                    <img src={`/api/media/${cat.image_url}`} alt={cat.name} className="w-full h-full object-cover" />
+                    <img src={mediaUrl(cat.image_url) ?? ''} alt={cat.name} className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full" style={{ background: CATEGORY_PLACEHOLDER_BG[cat.name] || 'linear-gradient(145deg,#f1f6ea,#dcebd1)' }} />
                   )}
@@ -298,6 +372,7 @@ export function DesktopHome() {
               </button>
             ))}
           </div>
+          )}
 
           {/* ── Deals / Flash Sales ── */}
           <div className="mt-6">
@@ -306,53 +381,48 @@ export function DesktopHome() {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
               <span className="text-white text-[11px] font-bold">Ends in 02:34:17</span>
             </div>
-            {deals.length > 0 ? (
-              <div className="grid grid-cols-5 gap-[11px]">{deals.map((o, i) => <ProductCard key={o.id} offer={o} index={i} />)}</div>
+            {loading ? (
+              <ProductRailSkeleton count={5} />
+            ) : deals.length > 0 ? (
+              <ProductRail offers={deals} />
             ) : null}
           </div>
 
           {/* ── Market Day / Wholesale Picks ── */}
           <div className="mt-6">
             <SectionHeader title="Market Day Picks" subtitle="Wholesale prices on bulk orders" onSeeAll={() => navigate('/market-days')} />
-            {wholesale.length > 0 ? (
-              <div className="grid grid-cols-5 gap-[11px]">{wholesale.map((o, i) => <ProductCard key={o.id} offer={o} index={i} />)}</div>
+            {loading ? (
+              <ProductRailSkeleton count={5} />
+            ) : wholesale.length > 0 ? (
+              <ProductRail offers={wholesale} />
             ) : null}
           </div>
 
           {/* ── New Arrivals ── */}
           <div className="mt-6">
             <SectionHeader title="New Arrivals" subtitle="Freshly listed produce" onSeeAll={() => navigate('/offers')} />
-            {newArrivals.length > 0 ? (
-              <div className="grid grid-cols-5 gap-[11px]">{newArrivals.map((o, i) => <ProductCard key={o.id} offer={o} index={i} />)}</div>
+            {loading ? (
+              <ProductRailSkeleton count={5} />
+            ) : newArrivals.length > 0 ? (
+              <ProductRail offers={newArrivals} />
             ) : null}
-          </div>
-
-          {/* ── Top Sellers ── */}
-          <div className="mt-6">
-            <SectionHeader title="Top Sellers" subtitle="Highest rated in your area" />
-            {topSellers.length > 0 && (
-              <div className="flex gap-3 overflow-x-auto scrollbar-none pb-1">{topSellers.map((s) => <SellerCard key={s.id} seller={s} />)}</div>
-            )}
-          </div>
-
-          {/* ── Meet Our Sellers ── */}
-          <div className="mt-6">
-            <MeetFarmers sellers={topSellers} />
           </div>
 
           {/* ── Recently Viewed ── */}
           {recentlyViewed.length > 0 && (
             <div className="mt-6">
               <SectionHeader title="Recently Viewed" />
-              <div className="grid grid-cols-5 gap-[9px]">{recentlyViewed.map((o, i) => <ProductCard key={o.id} offer={o} index={i} />)}</div>
+              <ProductRail offers={recentlyViewed} />
             </div>
           )}
 
           {/* ── Recommended for You ── */}
           <div className="mt-6">
             <SectionHeader title="Recommended for You" subtitle="Based on popular items" onSeeAll={() => navigate('/offers')} />
-            {recommended.length > 0 && (
-              <div className="grid grid-cols-5 gap-[9px]">{recommended.map((o, i) => <ProductCard key={o.id} offer={o} index={i} />)}</div>
+            {loading ? (
+              <ProductRailSkeleton count={5} />
+            ) : recommended.length > 0 && (
+              <ProductRail offers={recommended} />
             )}
           </div>
 
@@ -383,17 +453,10 @@ export function DesktopHome() {
             )}
 
             {loading ? (
-              <div className="grid grid-cols-5 gap-[9px]">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="bg-white border border-border rounded-[9px] overflow-hidden animate-pulse">
-                    <div className="h-[145px] bg-surface" />
-                    <div className="p-[9px]"><div className="h-3 bg-surface rounded w-3/4 mb-2" /><div className="h-3 bg-surface rounded w-1/2" /></div>
-                  </div>
-                ))}
-              </div>
+              <ProductSkeletonGrid />
             ) : offers.length === 0 ? (
               <div className="bg-white border border-border rounded-[11px] p-10 text-center animate-scale-in">
-                <div className="text-3xl mb-2">🧺</div>
+                <div className="w-12 h-12 mx-auto mb-2 rounded-full bg-primary-light text-primary flex items-center justify-center"><Icon name="basket" size={24} /></div>
                 <p className="text-[12px] font-bold text-text">No products found</p>
                 <p className="text-[10px] text-text-secondary mt-1 mb-4">Try adjusting your filters or search for something else.</p>
                 <button type="button" onClick={clearFilters} className="bg-primary text-white text-[10px] font-extrabold rounded-[6px] px-4 py-2 border-none cursor-pointer hover:bg-primary-dark transition">
@@ -409,14 +472,14 @@ export function DesktopHome() {
           <div className="mt-5 bg-[#eef8f2] rounded-[11px] px-5 py-[17px]">
             <div className="grid grid-cols-5 gap-4">
               {[
-                { icon: '▣', label: 'Secure Payments', sub: 'Your payments are protected' },
-                { icon: '✓', label: 'Verified Sellers', sub: 'Trusted marketplace sellers' },
-                { icon: '♢', label: 'Buyer Protection', sub: 'Support when you need it' },
-                { icon: '★', label: 'Quality Guarantee', sub: 'Fresh produce, fair value' },
-                { icon: '◷', label: '24/7 Support', sub: 'We are here to help' },
+                { icon: 'lock' as IconName, label: 'Secure Payments', sub: 'Your payments are protected' },
+                { icon: 'check' as IconName, label: 'Verified Sellers', sub: 'Trusted marketplace sellers' },
+                { icon: 'shield' as IconName, label: 'Buyer Protection', sub: 'Support when you need it' },
+                { icon: 'star' as IconName, label: 'Quality Guarantee', sub: 'Fresh produce, fair value' },
+                { icon: 'help' as IconName, label: '24/7 Support', sub: 'We are here to help' },
               ].map((item) => (
                 <div key={item.label} className="flex gap-2.5 items-center">
-                  <span className="text-primary text-[18px] shrink-0">{item.icon}</span>
+                  <span className="text-primary w-5 h-5 grid place-items-center shrink-0"><Icon name={item.icon} size={17} /></span>
                   <div>
                     <strong className="block text-[10px] text-text">{item.label}</strong>
                     <span className="text-[8px] text-text-secondary">{item.sub}</span>
@@ -429,13 +492,13 @@ export function DesktopHome() {
               <span className="text-[9px] font-extrabold text-text-secondary uppercase tracking-wide">Accepted Payments</span>
               <div className="flex gap-3 items-center">
                 {[
-                  { label: 'Bank Transfer', icon: '🏦' },
-                  { label: 'USSD', icon: '📱' },
-                  { label: 'Paystack', icon: '💳' },
-                  { label: 'Card', icon: '💳' },
+                  { label: 'Bank Transfer', icon: 'bank' as IconName },
+                  { label: 'USSD', icon: 'smartphone' as IconName },
+                  { label: 'Paystack', icon: 'card' as IconName },
+                  { label: 'Card', icon: 'card' as IconName },
                 ].map((p) => (
                   <span key={p.label} className="flex items-center gap-1 text-[9px] text-text bg-white px-2.5 py-1 rounded border border-border">
-                    <span>{p.icon}</span> {p.label}
+                    <Icon name={p.icon} size={12} className="text-textSecondary" /> {p.label}
                   </span>
                 ))}
               </div>

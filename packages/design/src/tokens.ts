@@ -1,15 +1,17 @@
 export const colors = {
-  primary: '#008A3C',
-  primaryDark: '#006B30',
-  primaryLight: '#EAF7EF',
+  primary: '#22A34A',
+  primaryDark: '#1A7D38',
+  primaryLight: '#E6F6EC',
+  secondary: '#FFC52E',
+  tertiary: '#1F1F1F',
   bg: '#FFFFFF',
-  bgSecondary: '#F7F8F7',
-  text: '#171717',
+  bgSecondary: '#F7F7F7',
+  text: '#1F1F1F',
   textSecondary: '#6B6B6B',
   border: '#E6E8E6',
   danger: '#D92D20',
-  success: '#008A3C',
-  gold: '#F5A623',
+  success: '#22A34A',
+  gold: '#FFC52E',
   white: '#FFFFFF',
   black: '#000000',
   overlay: 'rgba(0,0,0,0.5)',
@@ -33,7 +35,7 @@ export const type = {
     extrabold: 800,
   },
   family:
-    "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    "'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
 } as const;
 
 export const spacing = {

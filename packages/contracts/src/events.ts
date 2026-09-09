@@ -8,7 +8,7 @@ import { z } from 'zod';
  * Minor (additive) payload fields are safe; removing/repurposing a field is a major bump.
  */
 
-export const EVENT_NAMESPACES = ['stock', 'order', 'escrow', 'notification'] as const;
+export const EVENT_NAMESPACES = ['stock', 'order', 'escrow', 'notification', 'market', 'marketing'] as const;
 
 export const lineStatuses = ['PAID', 'DISPATCHED', 'DELIVERED', 'PENDING', 'REFUNDED', 'FAILED', 'REPLACED'] as const;
 
@@ -62,6 +62,50 @@ export const eventSchemas = {
     recipient: z.string().min(1),
     template: z.string().min(1),
   }),
+  'market.seller_online': z.object({
+    seller_id: z.string().uuid(),
+    seller_name: z.string().min(1),
+    seller_type: z.string().optional(),
+    market_name: z.string().optional(),
+  }),
+  'market.offer_created': z.object({
+    offer_id: z.string().uuid(),
+    seller_id: z.string().uuid(),
+    seller_name: z.string().min(1),
+    product_name: z.string().min(1),
+    price_cents: z.number().int().nonnegative(),
+    unit: z.string().optional(),
+    channel: z.string().optional(),
+    market_name: z.string().optional(),
+    image_key: z.string().optional(),
+  }),
+  'market.offer_price_changed': z.object({
+    offer_id: z.string().uuid(),
+    seller_id: z.string().uuid(),
+    seller_name: z.string().min(1),
+    product_name: z.string().min(1),
+    old_price_cents: z.number().int().nonnegative(),
+    new_price_cents: z.number().int().nonnegative(),
+    unit: z.string().optional(),
+    market_name: z.string().optional(),
+    image_key: z.string().optional(),
+  }),
+  'marketing.ad_published': z.object({
+    ad_id: z.string().uuid(),
+    seller_id: z.string().uuid(),
+    seller_name: z.string().min(1),
+    title: z.string().min(1),
+    body: z.string().optional(),
+    format: z.enum(['TOAST', 'BANNER']),
+    image_key: z.string().optional(),
+    target_type: z.enum(['OFFER', 'SELLER', 'NONE']),
+    target_id: z.string().uuid().optional(),
+  }),
+  'marketing.ad_removed': z.object({
+    ad_id: z.string().uuid(),
+    seller_id: z.string().uuid(),
+    reason: z.enum(['REPORTED', 'MANUAL', 'EXPIRED']),
+  }),
 } as const;
 
 export type EventType = keyof typeof eventSchemas;
@@ -76,6 +120,11 @@ export const SCHEMA_VERSIONS: Record<EventType, number> = {
   'escrow.released': 1,
   'escrow.disputed': 1,
   'notification.sent': 1,
+  'market.seller_online': 1,
+  'market.offer_created': 1,
+  'market.offer_price_changed': 1,
+  'marketing.ad_published': 1,
+  'marketing.ad_removed': 1,
 };
 
 export interface OutboxEnvelope {

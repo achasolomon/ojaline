@@ -2,9 +2,16 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@ojaline/design';
 import { naira } from '@ojaline/design';
-import { getOfferById, getSimilarOffers, getReviews, trackView, createConversation } from '../lib/api';
-import type { Offer, FulfilmentMode, Review } from '../lib/api';
+import { getOfferById, getSimilarOffers, getReviews, trackView, createConversation, getSellerById, discoverOffers, getBatchOffers, getRecentlyViewedIds } from '../lib/api';
+import type { Offer, FulfilmentMode, Review, OfferImage } from '../lib/api';
 import { LandedCost } from '../components/LandedCost';
+import { OfferCard } from '../components/OfferCard';
+import { BargainModal } from '../components/BargainModal';
+import { Icon } from '../components/icons';
+import { addToCart, getCartItems } from '../lib/cart';
+import { bargainPriceKobo, bargainFloorKobo } from '../lib/bargain';
+import { nextDeliveryDates, DELIVERY_WINDOWS } from '../lib/delivery';
+import type { DeliveryWindow } from '../lib/delivery';
 
 const DELIVERY_FEES: Record<FulfilmentMode, number> = {
   INSTANT: 120000,
@@ -24,6 +31,35 @@ const DELIVERY_TIMES: Record<FulfilmentMode, string> = {
   MARKET_DAY: 'Next market day (Mon, Wed, Fri)',
 };
 
+const DELIVERY_OPTIONS: FulfilmentMode[] = ['INSTANT', 'SCHEDULED', 'MARKET_DAY'];
+
+function ProductSection({
+  title,
+  subtitle,
+  offers,
+  onNavigate,
+}: {
+  title: string;
+  subtitle?: string;
+  offers: Offer[];
+  onNavigate: (id: string) => void;
+}) {
+  if (offers.length === 0) return null;
+  return (
+    <section className="mt-10">
+      <div className="mb-4">
+        <h2 className="text-lg font-black text-text">{title}</h2>
+        {subtitle && <p className="mt-1 text-xs text-textSecondary">{subtitle}</p>}
+      </div>
+      <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4 lg:gap-3.5">
+        {offers.map((item) => (
+          <OfferCard key={item.id} offer={item} onClick={(o) => onNavigate(o.id)} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 const CHANNEL_LABELS: Record<Offer['channel'], string> = {
   RETAILER: 'Retail',
   WHOLESALE: 'Wholesale',
@@ -32,7 +68,7 @@ const CHANNEL_LABELS: Record<Offer['channel'], string> = {
 };
 
 const CHANNEL_COLORS: Record<Offer['channel'], string> = {
-  RETAILER: 'bg-primaryLight text-primary',
+  RETAILER: 'bg-primary-light text-primary',
   WHOLESALE: 'bg-blue-50 text-blue-700',
   DIRECT: 'bg-amber-50 text-amber-700',
   OPEN: 'bg-neutral-100 text-neutral-600',
@@ -53,7 +89,31 @@ export default function OfferDetail() {
   const [deliveryMode, setDeliveryMode] = useState<FulfilmentMode>('INSTANT');
   const [qty, setQty] = useState(1);
   const [similar, setSimilar] = useState<Offer[]>([]);
+  const [sellerProducts, setSellerProducts] = useState<Offer[]>([]);
+  const [suggested, setSuggested] = useState<Offer[]>([]);
+  const [recentlyViewed, setRecentlyViewed] = useState<Offer[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
+  const [added, setAdded] = useState(false);
+  const [bargainOpen, setBargainOpen] = useState(false);
+  const [agreedKobo, setAgreedKobo] = useState<number | null>(null);
+  const [activeIdx, setActiveIdx] = useState(0);
+  const [deliveryDate, setDeliveryDate] = useState<string | null>(null);
+  const [deliverySlot, setDeliverySlot] = useState<DeliveryWindow | null>(null);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+
+  // Escape + scroll lock while the image lightbox is open.
+  useEffect(() => {
+    if (!lightboxOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLightboxOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = '';
+    };
+  }, [lightboxOpen]);
 
   useEffect(() => {
     if (!id) return;
@@ -73,6 +133,19 @@ export default function OfferDetail() {
         getSimilarOffers(found.id, 4).then((s) => {
           if (!cancelled) setSimilar(s);
         }).catch(() => {});
+        getSellerById(found.seller_id).then((seller) => {
+          if (!cancelled) setSellerProducts(seller.products.filter((p) => p.id !== found.id).slice(0, 8));
+        }).catch(() => {});
+        const picks = found.category_id != null
+          ? discoverOffers({ category_id: found.category_id, limit: 4 })
+          : discoverOffers({ limit: 4 });
+        picks.then((res) => {
+          if (!cancelled) setSuggested(res.offers.filter((o) => o.id !== found.id).slice(0, 4));
+        }).catch(() => {});
+        const rvIds = getRecentlyViewedIds().filter((seenId) => seenId !== found.id);
+        getBatchOffers(rvIds.slice(0, 6)).then((offers) => {
+          if (!cancelled) setRecentlyViewed(offers);
+        }).catch(() => {});
         getReviews(found.id).then((r) => {
           if (!cancelled) setReviews(r);
         }).catch(() => {});
@@ -87,265 +160,643 @@ export default function OfferDetail() {
     return () => { cancelled = true; };
   }, [id]);
 
+  // If a bargained price or a delivery schedule for this offer is already in the cart, respect it.
+  useEffect(() => {
+    if (!offer) return;
+    const item = getCartItems().find((i) => i.offer_id === offer.id);
+    const original = offer.price_cents;
+    if (item && original != null && item.unit_price_kobo !== original) {
+      setAgreedKobo(item.unit_price_kobo);
+    }
+    if (item) {
+      setDeliveryDate(item.delivery_date);
+      setDeliverySlot(item.delivery_window);
+    }
+  }, [offer]);
+
+  // Reset gallery position whenever the offer changes.
+  useEffect(() => {
+    if (offer) setActiveIdx(0);
+  }, [offer]);
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      <div className="mx-auto w-full max-w-[1200px] px-6 py-6 pb-10">
+        <div className="mb-5 h-3 w-40 animate-pulse rounded bg-surface" />
+        <div className="grid items-start gap-6 md:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="min-w-0 space-y-6">
+            <div className="mx-auto w-full max-w-[440px] lg:max-w-[480px]">
+              <div className="relative aspect-square overflow-hidden bg-surface shimmer lg:aspect-[4/3]" />
+            </div>
+            <div className="rounded-2xl border border-border bg-white p-5 lg:p-6">
+              <div className="h-4 w-1/3 animate-pulse rounded bg-surface" />
+              <div className="mt-3 h-7 w-3/4 animate-pulse rounded bg-surface" />
+              <div className="mt-3 h-3 w-1/2 animate-pulse rounded bg-surface" />
+              <div className="mt-6 space-y-3">
+                <div className="h-3 w-full animate-pulse rounded bg-surface" />
+                <div className="h-3 w-5/6 animate-pulse rounded bg-surface" />
+              </div>
+            </div>
+          </div>
+          <aside className="animate-pulse rounded-2xl border border-border bg-white p-5 md:sticky md:top-[136px] md:p-6">
+            <div className="h-7 w-2/3 rounded bg-surface" />
+            <div className="mt-5 h-[52px] w-full rounded-xl bg-surface" />
+            <div className="mt-3 h-10 w-full rounded-lg bg-surface" />
+            <div className="mt-4 h-24 w-full rounded-xl bg-surface" />
+            <div className="mt-5 h-[52px] w-full rounded-xl bg-surface" />
+          </aside>
+        </div>
       </div>
     );
   }
 
   if (error || !offer) {
     return (
-      <div className="flex flex-col items-center justify-center h-full px-6 text-center">
-        <p className="text-sm font-medium text-danger">{error ?? 'Offer not found'}</p>
-        <Button variant="secondary" size="sm" className="mt-4" onClick={() => navigate('/offers')}>
+      <div className="mx-auto flex w-full max-w-[1200px] flex-col items-center justify-center px-6 py-24 text-center">
+        <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary-light text-primary">
+          <Icon name="basket" size={24} />
+        </span>
+        <p className="text-sm font-medium text-danger">{error ?? 'Offer not found.'}</p>
+        <p className="mt-1 mb-5 text-xs text-textSecondary">It may have been removed by the seller.</p>
+        <Button variant="secondary" size="sm" onClick={() => navigate('/offers')}>
           Back to offers
         </Button>
       </div>
     );
   }
 
-  const priceKobo = offer.price_cents ?? 0;
+  const originalKobo = offer.price_cents ?? 0;
+  const unitKobo = agreedKobo ?? originalKobo;
   const deliveryFee = DELIVERY_FEES[deliveryMode];
+  const ratingRaw = offer.seller_stats?.avg_rating;
+  const rating = ratingRaw != null && !Number.isNaN(Number(ratingRaw)) ? Number(ratingRaw) : null;
+  const askKobo = bargainPriceKobo(offer);
+  const floorKobo = bargainFloorKobo(offer);
+  const hasBargain = askKobo != null;
+  const isAgreed = offer.price_cents != null && agreedKobo != null && agreedKobo !== offer.price_cents;
+  const fmt = (kobo: number) => naira.format(kobo / 100);
+  const cartOverride = offer.price_cents != null ? unitKobo : undefined;
+  const galleryImages: OfferImage[] =
+    offer.images && offer.images.length > 0
+      ? offer.images
+      : offer.primary_image
+        ? [offer.primary_image]
+        : [];
+  const activeImage = galleryImages[activeIdx] ?? null;
+  const dates = nextDeliveryDates(5);
+  const effectiveDate = deliveryDate ?? dates[0]?.date ?? null;
+  const effectiveSlot = deliverySlot ?? DELIVERY_WINDOWS[1].slot;
+  const schedule = deliveryMode === 'SCHEDULED' && effectiveDate
+    ? { date: effectiveDate, window: effectiveSlot }
+    : { date: null, window: null };
+
+  const quickAdd = () => {
+    addToCart(offer, qty, cartOverride, schedule);
+    setAdded(true);
+    window.setTimeout(() => setAdded(false), 1500);
+  };
+
+  const startChat = async () => {
+    try {
+      const conv = await createConversation('b1000000-0000-4000-8000-000000000001', offer.seller_id, offer.id);
+      navigate(`/chat/${conv.id}`);
+    } catch { /* skip */ }
+  };
 
   return (
-    <div className="flex flex-col h-full bg-white">
-      <header className="flex items-center gap-3 border-b border-border px-4 py-3">
-        <button type="button" onClick={() => navigate(-1)} className="p-1">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
-        <h1 className="text-lg font-semibold flex-1">{offer.product_name}</h1>
-        {offer.negotiable && (
-          <span className="rounded-full bg-[#f5a623] text-white px-2.5 py-0.5 text-xs font-semibold">Negotiable</span>
-        )}
-        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${CHANNEL_COLORS[offer.channel]}`}>
-          {CHANNEL_LABELS[offer.channel]}
-        </span>
-      </header>
+    <div className="mx-auto w-full max-w-[1200px] px-6 py-6 pb-10">
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-xs text-textSecondary mb-5">
+        <span className="cursor-pointer hover:text-primary" onClick={() => navigate('/')}>Home</span>
+        <span>/</span>
+        <span className="cursor-pointer hover:text-primary" onClick={() => navigate('/offers')}>Offers</span>
+        <span>/</span>
+        <span className="max-w-[320px] truncate text-text font-medium">{offer.product_name}</span>
+      </div>
 
-      <main className="flex-1 overflow-y-auto px-4 py-4">
-        {offer.primary_image?.storage_key && (
-          <div className="mb-4 rounded-xl overflow-hidden h-48">
-            <img
-              src={`/api/media/${offer.primary_image.storage_key}`}
-              alt={offer.product_name}
-              className="w-full h-full object-cover"
-            />
+      <div className="grid items-start gap-6 md:grid-cols-[minmax(0,1fr)_360px]">
+        {/* ── LEFT COLUMN ── */}
+        <div className="min-w-0 space-y-6">
+          {/* Image gallery */}
+          <div className="mx-auto w-full max-w-[440px] lg:max-w-[480px]">
+            <div className="relative aspect-square overflow-hidden bg-surface lg:aspect-[4/3]">
+              {activeImage?.storage_key ? (
+                <img
+                  src={`/api/media/${activeImage.storage_key}`}
+                  alt={offer.product_name}
+                  decoding="async"
+                  onClick={() => setLightboxOpen(true)}
+                  className="h-full w-full cursor-zoom-in object-cover"
+                />
+              ) : (
+                <div className="grid h-full w-full place-items-center bg-surface text-textSecondary">
+                  <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="opacity-30">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <circle cx="8.5" cy="8.5" r="1.5" />
+                    <path d="M21 15l-5-5L5 21" />
+                  </svg>
+                </div>
+              )}
+
+              {galleryImages.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setActiveIdx((i) => (i === 0 ? galleryImages.length - 1 : i - 1))}
+                    className="absolute left-2.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center bg-white/85 text-text shadow-[0_2px_10px_rgba(0,0,0,0.15)] backdrop-blur-sm transition hover:bg-white cursor-pointer"
+                    aria-label="Previous image"
+                  >
+                    <Icon name="chevronRight" size={16} className="rotate-180" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveIdx((i) => (i + 1) % galleryImages.length)}
+                    className="absolute right-2.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center bg-white/85 text-text shadow-[0_2px_10px_rgba(0,0,0,0.15)] backdrop-blur-sm transition hover:bg-white cursor-pointer"
+                    aria-label="Next image"
+                  >
+                    <Icon name="chevronRight" size={16} />
+                  </button>
+                </>
+              )}
+
+              {galleryImages.length > 1 && (
+                <span className="absolute bottom-2.5 right-2.5 bg-black/50 px-2.5 py-1 text-[11px] font-bold text-white backdrop-blur-sm">
+                  {activeIdx + 1} / {galleryImages.length}
+                </span>
+              )}
+            </div>
+
+            {galleryImages.length > 1 && (
+              <div className="mt-3 flex justify-center gap-2">
+                {galleryImages.map((img, i) => (
+                  <button
+                    key={img.id}
+                    type="button"
+                    onClick={() => setActiveIdx(i)}
+                    className={`h-14 w-14 shrink-0 overflow-hidden transition cursor-pointer ${
+                      i === activeIdx ? 'ring-2 ring-primary' : 'opacity-70 hover:opacity-100'
+                    }`}
+                    aria-label={`View image ${i + 1}`}
+                  >
+                    <img
+                      src={`/api/media/${img.storage_key}`}
+                      alt={`${offer.product_name} ${i + 1}`}
+                      className="h-full w-full object-cover"
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-        )}
 
-        {/* Offer info */}
-        <div className="mb-4 rounded-xl border border-border bg-surface p-4">
-          <div className="flex flex-wrap gap-1.5 mb-3">
-            <span className="rounded bg-white border border-border px-2 py-0.5 text-xs font-medium text-textSecondary">
-              Min order: {offer.min_order_qty}
-            </span>
-            <span className="rounded bg-white border border-border px-2 py-0.5 text-xs font-medium text-textSecondary">
-              {PERISHABILITY_LABELS[offer.perishability]}
-            </span>
-            <span className="rounded bg-white border border-border px-2 py-0.5 text-xs font-medium text-textSecondary">
-              Available: {offer.sellable_qty}
-            </span>
-          </div>
-          <p className="text-xs text-textSecondary">{offer.physical_ref}</p>
-        </div>
-
-        {/* Seller Info */}
-        <div className="mb-4 rounded-xl border border-border bg-surface p-4">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <div className="w-10 h-10 rounded-full bg-primary-light flex items-center justify-center text-lg">👤</div>
-              <div>
-                <div className="text-sm font-bold text-text">{offer.seller_name}</div>
-                {offer.market_name && (
-                  <div className="text-xs text-textSecondary">{offer.stall_number}, {offer.market_name}</div>
+          {/* Offer info */}
+          <div className="rounded-2xl border border-border bg-white p-5 lg:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold shadow-sm ${CHANNEL_COLORS[offer.channel]}`}>
+                    {CHANNEL_LABELS[offer.channel]}
+                  </span>
+                  {offer.negotiable && (
+                    <span className="rounded-md bg-[#f5a623] px-2 py-0.5 text-[10px] font-bold text-white shadow-sm">
+                      Negotiable
+                    </span>
+                  )}
+                </div>
+                <h1 className="mt-2.5 text-xl font-black tracking-tight text-text lg:text-2xl lg:leading-snug">
+                  {offer.product_name}
+                </h1>
+              </div>
+              <div className="text-right">
+                {originalKobo > 0 ? (
+                  <>
+                    <div className="flex flex-wrap items-baseline justify-end gap-x-2 gap-y-0.5">
+                      <span className="text-[26px] font-black tracking-tight text-text lg:text-[28px]">{fmt(unitKobo)}</span>
+                      {isAgreed && (
+                        <span className="text-sm font-medium text-textSecondary line-through">{fmt(originalKobo)}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-end gap-1.5">
+                      {offer.unit && <div className="text-[11px] text-textSecondary">per {offer.unit}</div>}
+                      {isAgreed && (
+                        <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold text-primary-dark">
+                          Agreed price
+                        </span>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-base font-bold text-text">Price on request</div>
                 )}
               </div>
             </div>
-            <span className="text-primary text-xs font-semibold">✓ Verified</span>
-          </div>
-          <div className="flex items-center gap-3 text-xs text-textSecondary">
-            {offer.years_in_market && <span>{offer.years_in_market} years in market</span>}
-            {offer.member_since && <span>Since {new Date(offer.member_since).getFullYear()}</span>}
-            {offer.seller_stats && (
-              <span className="flex items-center gap-1">
-                <span className="text-[#d48d09]">★</span>
-                {Number(offer.seller_stats.avg_rating ?? 0).toFixed(1)} ({offer.seller_stats.review_count} reviews)
+
+            <div className="mt-4 flex flex-wrap gap-1.5 border-t border-border pt-4">
+              <span className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-textSecondary">
+                Min order: {offer.min_order_qty}{offer.unit ? ` ${offer.unit}` : ''}
               </span>
+              <span className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-textSecondary">
+                Available: {offer.sellable_qty}{offer.unit ? ` ${offer.unit}` : ''}
+              </span>
+              <span className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-textSecondary">
+                {PERISHABILITY_LABELS[offer.perishability]}
+              </span>
+            </div>
+          </div>
+
+          {/* Description */}
+          {offer.physical_ref && (
+            <div className="rounded-2xl border border-border bg-white p-5 lg:p-6">
+              <h2 className="mb-2 text-base font-black text-text">Description</h2>
+              <p className="text-sm leading-relaxed text-textSecondary">{offer.physical_ref}</p>
+            </div>
+          )}
+
+          {/* Seller card */}
+          <div className="rounded-2xl border border-border bg-white p-5 lg:p-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex min-w-0 items-center gap-3.5">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary-light text-primary">
+                  <Icon name="user" size={24} />
+                </span>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="truncate text-sm font-bold text-text">{offer.seller_name}</span>
+                    {rating != null && (
+                      <span className="flex items-center gap-0.5 rounded bg-surface px-1.5 py-0.5 text-[11px] font-bold text-[#B7790A]">
+                        <Icon name="star" size={11} fill="#d48d09" stroke="none" />
+                        {rating.toFixed(1)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-0.5 flex items-center gap-1 text-xs text-textSecondary">
+                    <Icon name="check" size={13} className="text-primary" />
+                    Verified seller
+                    {offer.market_name && <span>· {offer.stall_number ? `${offer.stall_number}, ` : ''}{offer.market_name}</span>}
+                  </div>
+                  {offer.years_in_market != null && (
+                    <div className="mt-0.5 text-xs text-textSecondary">
+                      {offer.years_in_market} year{offer.years_in_market === 1 ? '' : 's'} in market
+                      {offer.seller_stats?.review_count != null && ` · ${offer.seller_stats.review_count} review${offer.seller_stats.review_count === 1 ? '' : 's'}`}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate(`/sellers/${offer.seller_id}`)}
+                className="h-9 rounded-lg border border-primary bg-white px-4 text-xs font-bold text-primary transition hover:bg-primary hover:text-white cursor-pointer"
+              >
+                View seller
+              </button>
+            </div>
+          </div>
+
+          {/* Reviews */}
+          {reviews.length > 0 && (
+            <div className="rounded-2xl border border-border bg-white p-5 lg:p-6">
+              <h2 className="mb-4 text-base font-black text-text">
+                Reviews <span className="ml-1 text-sm font-normal text-textSecondary">({reviews.length})</span>
+              </h2>
+              <div className="flex flex-col gap-3">
+                {reviews.map((review) => (
+                  <div key={review.id} className="rounded-xl bg-surface p-3.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                          {review.reviewer_name.charAt(0).toUpperCase()}
+                        </span>
+                        <span className="truncate text-xs font-semibold text-text">{review.reviewer_name}</span>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-0.5">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <span key={i} className="inline-grid place-items-center w-4">
+                            <Icon name="star" size={12} fill={i < review.rating ? '#d48d09' : '#d1d5db'} stroke="none" />
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    {review.review_text && (
+                      <p className="mt-1.5 text-xs leading-relaxed text-textSecondary">{review.review_text}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── BUY BOX ── */}
+        <aside className="self-start rounded-2xl border border-border bg-white p-5 md:sticky md:top-[136px] md:p-6">
+          <div className="flex items-baseline justify-between gap-2">
+            {originalKobo > 0 ? (
+              <div className="flex items-baseline gap-2">
+                <span className="text-[26px] font-black tracking-tight text-text">{fmt(unitKobo)}</span>
+                {offer.unit && <span className="text-sm text-textSecondary"> / {offer.unit}</span>}
+                {isAgreed && (
+                  <span className="text-sm font-medium text-textSecondary line-through">{fmt(originalKobo)}</span>
+                )}
+              </div>
+            ) : (
+              <span className="text-base font-bold text-text">Price on request</span>
+            )}
+            <span className="text-[11px] text-textSecondary">incl. delivery</span>
+          </div>
+
+          {isAgreed && (
+            <p className="mt-2 flex items-center gap-1.5 rounded-xl bg-secondary/20 px-3 py-2 text-[12px] font-bold text-[#A36A00]">
+              <Icon name="check" size={14} /> Agreed with seller at {fmt(unitKobo)}
+            </p>
+          )}
+
+          {/* Haggle + chat seller — kept above the buying controls */}
+          <div className="mt-4 flex gap-2.5">
+            {hasBargain ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setBargainOpen(true)}
+                  className="flex h-[52px] flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-secondary to-[#F5A623] text-sm font-bold text-primary-dark shadow-[0_6px_16px_rgba(217,158,0,0.22)] transition hover:from-[#F0BE1F] hover:to-[#F0A21F] active:scale-[0.99] cursor-pointer"
+                >
+                  <Icon name="bolt" size={16} className="fill-current" />
+                  Haggle · from {fmt(askKobo!)}
+                </button>
+                <button
+                  type="button"
+                  onClick={startChat}
+                  className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-xl border-2 border-border bg-white text-primary transition hover:border-primary hover:bg-primary-light/40 cursor-pointer"
+                  aria-label="Chat with seller"
+                >
+                  <Icon name="message" size={20} />
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={startChat}
+                className="flex h-[52px] flex-1 items-center justify-center gap-2 rounded-xl border-2 border-primary bg-white text-sm font-bold text-primary transition hover:bg-primary hover:text-white cursor-pointer"
+              >
+                <Icon name="message" size={17} /> Chat with seller
+              </button>
+            )}
+          </div>
+          {hasBargain && (
+            <p className="mt-1.5 text-[10px] font-medium text-textSecondary">
+              Sellers usually settle around {fmt(floorKobo!)} · promote your own price
+            </p>
+          )}
+
+          {/* Quantity */}
+          <div className="mt-4">
+            <label className="mb-2 block text-xs font-bold text-text">Quantity</label>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setQty((q) => Math.max(offer.min_order_qty, q - 1))}
+                className="h-10 w-10 rounded-lg border border-border bg-white text-lg font-bold text-primary transition hover:border-primary cursor-pointer"
+                aria-label="Decrease quantity"
+              >
+                <Icon name="minus" size={14} />
+              </button>
+              <span className="min-w-[36px] text-center text-lg font-bold text-text">{qty}</span>
+              <button
+                type="button"
+                onClick={() => setQty((q) => Math.min(offer.sellable_qty, q + 1))}
+                className="h-10 w-10 rounded-lg border border-border bg-white text-lg font-bold text-primary transition hover:border-primary cursor-pointer"
+                aria-label="Increase quantity"
+              >
+                <Icon name="plus" size={14} />
+              </button>
+              <span className="ml-1 text-[11px] text-textSecondary">
+                min {offer.min_order_qty}{offer.unit ? ` ${offer.unit}` : ''}
+              </span>
+            </div>
+          </div>
+
+          {/* Delivery mode */}
+          <div className="mt-5">
+            <label className="mb-2 block text-xs font-bold text-text">Delivery Mode</label>
+            <div className="flex flex-col gap-2">
+              {DELIVERY_OPTIONS.map((mode) => {
+                const offered = offer.fulfilment_modes.includes(mode);
+                const active = deliveryMode === mode;
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    disabled={!offered}
+                    onClick={() => setDeliveryMode(mode)}
+                    className={`flex items-center justify-between gap-2 rounded-xl border p-3 text-left transition ${
+                      active ? 'border-primary bg-primary-light/50' : 'border-border bg-white'
+                    } ${offered ? 'cursor-pointer hover:border-primary/40' : 'cursor-not-allowed opacity-55'}`}
+                  >
+                    <div className="min-w-0">
+                      <p className="flex flex-wrap items-center gap-2 text-[13px] font-bold text-text">
+                        {DELIVERY_LABELS[mode]}
+                        {!offered && (
+                          <span className="rounded bg-surface px-1.5 py-0.5 text-[9px] font-semibold normal-case tracking-normal text-textSecondary">
+                            Not offered for this listing
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-[11px] text-textSecondary">{DELIVERY_TIMES[mode]}</p>
+                    </div>
+                    <span className="shrink-0 text-[13px] font-bold text-text">{naira.format(DELIVERY_FEES[mode] / 100)}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {deliveryMode === 'SCHEDULED' && (
+              <div className="mt-3 rounded-xl bg-surface p-3">
+                <p className="mb-2 text-[11px] font-bold text-text">Pick a date & time window</p>
+                <div className="mb-2 flex gap-1.5 overflow-x-auto">
+                  {dates.map((d) => (
+                    <button
+                      key={d.date}
+                      type="button"
+                      onClick={() => setDeliveryDate(d.date)}
+                      className={`flex shrink-0 flex-col items-center rounded-lg border px-3 py-1.5 transition cursor-pointer ${
+                        (deliveryDate ?? dates[0]?.date) === d.date
+                          ? 'border-primary bg-primary text-white'
+                          : 'border-border bg-white text-text hover:border-primary/40'
+                      }`}
+                    >
+                      <span className="text-[10px] font-bold">{d.label}</span>
+                      <span className="text-[9px] opacity-80">{d.day}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-1.5">
+                  {DELIVERY_WINDOWS.map((w) => (
+                    <button
+                      key={w.slot}
+                      type="button"
+                      onClick={() => setDeliverySlot(w.slot)}
+                      className={`flex-1 rounded-lg border px-2 py-1.5 text-center transition cursor-pointer ${
+                        (deliverySlot ?? DELIVERY_WINDOWS[1].slot) === w.slot
+                          ? 'border-primary bg-primary text-white'
+                          : 'border-border bg-white text-text hover:border-primary/40'
+                      }`}
+                      aria-label={`Deliver ${w.label}, ${w.hours}`}
+                    >
+                      <span className="block text-[10px] font-bold">{w.label}</span>
+                      <span className="block text-[9px] opacity-80">{w.hours}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Landed cost */}
+          <LandedCost unitPriceKobo={unitKobo} qty={qty} deliveryFeeKobo={deliveryFee} />
+
+          {/* Actions */}
+          <div className="mt-5 flex gap-2.5">
+            <button
+              type="button"
+              onClick={quickAdd}
+              className={`flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-xl border-2 text-primary transition active:scale-[0.99] cursor-pointer ${
+                added ? 'border-primary bg-primary text-white' : 'border-primary bg-white hover:bg-primary hover:text-white'
+              }`}
+              aria-label="Add to cart"
+            >
+              {added ? <Icon name="check" size={20} /> : <Icon name="cart" size={20} />}
+            </button>
+            <button
+              type="button"
+              onClick={() => { addToCart(offer, qty, cartOverride, schedule); navigate('/checkout'); }}
+              className="flex h-[52px] flex-1 items-center justify-center gap-2 rounded-xl bg-primary text-sm font-bold tracking-tight text-white transition hover:bg-primary-dark active:scale-[0.99] cursor-pointer"
+            >
+              Buy Now · {fmt(unitKobo)}
+            </button>
+          </div>
+
+          {/* Trust notices */}
+          <div className="mt-5 rounded-xl border border-primary/20 bg-primary-light/50 p-3">
+            <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-primary">
+              <Icon name="shield" size={14} className="mt-0.5 shrink-0" />
+              Buyer Protection: Orders paid through Kika are fully protected. Payments outside the platform forfeit refund and dispute support.
+            </p>
+          </div>
+          <p className="mt-2.5 text-[10px] leading-relaxed text-textSecondary">
+            This offer is listed on the {CHANNEL_LABELS[offer.channel]} channel. Your buyer role must match to purchase.
+          </p>
+        </aside>
+      </div>
+
+      {/* Suggested products */}
+      <ProductSection
+        title="Suggested for you"
+        subtitle="Handpicked finds from the market"
+        offers={suggested}
+        onNavigate={(o) => navigate(`/offers/${o}`)}
+      />
+
+      {/* Other products from the seller */}
+      <ProductSection
+        title={`More from ${offer.seller_name?.split(' ')[0] ?? 'this seller'}`}
+        subtitle="Other products listed by this seller"
+        offers={sellerProducts}
+        onNavigate={(o) => navigate(`/offers/${o}`)}
+      />
+
+      {/* Related products */}
+      <ProductSection
+        title="Related products"
+        subtitle="Other fresh picks you might like"
+        offers={similar}
+        onNavigate={(o) => navigate(`/offers/${o}`)}
+      />
+
+      {/* Recently viewed */}
+      <ProductSection
+        title="Recently viewed"
+        subtitle="Pick up where you left off"
+        offers={recentlyViewed}
+        onNavigate={(o) => navigate(`/offers/${o}`)}
+      />
+
+      {bargainOpen && (
+        <BargainModal
+          offer={offer}
+          onClose={() => setBargainOpen(false)}
+          onDeal={(k) => setAgreedKobo(k)}
+        />
+      )}
+
+      {lightboxOpen && activeImage?.storage_key && (
+        <div className="fixed inset-0 z-[80] bg-black/95">
+          <div className="flex items-center justify-between px-4 py-3 sm:px-6">
+            <span className="max-w-[60%] truncate text-sm font-semibold text-white">{offer.product_name}</span>
+            <button
+              type="button"
+              onClick={() => setLightboxOpen(false)}
+              className="flex h-10 w-10 items-center justify-center bg-white/10 text-white transition hover:bg-white/20 cursor-pointer"
+              aria-label="Close viewer"
+            >
+              <Icon name="close" size={20} />
+            </button>
+          </div>
+
+          <div className="relative flex min-h-0 flex-1 items-center justify-center px-14 sm:px-20">
+            {galleryImages.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setActiveIdx((i) => (i === 0 ? galleryImages.length - 1 : i - 1))}
+                  className="absolute left-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center bg-white/10 text-white transition hover:bg-white/20 cursor-pointer"
+                  aria-label="Previous image"
+                >
+                  <Icon name="chevronRight" size={20} className="rotate-180" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveIdx((i) => (i + 1) % galleryImages.length)}
+                  className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center bg-white/10 text-white transition hover:bg-white/20 cursor-pointer"
+                  aria-label="Next image"
+                >
+                  <Icon name="chevronRight" size={20} />
+                </button>
+              </>
+            )}
+            <img
+              key={activeImage.storage_key}
+              src={`/api/media/${activeImage.storage_key}`}
+              alt={offer.product_name}
+              className="max-h-[calc(100vh-140px)] max-w-full object-contain"
+            />
+          </div>
+
+          <div className="flex items-center justify-between px-4 py-4 sm:px-6">
+            <span className="text-xs font-semibold text-white/70">
+              {activeIdx + 1} / {galleryImages.length}
+            </span>
+            {galleryImages.length > 1 && (
+              <div className="flex gap-2">
+                {galleryImages.map((img, i) => (
+                  <button
+                    key={img.id}
+                    type="button"
+                    onClick={() => setActiveIdx(i)}
+                    className={`h-14 w-14 overflow-hidden transition cursor-pointer ${
+                      i === activeIdx ? 'ring-2 ring-white' : 'opacity-50 hover:opacity-90'
+                    }`}
+                    aria-label={`View image ${i + 1}`}
+                  >
+                    <img
+                      src={`/api/media/${img.storage_key}`}
+                      alt={`${offer.product_name} ${i + 1}`}
+                      className="h-full w-full object-cover"
+                    />
+                  </button>
+                ))}
+              </div>
             )}
           </div>
         </div>
-
-        {/* Buyer Protection notice */}
-        <div className="mb-4 rounded-lg border border-primary/20 bg-primaryLight p-3">
-          <p className="text-xs text-primary font-medium">
-            🔒 Buyer Protection: Orders paid through Ojaline are fully protected.
-            Orders paid outside the platform forfeit refund and dispute support.
-          </p>
-        </div>
-
-        {/* Channel enforcement notice */}
-        <div className="mb-4 rounded-lg border border-primary/20 bg-primaryLight p-3">
-          <p className="text-xs text-primary font-medium">
-            This offer is listed on the {CHANNEL_LABELS[offer.channel]} channel.
-            Your buyer role must match to purchase.
-          </p>
-        </div>
-
-        {/* Quantity selector */}
-        <div className="mb-4">
-          <label className="block text-sm font-semibold text-text mb-2">Quantity</label>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setQty((q) => Math.max(offer.min_order_qty, q - 1))}
-              className="w-10 h-10 rounded-lg border border-border flex items-center justify-center text-lg font-bold text-primary"
-            >
-              -
-            </button>
-            <span className="min-w-[40px] text-center text-lg font-bold">{qty}</span>
-            <button
-              type="button"
-              onClick={() => setQty((q) => Math.min(offer.sellable_qty, q + 1))}
-              className="w-10 h-10 rounded-lg border border-border flex items-center justify-center text-lg font-bold text-primary"
-            >
-              +
-            </button>
-            <span className="text-xs text-textSecondary ml-2">
-              (min {offer.min_order_qty})
-            </span>
-          </div>
-        </div>
-
-        {/* Delivery mode selector */}
-        <div className="mb-4">
-          <label className="block text-sm font-semibold text-text mb-2">Delivery Mode</label>
-          <div className="flex flex-col gap-2">
-            {offer.fulfilment_modes.map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => setDeliveryMode(mode)}
-                className={`flex items-center justify-between rounded-lg border p-3 text-left transition ${
-                  deliveryMode === mode ? 'border-primary bg-primaryLight' : 'border-border'
-                }`}
-              >
-                <div>
-                  <p className="text-sm font-medium">{DELIVERY_LABELS[mode]}</p>
-                  <p className="text-xs text-textSecondary">{DELIVERY_TIMES[mode]}</p>
-                </div>
-                <span className="text-sm font-semibold text-text">
-                  {naira.format(DELIVERY_FEES[mode] / 100)}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Landed cost transparency — Sprint 2 core requirement */}
-        <LandedCost
-          unitPriceKobo={priceKobo}
-          qty={qty}
-          deliveryFeeKobo={deliveryFee}
-        />
-
-        <p className="mt-3 text-[10px] text-textSecondary text-center leading-relaxed">
-          Landed cost = item total + delivery fee. Final amount confirmed at checkout.
-        </p>
-
-        {/* Reviews */}
-        {reviews.length > 0 && (
-          <div className="mt-6 pt-6 border-t border-border">
-            <h3 className="text-sm font-bold text-text mb-3">Reviews ({reviews.length})</h3>
-            <div className="flex flex-col gap-3">
-              {reviews.map((review) => (
-                <div key={review.id} className="bg-surface rounded-lg p-3">
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
-                        {review.reviewer_name.charAt(0)}
-                      </div>
-                      <span className="text-xs font-semibold text-text">{review.reviewer_name}</span>
-                    </div>
-                    <div className="flex items-center gap-0.5">
-                      {Array.from({ length: 5 }).map((_, i) => (
-                        <span key={i} className={`text-xs ${i < review.rating ? 'text-[#d48d09]' : 'text-gray-300'}`}>★</span>
-                      ))}
-                    </div>
-                  </div>
-                  {review.review_text && (
-                    <p className="text-xs text-textSecondary mt-1">{review.review_text}</p>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Similar products */}
-        {similar.length > 0 && (
-          <div className="mt-6 pt-6 border-t border-border">
-            <h3 className="text-sm font-bold text-text mb-3">Similar products</h3>
-            <div className="grid grid-cols-2 gap-3">
-              {similar.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => navigate(`/offers/${item.id}`)}
-                  className="bg-surface border border-border rounded-xl overflow-hidden text-left cursor-pointer hover:shadow-sm transition"
-                >
-                  <div className="h-20 bg-cover bg-center">
-                    {item.primary_image?.storage_key ? (
-                      <img
-                        src={`/api/media/${item.primary_image.storage_key}`}
-                        alt={item.product_name}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : null}
-                  </div>
-                  <div className="p-3">
-                    <div className="text-xs font-bold text-text truncate">{item.product_name}</div>
-                    <div className="text-[11px] text-textSecondary mt-0.5">{item.seller_name}</div>
-                    {item.price_cents != null && (
-                      <div className="text-sm font-black text-primary mt-1">
-                        {naira.format(item.price_cents / 100)}
-                      </div>
-                    )}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </main>
-
-      <div className="border-t border-border bg-white px-4 py-4 flex gap-3">
-        <button
-          type="button"
-          onClick={async () => {
-            try {
-              const conv = await createConversation('b1000000-0000-4000-8000-000000000001', offer.seller_id, offer.id);
-              navigate(`/chat/${conv.id}`);
-            } catch { /* skip */ }
-          }}
-          className="flex-1 h-12 rounded-lg border border-primary bg-white text-primary text-sm font-semibold cursor-pointer flex items-center justify-center gap-2"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-          </svg>
-          Chat with Seller
-        </button>
-        <Button
-          size="lg"
-          className="flex-[2]"
-          onClick={() => navigate('/checkout', { state: { offerId: offer.id, qty, deliveryMode } })}
-        >
-          Proceed to checkout
-        </Button>
-      </div>
+      )}
     </div>
   );
 }

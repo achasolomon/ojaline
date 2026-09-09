@@ -1,27 +1,28 @@
 import { useNavigate } from 'react-router-dom';
 import type { TopSeller } from '../lib/api';
+import { Icon, type IconName } from './icons';
 
-const SELLER_STORIES = [
+const SELLER_STORIES: { name: string; role: string; location: string; quote: string; icon: IconName }[] = [
   {
     name: 'Adebola Akinwale',
     role: 'Farmer',
     location: 'Oyo State',
     quote: 'I wake up 4am every market day. Fresh tatashe must reach Yaba before sunrise.',
-    emoji: '🌾',
+    icon: 'leaf',
   },
   {
     name: 'Bisi Olatunji',
     role: 'Market Woman',
     location: 'Mile 12, Lagos',
     quote: 'My crayfish dey come from the finest fishermen for the south-south. Quality no dey lie.',
-    emoji: '🧺',
+    icon: 'basket',
   },
   {
     name: 'Chidi Eze',
     role: 'Store Owner',
     location: 'Ikeja, Lagos',
     quote: 'I stock okporoko, iru and garri — everything my customers need for authentic soup.',
-    emoji: '🏪',
+    icon: 'store',
   },
 ];
 
@@ -51,8 +52,8 @@ export function MeetFarmers({ sellers = [] }: MeetFarmersProps) {
               className="min-w-[220px] max-w-[240px] bg-white border border-border rounded-xl p-3.5 cursor-pointer shrink-0 text-left transition-shadow hover:shadow-md"
             >
               <div className="flex items-center gap-2.5 mb-2.5">
-                <div className="w-11 h-11 rounded-full bg-primary-light flex items-center justify-center text-xl">
-                  {story.emoji}
+                <div className="w-11 h-11 rounded-full bg-primary-light text-primary flex items-center justify-center">
+                  <Icon name={story.icon} size={20} />
                 </div>
                 <div>
                   <div className="text-[12px] font-bold text-text">{story.name}</div>
@@ -62,7 +63,7 @@ export function MeetFarmers({ sellers = [] }: MeetFarmersProps) {
               <p className="text-[11px] text-textSecondary italic leading-relaxed">"{story.quote}"</p>
               {seller && (
                 <div className="mt-2 pt-2 border-t border-border flex items-center gap-2">
-                  <span className="text-[10px] text-[#d48d09]">★ {Number(seller.avg_rating).toFixed(1)}</span>
+                  <span className="flex items-center text-[10px] text-[#d48d09]"><Icon name="star" size={12} fill="#d48d09" stroke="none" className="mr-1" />{Number(seller.avg_rating).toFixed(1)}</span>
                   <span className="text-[9px] text-textSecondary">· {seller.review_count} reviews</span>
                   {seller.market_name && (
                     <span className="text-[9px] text-textSecondary">· {seller.market_name}</span>

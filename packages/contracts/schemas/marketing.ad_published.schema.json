@@ -1,0 +1,58 @@
+{
+  "event_type": "marketing.ad_published",
+  "schema_version": 1,
+  "type": "object",
+  "properties": {
+    "ad_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "seller_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "seller_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "body": {
+      "type": "string"
+    },
+    "format": {
+      "type": "string",
+      "enum": [
+        "TOAST",
+        "BANNER"
+      ]
+    },
+    "image_key": {
+      "type": "string"
+    },
+    "target_type": {
+      "type": "string",
+      "enum": [
+        "OFFER",
+        "SELLER",
+        "NONE"
+      ]
+    },
+    "target_id": {
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "required": [
+    "ad_id",
+    "seller_id",
+    "seller_name",
+    "title",
+    "format",
+    "target_type"
+  ],
+  "additionalProperties": false,
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

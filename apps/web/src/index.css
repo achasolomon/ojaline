@@ -1,18 +1,30 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary: #008A3C;
-  --color-primary-dark: #006B30;
-  --color-primary-light: #EAF7EF;
-  --color-surface: #F7F8F7;
+  --color-primary: #22A34A;
+  --color-primary-dark: #1A7D38;
+  --color-primary-light: #E6F6EC;
+  --color-secondary: #FFC52E;
+  --color-tertiary: #1F1F1F;
+  --color-surface: #F7F7F7;
   --color-border: #E6E8E6;
   --color-danger: #D92D20;
-  --color-gold: #F5A623;
-  --color-text: #171717;
+  --color-gold: #FFC52E;
+  --color-text: #1F1F1F;
   --color-text-secondary: #6B6B6B;
+  --font-sans: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --default-font-family: var(--font-sans);
 }
 
 @layer base {
+  /* Muted under-paint behind every page: transient loading frames (and any
+     short page) render gray-on-gray instead of a stark white void. */
+  html, body, #root {
+    background-color: var(--color-surface);
+  }
+  html, body {
+    font-family: var(--font-sans);
+  }
   @keyframes spin { to { transform: rotate(360deg); } }
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
@@ -23,6 +35,18 @@
   @keyframes scaleIn {
     from { opacity: 0; transform: scale(0.96); }
     to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes shimmer {
+    0% { background-position: -400px 0; }
+    100% { background-position: 400px 0; }
+  }
+  @keyframes pulseSoft {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+  }
+  @keyframes progressShrink {
+    from { width: 100%; }
+    to { width: 0%; }
   }
 }
 
@@ -39,5 +63,27 @@
   }
   .animate-scale-in {
     animation: scaleIn 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .animate-fade-in {
+    animation: fadeIn 0.2s ease-out both;
+  }
+  .animate-sheet-up {
+    animation: slideUp 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .animate-progress {
+    animation-name: progressShrink;
+    animation-timing-function: linear;
+    animation-fill-mode: forwards;
+  }
+  .market-toast:hover .animate-progress {
+    animation-play-state: paused;
+  }
+  .shimmer {
+    background: linear-gradient(90deg, #eef1ee 0%, #f6f8f6 40%, #eef1ee 80%);
+    background-size: 800px 100%;
+    animation: shimmer 1.4s linear infinite;
+  }
+  .animate-pulse-soft {
+    animation: pulseSoft 1.6s ease-in-out infinite;
   }
 }

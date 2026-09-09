@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getSellerById, type Seller } from '../lib/api';
-import { naira } from '@ojaline/design';
+import { Icon, type IconName } from '../components/icons';
+import { OfferCard } from '../components/OfferCard';
 
 const SELLER_TYPE_LABELS: Record<string, string> = {
   FARMER: 'Farmer',
@@ -10,14 +11,42 @@ const SELLER_TYPE_LABELS: Record<string, string> = {
   PROCESSOR: 'Processor',
 };
 
-const SELLER_TYPE_ICONS: Record<string, string> = {
-  FARMER: '🌾',
-  MARKET_WOMAN: '🧺',
-  STORE: '🏪',
-  PROCESSOR: '⚙️',
+const SELLER_TYPE_ICONS: Record<string, IconName> = {
+  FARMER: 'leaf',
+  MARKET_WOMAN: 'basket',
+  STORE: 'store',
+  PROCESSOR: 'settings',
 };
 
-const PRODUCT_PLACEHOLDER_BG = 'radial-gradient(circle at 30% 45%,#e34e32 0 12%,transparent 12.5%),radial-gradient(circle at 58% 62%,#d8442f 0 13%,transparent 13.5%),radial-gradient(circle at 72% 33%,#f0a21f 0 9%,transparent 9.5%),radial-gradient(circle at 45% 25%,#69a03b 0 12%,transparent 12.5%),linear-gradient(145deg,#f4f7ef,#dfead8)';
+interface Stat {
+  icon: IconName;
+  label: string;
+  value: string;
+}
+
+function buildStats(seller: Seller): Stat[] {
+  const stats: Stat[] = [];
+  if (seller.avg_rating != null) {
+    const rating = Number(seller.avg_rating);
+    if (!Number.isNaN(rating)) {
+      stats.push({
+        icon: 'star',
+        label: 'Rating',
+        value: seller.review_count != null ? `${rating.toFixed(1)} (${seller.review_count})` : rating.toFixed(1),
+      });
+    }
+  }
+  if (seller.years_in_market != null) {
+    stats.push({ icon: 'calendar', label: 'In market', value: `${seller.years_in_market} yr${seller.years_in_market === 1 ? '' : 's'}` });
+  }
+  if (seller.completed_orders != null) {
+    stats.push({ icon: 'basket', label: 'Orders complete', value: String(seller.completed_orders) });
+  }
+  if (seller.completion_rate != null) {
+    stats.push({ icon: 'check', label: 'Completion rate', value: `${seller.completion_rate}%` });
+  }
+  return stats;
+}
 
 export default function SellerDetail() {
   const { id } = useParams<{ id: string }>();
@@ -36,15 +65,30 @@ export default function SellerDetail() {
 
   if (loading) {
     return (
-      <div className="max-w-[1480px] mx-auto px-6 py-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-5 bg-surface rounded w-48" />
-          <div className="h-8 bg-surface rounded w-64" />
-          <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="h-64 bg-surface rounded-xl" />
-            ))}
+      <div className="mx-auto w-full max-w-[1200px] px-6 py-6">
+        <div className="h-5 w-40 animate-pulse rounded bg-surface" />
+        <div className="mt-4 overflow-hidden rounded-2xl border border-border bg-white">
+          <div className="h-24 animate-pulse bg-surface" />
+          <div className="px-6 py-5">
+            <div className="flex items-center gap-4">
+              <div className="h-20 w-20 animate-pulse rounded-full bg-surface" />
+              <div className="flex-1 space-y-2">
+                <div className="h-5 w-48 animate-pulse rounded bg-surface" />
+                <div className="h-3 w-24 animate-pulse rounded bg-surface" />
+              </div>
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-4 lg:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="h-14 animate-pulse rounded-xl bg-surface" />
+              ))}
+            </div>
           </div>
+        </div>
+        <div className="mt-5 h-5 w-52 animate-pulse rounded bg-surface" />
+        <div className="mt-4 grid grid-cols-2 gap-2.5 lg:grid-cols-3 lg:gap-3.5">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="h-64 animate-pulse rounded-xl bg-surface" />
+          ))}
         </div>
       </div>
     );
@@ -52,99 +96,120 @@ export default function SellerDetail() {
 
   if (!seller) {
     return (
-      <div className="max-w-[1480px] mx-auto px-6 py-6">
-        <p className="text-sm text-text-secondary">Seller not found.</p>
+      <div className="mx-auto w-full max-w-[1200px] px-6 py-6">
+        <p className="text-sm text-textSecondary">Seller not found.</p>
       </div>
     );
   }
 
   const type = seller.seller_type || seller.profile_type || '';
+  const stats = buildStats(seller);
+  const hasLocation = seller.market_name || seller.stall_number;
 
   return (
-    <div className="max-w-[1480px] mx-auto px-6 py-6">
+    <div className="mx-auto w-full max-w-[1200px] px-6 py-6">
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-xs text-text-secondary mb-4">
+      <div className="flex items-center gap-2 text-xs text-textSecondary mb-5">
         <span className="cursor-pointer hover:text-primary" onClick={() => navigate('/')}>Home</span>
         <span>/</span>
         <span className="text-text font-medium">{seller.full_name}</span>
       </div>
 
       {/* Seller profile */}
-      <div className="bg-white border border-border rounded-xl p-6 mb-6">
-        <div className="flex items-start gap-4">
-          <div className="w-16 h-16 rounded-full bg-primary-light flex items-center justify-center text-2xl shrink-0">
-            {SELLER_TYPE_ICONS[type] || '👤'}
-          </div>
-          <div className="flex-1">
-            <h1 className="text-xl font-black text-text">{seller.full_name}</h1>
-            <p className="text-sm text-primary font-semibold">{SELLER_TYPE_LABELS[type] || type || 'Seller'}</p>
-            {seller.bio && (
-              <p className="text-sm text-text-secondary mt-2">{seller.bio}</p>
-            )}
-            {/* Markets */}
-            {seller.markets.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-3">
-                {seller.markets.map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); navigate(`/market-days/${m.id}`); }}
-                    className="text-[10px] font-semibold bg-surface text-text-secondary rounded-full px-3 py-1 border border-border cursor-pointer hover:bg-primary-light hover:text-primary transition"
-                  >
-                    🏪 {m.name}
-                  </button>
-                ))}
+      <div className="mb-6 overflow-hidden rounded-2xl border border-border bg-white">
+        <div className="h-20 bg-gradient-to-r from-primary to-primary-dark lg:h-28" />
+        <div className="px-5 pb-6 lg:px-8">
+          <div className="-mt-9 flex items-end gap-4 lg:-mt-11 lg:gap-5">
+            <div className="w-[104px] shrink-0 lg:w-[140px]">
+              <div className="aspect-square rounded-full bg-white p-1.5 shadow-[0_4px_14px_rgba(0,0,0,0.08)]">
+                <div className="flex h-full w-full items-center justify-center rounded-full bg-primary-light text-primary">
+                  <Icon name={SELLER_TYPE_ICONS[type] || 'user'} size={44} />
+                </div>
               </div>
-            )}
+            </div>
+            <div className="min-w-0 flex-1 pb-0.5">
+              <h1 className="truncate text-xl font-black text-text lg:text-2xl">{seller.full_name}</h1>
+              <p className="text-xs font-semibold text-primary lg:text-sm">
+                {SELLER_TYPE_LABELS[type] || type || 'Seller'}
+              </p>
+              {seller.markets.length > 0 && (
+                <div className="mt-2 flex max-h-8 flex-wrap gap-1.5 overflow-hidden">
+                  {seller.markets.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); navigate(`/market-days/${m.id}`); }}
+                      className="flex items-center gap-1 rounded-full border border-border bg-surface px-2.5 py-0.5 text-[10px] font-semibold text-textSecondary transition hover:bg-primary-light hover:text-primary cursor-pointer"
+                    >
+                      <Icon name="map" size={11} /> {m.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
+
+          {seller.bio && (
+            <p className="mt-4 max-w-[680px] text-xs leading-relaxed text-textSecondary lg:mt-5 lg:text-sm">
+              {seller.bio}
+            </p>
+          )}
+
+          {hasLocation && (
+            <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-textSecondary">
+              {seller.market_name && (
+                <span className="flex items-center gap-1.5">
+                  <Icon name="store" size={14} className="text-primary" />
+                  {seller.market_name}
+                </span>
+              )}
+              {seller.stall_number && (
+                <span className="flex items-center gap-1.5">
+                  <Icon name="pin" size={14} className="text-primary" />
+                  Stall {seller.stall_number}
+                </span>
+              )}
+            </div>
+          )}
+
+          {stats.length > 0 && (
+            <div className="mt-5 grid grid-cols-2 gap-3 border-t border-border pt-5 lg:grid-cols-4 lg:gap-4">
+              {stats.map((s) => (
+                <div key={s.label} className="flex items-center gap-3 rounded-xl bg-surface px-4 py-3">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-light text-primary">
+                    <Icon name={s.icon} size={15} />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-black text-text">{s.value}</div>
+                    <div className="truncate text-[10px] text-textSecondary">{s.label}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
       {/* Products */}
-      <h2 className="text-lg font-black text-text mb-4">
+      <h2 className="mb-4 text-lg font-black text-text">
         Products by {seller.full_name}
-        <span className="text-sm font-normal text-text-secondary ml-2">({seller.products.length})</span>
+        <span className="ml-2 text-sm font-normal text-textSecondary">({seller.products.length})</span>
       </h2>
 
       {seller.products.length === 0 ? (
-        <div className="bg-white border border-border rounded-xl p-12 text-center">
-          <p className="text-sm text-text-secondary">No products listed yet.</p>
+        <div className="rounded-2xl border border-border bg-white p-12 text-center">
+          <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary-light text-primary">
+            <Icon name="basket" size={24} />
+          </span>
+          <p className="text-sm font-bold text-text">No products listed yet</p>
+          <p className="mx-auto mt-1 max-w-[320px] text-xs text-textSecondary">
+            This seller has not listed any products yet. Check back soon.
+          </p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-3 lg:gap-3.5">
           {seller.products.map((product) => (
-            <article
-              key={product.id}
-              className="bg-white border border-border rounded-xl overflow-hidden relative group hover:shadow-md transition"
-            >
-              <div className="h-36 bg-cover bg-center">
-                {product.primary_image?.storage_key ? (
-                  <img
-                    src={`/api/media/${product.primary_image.storage_key}`}
-                    alt={product.product_name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full" style={{ background: PRODUCT_PLACEHOLDER_BG }} />
-                )}
-              </div>
-              <div className="p-3">
-                <div className="text-xs font-bold text-text">{product.product_name}</div>
-                <div className="text-[11px] text-text-secondary">{product.physical_ref}</div>
-                {product.price_cents != null && (
-                  <div className="text-sm font-black text-text mt-1.5">
-                    {naira.format(product.price_cents / 100)}
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={() => navigate(`/offers/${product.id}`)}
-                  className="w-full mt-2 h-8 border border-primary rounded-lg bg-white text-primary text-xs font-bold cursor-pointer hover:bg-primary-light transition"
-                >
-                  View Details
-                </button>
-              </div>
-            </article>
+            <OfferCard key={product.id} offer={product} onClick={(o) => navigate(`/offers/${o.id}`)} />
           ))}
         </div>
       )}

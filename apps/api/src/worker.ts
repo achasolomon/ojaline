@@ -3,12 +3,25 @@ import Redis from 'ioredis';
 import { loadConfig } from '@ojaline/config';
 import { validateEnvelope, type EventType } from '@ojaline/contracts';
 import { ReservationGate } from './modules/reservation/reservation.gate.js';
+import { SYSTEM_CHANNEL, RECENT_KEY } from './modules/realtime/market-feed.service.js';
 
 const POLL_INTERVAL_MS = 2000;
 const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 const RELEASE_SWEEP_INTERVAL_MS = 60 * 1000;
 const DECISION_TIMEOUT_SWEEP_MS = 5 * 60 * 1000;
 const MAX_ATTEMPTS = 5;
+
+async function relayToFeed(redis: Redis, envelope: unknown): Promise<void> {
+  try {
+    await Promise.all([
+      redis.lpush(RECENT_KEY, JSON.stringify(envelope)),
+      redis.ltrim(RECENT_KEY, 0, 39),
+      redis.publish(SYSTEM_CHANNEL, JSON.stringify(envelope)),
+    ]);
+  } catch (err) {
+    console.error('[worker] realtime relay failed', err);
+  }
+}
 
 const DISPATCHERS: Partial<Record<EventType, (payload: unknown) => Promise<void>>> = {
   'order.paid': async (payload) => {
@@ -117,6 +130,7 @@ async function main(): Promise<void> {
         const handler = DISPATCHERS[row.event_type];
         try {
           if (handler) await handler(result.envelope.payload);
+          await relayToFeed(redis, result.envelope);
           await pool.query(`UPDATE audit.outbox_events SET status='SENT', dispatched_at=now() WHERE id=$1`, [row.id]);
         } catch {
           const next = row.attempts + 1;

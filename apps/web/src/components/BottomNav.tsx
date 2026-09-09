@@ -1,12 +1,14 @@
+import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { isLoggedIn, AUTH_EVENT } from '../lib/session';
 
-const NAV_ITEMS = [
+const NAV_ITEMS: { path: string; label: string; icon: string; requiresAuth?: boolean }[] = [
   { path: '/', label: 'Home', icon: 'home' },
   { path: '/categories', label: 'Categories', icon: 'categories' },
   { path: '/orders', label: 'Orders', icon: 'orders' },
-  { path: '/chat', label: 'Messages', icon: 'messages' },
+  { path: '/chat', label: 'Messages', icon: 'messages', requiresAuth: true },
   { path: '/account', label: 'Account', icon: 'account' },
-] as const;
+];
 
 function NavIcon({ icon, active }: { icon: string; active: boolean }) {
   const cls = active ? 'stroke-primary' : 'stroke-current';
@@ -55,6 +57,13 @@ function NavIcon({ icon, active }: { icon: string; active: boolean }) {
 export function BottomNav() {
   const location = useLocation();
   const navigate = useNavigate();
+  const [authed, setAuthed] = useState(() => isLoggedIn());
+
+  useEffect(() => {
+    const onAuth = () => setAuthed(isLoggedIn());
+    window.addEventListener(AUTH_EVENT, onAuth);
+    return () => window.removeEventListener(AUTH_EVENT, onAuth);
+  }, []);
 
   const isActive = (path: string) => {
     if (path === '/') return location.pathname === '/';
@@ -63,7 +72,7 @@ export function BottomNav() {
 
   return (
     <nav className="flex items-center border-t border-border bg-white px-2 py-1.5 safe-area-pb shrink-0">
-      {NAV_ITEMS.map((item) => {
+      {NAV_ITEMS.filter((item) => !item.requiresAuth || authed).map((item) => {
         const active = isActive(item.path);
         return (
           <button

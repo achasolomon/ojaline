@@ -41,6 +41,7 @@ export default function CreateOffer() {
 
   const [productName, setProductName] = useState('');
   const [physicalRef, setPhysicalRef] = useState('');
+  const [unit, setUnit] = useState('');
   const [priceNaira, setPriceNaira] = useState('');
   const [channel, setChannel] = useState<Channel>('RETAILER');
   const [availableQty, setAvailableQty] = useState('');
@@ -83,6 +84,7 @@ export default function CreateOffer() {
         fulfilment_modes: fulfilmentModes,
         cluster_id: clusterId,
         price_cents: price,
+        unit: unit.trim() || undefined,
       });
       navigate('/offers');
     } catch (err) {
@@ -119,6 +121,17 @@ export default function CreateOffer() {
               value={physicalRef}
               onChange={(e) => setPhysicalRef(e.target.value)}
             />
+          </FormField>
+
+          <FormField label="Measurement Unit (per unit)">
+            <Input
+              placeholder="e.g. basket, trailer, crate, bag, bunch"
+              value={unit}
+              onChange={(e) => setUnit(e.target.value)}
+            />
+            <p className="mt-1 text-xs text-textSecondary">
+              What each unit of this product is measured in, e.g. basket of yam, crate of tomatoes.
+            </p>
           </FormField>
 
           <FormField label="Price (Naira per unit)">
