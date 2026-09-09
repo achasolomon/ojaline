@@ -342,6 +342,30 @@ export function DesktopHome() {
             <HomeAdBanner />
           </div>
 
+          {/* Crowd Market banner */}
+          <button
+            type="button"
+            onClick={() => navigate('/crowd-market')}
+            className="relative mb-[19px] block w-full overflow-hidden rounded-2xl text-left cursor-pointer border-none text-white"
+          >
+            <img src="/api/media/banner-market-day.jpeg" alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#056e31] via-[#07883f]/85 to-[#07883f]/30" />
+            <div className="relative z-[2] px-8 py-7">
+              <span className="inline-block rounded-[5px] bg-white/15 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[1px] text-white/90">
+                Crowd Market
+              </span>
+              <h3 className="mt-3 max-w-[560px] text-[24px] font-extrabold leading-[1.15] tracking-tight text-white">
+                Nothing no fit you? Post am — make sellers fight for your order.
+              </h3>
+              <p className="mt-2 max-w-[480px] text-[13px] leading-relaxed text-white/85">
+                Add wetin you need, sellers go pitch, you fit bargain, walk away — and dem fit call you back with better price.
+              </p>
+              <span className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-[#F5A623] px-4 py-2 text-[12px] font-bold text-[#4A2D00]">
+                Post a want <Icon name="arrowRight" size={13} />
+              </span>
+            </div>
+          </button>
+
           {/* Shop by Category */}
           <SectionHeader title="Shop by Category" subtitle="Browse fresh products from trusted local sellers" />
           {loading ? (

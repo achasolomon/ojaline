@@ -1,5 +1,6 @@
 import type { Offer } from './api';
 import type { DeliveryWindow } from './delivery';
+import { revokeDeal } from './negotiation';
 
 const CART_KEY = 'kika_cart';
 
@@ -14,6 +15,8 @@ export interface CartItem {
   qty: number;
   delivery_date: string | null;
   delivery_window: DeliveryWindow | null;
+  /** Set when the price came from a settled negotiation (haggle). */
+  negotiation_id?: string | null;
 }
 
 type CartListener = (items: CartItem[]) => void;
@@ -60,13 +63,20 @@ export interface CartSchedule {
   window: DeliveryWindow | null;
 }
 
-export function addToCart(offer: Offer, qty: number, priceKoboOverride?: number, schedule?: CartSchedule): CartItem[] {
+export function addToCart(
+  offer: Offer,
+  qty: number,
+  priceKoboOverride?: number,
+  schedule?: CartSchedule,
+  negotiationId?: string | null,
+): CartItem[] {
   const items = read();
   const existing = items.find((i) => i.offer_id === offer.id);
   const nextQty = Math.min((existing?.qty ?? 0) + qty, offer.sellable_qty);
   if (existing) {
     existing.qty = nextQty;
     if (priceKoboOverride != null) existing.unit_price_kobo = priceKoboOverride;
+    if (negotiationId) existing.negotiation_id = negotiationId;
     if (schedule) {
       existing.delivery_date = schedule.date;
       existing.delivery_window = schedule.window;
@@ -83,6 +93,7 @@ export function addToCart(offer: Offer, qty: number, priceKoboOverride?: number,
       qty: nextQty,
       delivery_date: schedule?.date ?? null,
       delivery_window: schedule?.window ?? null,
+      negotiation_id: negotiationId ?? null,
     });
   }
   write(items);
@@ -111,7 +122,12 @@ export function setCartQty(offerId: string, qty: number): CartItem[] {
 }
 
 export function removeFromCart(offerId: string): CartItem[] {
-  write(read().filter((i) => i.offer_id !== offerId));
+  const items = read();
+  const doomed = items.filter((i) => i.offer_id === offerId);
+  write(items.filter((i) => i.offer_id !== offerId));
+  for (const d of doomed) {
+    if (d.negotiation_id) void revokeDeal(d.negotiation_id);
+  }
   return read();
 }
 

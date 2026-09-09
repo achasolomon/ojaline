@@ -1,18 +1,20 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Icon } from './icons';
+import { SearchBox } from './SearchBox';
 import { getUnreadCount, subscribeNotifications } from '../lib/notifications';
 import { getCartCount, subscribeCart } from '../lib/cart';
+import { useNegotiationCount } from '../lib/negotiation';
 import { isLoggedIn, AUTH_EVENT } from '../lib/session';
 
 export function MobileHeader({ minimal = false }: { minimal?: boolean }) {
   const navigate = useNavigate();
   const location = useLocation();
   const isHome = location.pathname === '/';
-  const [query, setQuery] = useState('');
   const [notifCount, setNotifCount] = useState(() => getUnreadCount());
   const [cartCount, setCartCount] = useState(() => getCartCount());
   const [authed, setAuthed] = useState(() => isLoggedIn());
+  const haggleCount = useNegotiationCount();
 
   useEffect(() => {
     const unsubNotif = subscribeNotifications((list) =>
@@ -29,11 +31,6 @@ export function MobileHeader({ minimal = false }: { minimal?: boolean }) {
       window.removeEventListener(AUTH_EVENT, onAuth);
     };
   }, []);
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (query.trim()) navigate(`/offers?q=${encodeURIComponent(query.trim())}`);
-  };
 
   return (
     <header className="bg-white border-b border-border">
@@ -54,6 +51,15 @@ export function MobileHeader({ minimal = false }: { minimal?: boolean }) {
           <img src="/images/logo_green.png" alt="Kika" className="h-[30px] w-auto object-contain" />
         </button>
         <div className="flex-1" />
+        <button type="button" onClick={() => navigate('/crowd-market')} className="w-9 h-9 flex items-center justify-center rounded-full bg-transparent border-none cursor-pointer" aria-label="Crowd market">
+          <Icon name="megaphone" size={20} className="text-primary" />
+        </button>
+        {authed && (
+          <button type="button" onClick={() => navigate('/negotiations')} className="relative w-9 h-9 flex items-center justify-center rounded-full bg-transparent border-none cursor-pointer" aria-label="Your negotiations">
+            <Icon name="handshake" size={20} />
+            {haggleCount > 0 && <span className="absolute top-0.5 right-0.5 min-w-4 h-4 rounded-full bg-[#F5A623] text-[#4A2D00] text-[10px] font-bold flex items-center justify-center px-1">{haggleCount > 99 ? '99+' : haggleCount}</span>}
+          </button>
+        )}
         <button type="button" onClick={() => navigate('/cart')} className="relative w-9 h-9 flex items-center justify-center rounded-full bg-transparent border-none cursor-pointer" aria-label="Cart">
           <Icon name="cart" size={20} />
           {cartCount > 0 && <span className="absolute top-0.5 right-0.5 min-w-4 h-4 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center px-1">{cartCount > 99 ? '99+' : cartCount}</span>}
@@ -79,21 +85,7 @@ export function MobileHeader({ minimal = false }: { minimal?: boolean }) {
           </div>
 
           <div className="px-4 pb-3">
-            <form onSubmit={handleSearch} className="flex items-center bg-surface border border-border rounded-xl px-3 gap-2">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" strokeWidth="2" className="shrink-0">
-                <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
-              </svg>
-              <input
-                type="search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search for produce, sellers, categories..."
-                className="flex-1 border-none bg-transparent text-sm outline-none py-2.5 text-text placeholder:text-[#9CA3AF]"
-              />
-              <button type="submit" className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center border-none cursor-pointer" aria-label="Search">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
-              </button>
-            </form>
+            <SearchBox variant="mobile" />
           </div>
         </>
       )}

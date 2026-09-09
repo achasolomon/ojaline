@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Icon } from '../icons';
+import { SearchBox } from '../SearchBox';
 import { getCartCount, subscribeCart } from '../../lib/cart';
 import { getUnreadCount, subscribeNotifications } from '../../lib/notifications';
+import { useNegotiationCount } from '../../lib/negotiation';
 import { isLoggedIn, AUTH_EVENT, getUser } from '../../lib/session';
 
 export function DesktopHeader() {
   const navigate = useNavigate();
-  const [searchQuery, setSearchQuery] = useState('');
   const [cartCount, setCartCount] = useState(() => getCartCount());
   const [unreadCount, setUnreadCount] = useState(() => getUnreadCount());
+  const haggleCount = useNegotiationCount();
   const [authed, setAuthed] = useState(() => isLoggedIn());
   const [userName, setUserName] = useState(() => getUser()?.full_name?.split(' ')[0] ?? '');
 
@@ -28,73 +30,76 @@ export function DesktopHeader() {
     };
   }, []);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchQuery.trim()) navigate(`/offers?q=${encodeURIComponent(searchQuery.trim())}`);
-  };
-
   return (
     <header>
       <div className="h-1 bg-primary" />
       <div className="bg-white border-b border-border">
-        <div className="max-w-[1200px] mx-auto h-[74px] grid items-center px-[30px]" style={{ gridTemplateColumns: '205px 190px minmax(300px,1fr) auto', gap: '18px' }}>
+        <div className="max-w-[1200px] mx-auto h-[74px] grid items-center px-[30px]" style={{ gridTemplateColumns: '190px 160px minmax(0,1fr) auto', gap: '16px' }}>
           {/* Logo */}
-          <a href="/" className="flex items-center no-underline">
+          <a href="/" className="flex items-center no-underline min-w-0">
             <img src="/images/logo_green.png" alt="Kika" className="h-[38px] w-auto object-contain" />
           </a>
 
           {/* Location */}
-          <div className="text-[11px] text-text-secondary flex items-center gap-1.5">
+          <div className="text-[11px] text-text-secondary flex items-center gap-1.5 min-w-0">
             <Icon name="pin" size={17} className="text-primary shrink-0" />
-            <div>
+            <div className="min-w-0">
               Deliver to
-              <b className="block text-[13px] text-text mt-0.5 font-semibold">Sabo, Yaba, Lagos</b>
+              <b className="block text-[13px] text-text mt-0.5 font-semibold truncate">Sabo, Yaba, Lagos</b>
             </div>
           </div>
 
           {/* Search */}
-          <form onSubmit={handleSearch} className="h-[46px] border border-[#dfe5e1] rounded-[9px] flex overflow-hidden bg-[#fafbfa]">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search for produce, sellers, categories..."
-              className="flex-1 border-none outline-none px-4 bg-transparent text-[13px] text-text"
-            />
-            <button type="submit" className="border-none bg-primary text-white px-[23px] font-extrabold text-[13px] cursor-pointer hover:bg-primary-dark transition">
-              Search
-            </button>
-          </form>
+          <SearchBox variant="desktop" className="min-w-0" />
 
           {/* Actions */}
-          <div className="flex gap-4 items-center">
-            <button type="button" onClick={() => navigate('/offers/new')} className="text-[11px] whitespace-nowrap bg-transparent border-none cursor-pointer text-text hover:text-primary transition flex items-center">
-              <Icon name="store" size={16} className="mr-1" />Sell
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button type="button" onClick={() => navigate('/crowd-market')} title="Crowd market" className="flex h-9 items-center gap-1.5 rounded-full px-2 whitespace-nowrap bg-transparent border-none cursor-pointer text-text hover:text-primary hover:bg-surface transition">
+              <Icon name="megaphone" size={16} className="text-primary shrink-0" />
+              <span className="hidden xl:inline text-[11px] font-semibold">Crowd market</span>
             </button>
-            <button type="button" onClick={() => navigate('/help')} className="text-[11px] whitespace-nowrap bg-transparent border-none cursor-pointer text-text hover:text-primary transition flex items-center">
-              <Icon name="help" size={16} className="mr-1" />Help
+            <button type="button" onClick={() => navigate('/offers/new')} title="Sell on Kika" className="flex h-9 items-center gap-1.5 rounded-full px-2 whitespace-nowrap bg-transparent border-none cursor-pointer text-text hover:text-primary hover:bg-surface transition">
+              <Icon name="store" size={16} className="shrink-0" />
+              <span className="hidden xl:inline text-[11px] font-semibold">Sell</span>
             </button>
             {authed && (
-              <button type="button" onClick={() => navigate('/notifications')} className="relative px-4 py-1.5 text-[11px] whitespace-nowrap bg-transparent border-none cursor-pointer text-text hover:text-primary transition flex items-center">
-                <Icon name="bell" size={16} className="mr-1" />Notifications
-                {unreadCount > 0 && <sup className="absolute top-0 -right-0.5 bg-[#df3535] text-white rounded-full px-1.5 py-px text-[8px] leading-none not-italic">{unreadCount}</sup>}
+              <button
+                type="button"
+                onClick={() => navigate('/negotiations')}
+                aria-label="Your negotiations"
+                title="Haggling"
+                className="relative grid h-9 w-9 place-items-center rounded-full text-text transition hover:bg-surface hover:text-primary shrink-0"
+              >
+                <Icon name="handshake" size={18} />
+                {haggleCount > 0 && <sup className="absolute -top-0.5 -right-0.5 bg-[#F5A623] text-[#4A2D00] rounded-full px-1.5 py-px text-[8px] leading-none not-italic">{haggleCount}</sup>}
               </button>
             )}
             {authed && (
-              <button type="button" onClick={() => navigate('/chat')} className="text-[11px] whitespace-nowrap bg-transparent border-none cursor-pointer text-text hover:text-primary transition flex items-center">
-                <Icon name="message" size={16} className="mr-1" />Messages
+              <button type="button" onClick={() => navigate('/notifications')} title="Notifications" className="relative flex h-9 items-center gap-1.5 rounded-full px-2 whitespace-nowrap bg-transparent border-none cursor-pointer text-text hover:text-primary hover:bg-surface transition">
+                <Icon name="bell" size={16} className="shrink-0" />
+                {unreadCount > 0 && <sup className="absolute top-0.5 right-0 bg-[#df3535] text-white rounded-full px-1.5 py-px text-[8px] leading-none not-italic">{unreadCount}</sup>}
+                <span className="hidden xl:inline text-[11px] font-semibold">Notifications</span>
               </button>
             )}
-            <button type="button" onClick={() => navigate('/cart')} className="relative px-4 py-1.5 text-[11px] whitespace-nowrap bg-transparent border-none cursor-pointer text-text hover:text-primary transition flex items-center">
-              <Icon name="cart" size={16} className="mr-1" />Cart
-              {cartCount > 0 && <sup className="absolute top-0 -right-0.5 bg-[#df3535] text-white rounded-full px-1.5 py-px text-[8px] leading-none not-italic">{cartCount}</sup>}
+            {authed && (
+              <button type="button" onClick={() => navigate('/chat')} title="Messages" className="flex h-9 items-center gap-1.5 rounded-full px-2 whitespace-nowrap bg-transparent border-none cursor-pointer text-text hover:text-primary hover:bg-surface transition">
+                <Icon name="message" size={16} className="shrink-0" />
+                <span className="hidden xl:inline text-[11px] font-semibold">Messages</span>
+              </button>
+            )}
+            <button type="button" onClick={() => navigate('/cart')} title="Cart" className="relative flex h-9 items-center gap-1.5 rounded-full px-2 whitespace-nowrap bg-transparent border-none cursor-pointer text-text hover:text-primary hover:bg-surface transition">
+              <Icon name="cart" size={16} className="shrink-0" />
+              {cartCount > 0 && <sup className="absolute top-0.5 right-0 bg-[#df3535] text-white rounded-full px-1.5 py-px text-[8px] leading-none not-italic">{cartCount}</sup>}
+              <span className="hidden xl:inline text-[11px] font-semibold">Cart</span>
             </button>
             <button
               type="button"
               onClick={() => navigate(authed ? '/account' : '/login')}
-              className="text-[11px] whitespace-nowrap bg-transparent border-none cursor-pointer text-text hover:text-primary transition flex items-center"
+              title={authed && userName ? userName : 'Sign in'}
+              className="flex h-9 items-center gap-1.5 rounded-full px-2 whitespace-nowrap bg-transparent border-none cursor-pointer text-text hover:text-primary hover:bg-surface transition"
             >
-              <Icon name="user" size={16} className="mr-1" />{authed && userName ? userName : 'Sign in'}
+              <Icon name="user" size={16} className="shrink-0" />
+              <span className="hidden xl:inline text-[11px] font-semibold max-w-[80px] truncate">{authed && userName ? userName : 'Sign in'}</span>
             </button>
           </div>
         </div>

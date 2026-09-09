@@ -149,7 +149,7 @@ export function MarketActivityFeed() {
       setToasts((prev) => [...prev.slice(-(MAX_TOASTS - 1)), toast]);
     };
 
-    connectMarketFeed((env) => {
+    const onEnvelope = (env: MarketEnvelope) => {
       if (!env.event_type.startsWith('market.') && !env.event_type.startsWith('marketing.')) return;
       const occurredMs = Date.parse(env.occurred_at);
       if (!Number.isNaN(occurredMs) && Date.now() - occurredMs > STALE_MS) return;
@@ -160,11 +160,13 @@ export function MarketActivityFeed() {
 
       const ev = envelopeToToast(env, getUserId());
       if (ev) pushToast(ev);
-    });
+    };
+
+    connectMarketFeed(onEnvelope);
 
     return () => {
       mounted = false;
-      disconnectMarketFeed();
+      disconnectMarketFeed(onEnvelope);
     };
   }, []);
 

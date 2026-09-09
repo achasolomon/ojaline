@@ -13,13 +13,20 @@ type EnvelopeHandler = (env: MarketEnvelope) => void;
 const MAX_BACKOFF_MS = 15000;
 const STREAM_PATH = '/api/events/stream';
 
+/**
+ * A single shared SSE connection fans every incoming envelope out to an
+ * arbitrary number of subscribers (market feed, negotiation store,
+ * notification store). The socket lives as long as at least one handler is
+ * attached and shuts down when the last one leaves.
+ */
+const handlers = new Set<EnvelopeHandler>();
+
 let source: EventSource | null = null;
-let stopped = false;
 let backoff = 1000;
-let handler: EnvelopeHandler | null = null;
+let closing = false;
 
 function open(): void {
-  if (stopped) return;
+  if (source || handlers.size === 0) return;
   const token = getToken();
   const url = `${STREAM_PATH}${token ? `?access_token=${encodeURIComponent(token)}` : ''}`;
   const es = new EventSource(url);
@@ -32,8 +39,8 @@ function open(): void {
   es.onmessage = (event) => {
     try {
       const env = JSON.parse(event.data) as MarketEnvelope;
-      if (env && env.event_type && env.event_type !== '__heartbeat__') {
-        handler?.(env);
+      if (!env || env.event_type !== '__heartbeat__') {
+        handlers.forEach((h) => h(env));
       }
     } catch {
       // ignore malformed frames
@@ -43,23 +50,33 @@ function open(): void {
   es.onerror = () => {
     es.close();
     source = null;
-    if (stopped) return;
+    if (closing) return;
     setTimeout(open, backoff);
     backoff = Math.min(backoff * 2, MAX_BACKOFF_MS);
   };
 }
 
-export function connectMarketFeed(onEnvelope: EnvelopeHandler): void {
-  handler = onEnvelope;
-  stopped = false;
-  open();
-}
-
-export function disconnectMarketFeed(): void {
-  stopped = true;
+function close(): void {
+  closing = true;
   source?.close();
   source = null;
-  handler = null;
+  closing = false;
+}
+
+/** Attach an envelope handler; opens the shared SSE connection on first use. */
+export function connectMarketFeed(onEnvelope: EnvelopeHandler): void {
+  handlers.add(onEnvelope);
+  if (handlers.size === 1) {
+    backoff = 1000;
+    open();
+  }
+}
+
+/** Detach a handler; shuts the socket down when nobody is left. */
+export function disconnectMarketFeed(onEnvelope?: EnvelopeHandler): void {
+  if (onEnvelope) handlers.delete(onEnvelope);
+  else handlers.clear();
+  if (handlers.size === 0) close();
 }
 
 export async function sendPresenceHeartbeat(): Promise<void> {

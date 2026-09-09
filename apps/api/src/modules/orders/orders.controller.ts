@@ -6,6 +6,8 @@ import {
   Post,
   Param,
   Inject,
+  Query,
+  BadRequestException,
 } from '@nestjs/common';
 import { OrdersService, CreateCheckoutInput, ConfirmPaymentInput } from './orders.service.js';
 
@@ -25,6 +27,12 @@ interface ConfirmBody {
 @Controller('orders')
 export class OrdersController {
   constructor(@Inject(OrdersService) private readonly orders: OrdersService) {}
+
+  @Get()
+  async list(@Query('buyer_id') buyerId: string) {
+    if (!buyerId) throw new BadRequestException('buyer_id required');
+    return this.orders.listOrders(buyerId);
+  }
 
   @Post('checkout')
   @HttpCode(201)

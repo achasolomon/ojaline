@@ -234,6 +234,61 @@ export async function getCategories(): Promise<Category[]> {
   return getJson<Category[]>('/catalog/categories');
 }
 
+export interface SearchSuggestion {
+  kind: 'OFFER' | 'CATEGORY' | 'SELLER';
+  id: string;
+  label: string;
+  sub?: string | null;
+  href: string;
+  imageUrl?: string | null;
+}
+
+/** Fast cross-entity lookup for the header's live search dropdown. */
+export async function searchSuggestions(q: string, limit = 5): Promise<SearchSuggestion[]> {
+  const query = q.trim();
+  if (!query) return [];
+  const lowered = query.toLowerCase();
+  const [offersRes, cats] = await Promise.all([
+    discoverOffers({ q: query, limit: Math.max(limit, 5) }),
+    getCategories(),
+  ]);
+  const out: SearchSuggestion[] = [];
+  const seenSellers = new Set<string>();
+  for (const o of offersRes.offers.slice(0, limit)) {
+    out.push({
+      kind: 'OFFER',
+      id: o.id,
+      label: o.product_name,
+      sub: [o.seller_name, o.unit ? `per ${o.unit}` : null].filter(Boolean).join(' · ') || null,
+      href: `/offers/${o.id}`,
+      imageUrl: o.primary_image?.storage_key ? `${BASE_URL}/media/${o.primary_image.storage_key}` : null,
+    });
+    if (o.seller_name && !seenSellers.has(o.seller_id)) {
+      seenSellers.add(o.seller_id);
+      out.push({
+        kind: 'SELLER',
+        id: o.seller_id,
+        label: o.seller_name,
+        sub: o.market_name ?? null,
+        href: `/sellers/${o.seller_id}`,
+      });
+    }
+  }
+  for (const c of cats) {
+    if (String(c.name).toLowerCase().includes(lowered)) {
+      out.push({
+        kind: 'CATEGORY',
+        id: c.id,
+        label: c.name,
+        sub: `${c.offer_count} items`,
+        href: `/offers?category_id=${c.id}`,
+        imageUrl: c.image_url ? mediaUrl(c.image_url) : null,
+      });
+    }
+  }
+  return out.slice(0, limit * 3);
+}
+
 export type SellerType = 'FARMER' | 'MARKET_WOMAN' | 'STORE' | 'PROCESSOR';
 
 export interface Cluster {
@@ -547,6 +602,248 @@ export interface SellerToSStatus {
 
 export async function getToSStatus(userId: string): Promise<SellerToSStatus> {
   return getJson<SellerToSStatus>(`/tos/status?user_id=${userId}`);
+}
+
+/* ── Content (banners / market-day) ── */
+
+export interface Banner {
+  id: string;
+  slot: 'HERO' | 'MARKET_DAY';
+  title: string;
+  subtitle: string;
+  cta_label: string;
+  cta_href: string;
+  image_key: string | null;
+  gradient: string | null;
+  fallback_icon: string;
+  sort_order: number;
+  starts_at: string;
+  ends_at: string;
+}
+
+export interface MarketDayInfo {
+  next_date: string | null;
+  market_count: number;
+  product_count: number;
+  banner: Omit<Banner, 'slot' | 'sort_order' | 'starts_at' | 'ends_at'> | null;
+}
+
+export async function getBanners(): Promise<Banner[]> {
+  return getJson<Banner[]>('/content/banners');
+}
+
+export async function getMarketDay(): Promise<MarketDayInfo> {
+  return getJson<MarketDayInfo>('/content/market-day');
+}
+
+/* ── Crowd market / wants ── */
+
+export interface CrowdBidder {
+  id: string;
+  seller_id: string;
+  seller_name: string;
+  offer_id: string;
+  product_name: string;
+  unit: string | null;
+  market_name: string | null;
+  stall_number: string | null;
+  rating: number | null;
+  review_count: number;
+  quote_per_unit_kobo: number;
+  quote_total_kobo: number;
+  pitch: string;
+  chosen: boolean;
+  created_at: string;
+}
+
+export interface CrowdWant {
+  id: string;
+  buyer_id: string;
+  buyer_name: string;
+  product_name: string;
+  qty: number;
+  unit: string | null;
+  ceiling_kobo: number | null;
+  note: string;
+  status: 'OPEN' | 'SETTLED' | 'CLOSED' | 'EXPIRED';
+  chosen_bid_id: string | null;
+  settled_with: CrowdBidder | null;
+  closed_at: string | null;
+  created_at: string;
+  bid_count: number;
+  bidders: CrowdBidder[];
+}
+
+export async function createWant(buyerId: string, input: {
+  product_name: string;
+  qty: number;
+  unit?: string | null;
+  ceiling_kobo?: number | null;
+  note?: string;
+}): Promise<CrowdWant> {
+  return postJson<CrowdWant>(`/wants?buyer_id=${encodeURIComponent(buyerId)}`, input);
+}
+
+export async function getWants(buyerId: string): Promise<CrowdWant[]> {
+  return getJson<CrowdWant[]>(`/wants?buyer_id=${encodeURIComponent(buyerId)}`);
+}
+
+export async function getWant(wantId: string): Promise<CrowdWant> {
+  return getJson<CrowdWant>(`/wants/${wantId}`);
+}
+
+/* ── Orders ── */
+
+export interface OrderLine {
+  offer_id: string;
+  product_name: string;
+  unit: string | null;
+  qty: number;
+  unit_price_cents: number;
+  status: string;
+}
+
+export interface OrderSummary {
+  id: string;
+  channel: string;
+  status: string;
+  multi_seller: boolean;
+  item_total_cents: number;
+  delivery_fee_cents: number;
+  landed_total_cents: number;
+  currency: string;
+  created_at: string;
+  updated_at: string;
+  lines: OrderLine[];
+}
+
+export async function listOrders(buyerId: string): Promise<OrderSummary[]> {
+  return getJson<OrderSummary[]>(`/orders?buyer_id=${encodeURIComponent(buyerId)}`);
+}
+
+/* ── Negotiations ── */
+
+export type NegotiationStatus = 'OPEN' | 'SETTLED' | 'WALKED' | 'REVOKED';
+export type NegotiationMessageKind =
+  | 'BUYER_BID'
+  | 'SELLER_OFFER'
+  | 'SELLER_ACCEPT'
+  | 'BUYER_ACCEPT'
+  | 'WALK'
+  | 'CALLBACK'
+  | 'NOTE'
+  | 'REVOKE';
+
+export interface NegotiationMessage {
+  id: string;
+  kind: NegotiationMessageKind;
+  side: 'BUYER' | 'SELLER';
+  qty: number;
+  per_unit_kobo: number | null;
+  message: string;
+  at: string;
+}
+
+export interface NegotiationThread {
+  id: string;
+  basis: {
+    type: 'OFFER' | 'REQUEST';
+    offer?: { id: string; product_name: string; unit: string | null } | undefined;
+    request_id?: string | undefined;
+    ask_per_unit_kobo: number;
+    floor_per_unit_kobo: number;
+  };
+  seller: { id: string; name: string; channel: Channel };
+  buyer_name: string;
+  qty: number;
+  status: NegotiationStatus;
+  messages: NegotiationMessage[];
+  demeanor: 'easy' | 'fair' | 'tough';
+  dropped_at: string | null;
+  callback: { at: number | null; sent: boolean };
+  unseen_callbacks: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function openNegotiation(buyerId: string, input: {
+  basis_type: 'OFFER' | 'REQUEST';
+  offer_id?: string;
+  want_id?: string;
+  bid_id?: string;
+  qty?: number;
+}): Promise<NegotiationThread> {
+  return postJson<NegotiationThread>(`/negotiations?buyer_id=${encodeURIComponent(buyerId)}`, input);
+}
+
+export async function listNegotiations(buyerId: string): Promise<NegotiationThread[]> {
+  return getJson<NegotiationThread[]>(`/negotiations?buyer_id=${encodeURIComponent(buyerId)}`);
+}
+
+export async function submitNegotiationBid(negotiationId: string, buyerId: string, input: {
+  qty: number;
+  total_kobo: number;
+  message?: string;
+}): Promise<NegotiationThread> {
+  return postJson<NegotiationThread>(
+    `/negotiations/${negotiationId}/bid?buyer_id=${encodeURIComponent(buyerId)}`,
+    input,
+  );
+}
+
+export async function acceptNegotiation(negotiationId: string, buyerId: string, per_unit_kobo: number): Promise<NegotiationThread> {
+  return postJson<NegotiationThread>(
+    `/negotiations/${negotiationId}/accept?buyer_id=${encodeURIComponent(buyerId)}`,
+    { per_unit_kobo },
+  );
+}
+
+export async function walkAwayNegotiation(negotiationId: string, buyerId: string, message?: string): Promise<NegotiationThread> {
+  return postJson<NegotiationThread>(
+    `/negotiations/${negotiationId}/walk?buyer_id=${encodeURIComponent(buyerId)}`,
+    { message },
+  );
+}
+
+export async function revokeNegotiation(negotiationId: string, buyerId: string): Promise<NegotiationThread> {
+  return postJson<NegotiationThread>(
+    `/negotiations/${negotiationId}/revoke?buyer_id=${encodeURIComponent(buyerId)}`,
+    {},
+  );
+}
+
+export async function markNegotiationSeen(negotiationId: string, buyerId: string): Promise<{ ok: boolean }> {
+  return postJson<{ ok: boolean }>(
+    `/negotiations/${negotiationId}/seen?buyer_id=${encodeURIComponent(buyerId)}`,
+    {},
+  );
+}
+
+/* ── Notifications feed ── */
+
+export type NotificationType = 'order' | 'chat' | 'market' | 'deal' | 'system';
+
+export interface AppNotification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string | null;
+  deep_link: string | null;
+  read: boolean;
+  created_at: string;
+}
+
+export async function fetchNotifications(userId: string, limit = 50): Promise<AppNotification[]> {
+  return getJson<AppNotification[]>(`/notifications?user_id=${encodeURIComponent(userId)}&limit=${limit}`);
+}
+
+export async function fetchUnreadCount(userId: string): Promise<number> {
+  const res = await getJson<{ count: number }>(`/notifications/unread?user_id=${encodeURIComponent(userId)}`);
+  return res.count;
+}
+
+export async function markNotificationsRead(userId: string, ids?: string[]): Promise<{ ok: boolean; updated: number }> {
+  return postJson<{ ok: boolean; updated: number }>('/notifications/read', { user_id: userId, ids });
 }
 
 /* ── Marketplace Advertising (ADR-009) ── */

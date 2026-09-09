@@ -28,6 +28,12 @@ import { ToSEnforcementService } from './modules/tos/tos.service.js';
 import { ToSController } from './modules/tos/tos.controller.js';
 import { MarketRealtimeModule } from './modules/realtime/market-realtime.module.js';
 import { AdsModule } from './modules/ads/ads.module.js';
+import { ContentController } from './modules/content/content.controller.js';
+import { ContentService } from './modules/content/content.service.js';
+import { MarketController } from './modules/market/market.controller.js';
+import { MarketService } from './modules/market/market.service.js';
+import { NotificationsController } from './modules/notifications/notifications.controller.js';
+import { FeedService } from './modules/notifications/feed.service.js';
 
 @Module({
   imports: [
@@ -41,7 +47,7 @@ import { AdsModule } from './modules/ads/ads.module.js';
     MarketRealtimeModule,
     AdsModule,
   ],
-  controllers: [HealthController, MetricsController, ReservationsController, OrdersController, WebhookController, CatalogController, FulfilmentController, MediaController, EscrowController, PushController, ToSController],
+  controllers: [HealthController, MetricsController, ReservationsController, OrdersController, WebhookController, CatalogController, FulfilmentController, MediaController, EscrowController, PushController, ToSController, ContentController, MarketController, NotificationsController],
   providers: [
     OutboxService,
     ReservationGate,
@@ -54,6 +60,9 @@ import { AdsModule } from './modules/ads/ads.module.js';
     EscrowReleaseService,
     PushService,
     ToSEnforcementService,
+    ContentService,
+    MarketService,
+    FeedService,
   ],
 })
 export class AppModule {}

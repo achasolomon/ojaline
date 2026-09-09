@@ -1,11 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { mediaUrl } from '../../lib/api';
 import {
-  PROMO_SLIDES, promoImageUrl, type PromoSlide,
+  formatMarketDayDate, promoImageUrl, useMarketDay, usePromos, type PromoSlide,
 } from '../../lib/promos';
 import { Icon } from '../icons';
-
-const SLIDES = PROMO_SLIDES;
 
 const AUTOPLAY_MS = 6000;
 
@@ -34,17 +33,27 @@ function SlideArtwork({ slide }: { slide: PromoSlide }) {
 export function DesktopHero() {
   const navigate = useNavigate();
   const [index, setIndex] = useState(0);
+  const slides = usePromos();
+  const marketDay = useMarketDay();
+
+  const last = Math.max(1, slides.length);
 
   const goTo = useCallback((i: number) => {
-    setIndex(((i % SLIDES.length) + SLIDES.length) % SLIDES.length);
-  }, []);
+    setIndex(((i % last) + last) % last);
+  }, [last]);
 
-  const slide = SLIDES[index];
+  const slide = slides[Math.min(index, slides.length - 1)];
 
   useEffect(() => {
-    const t = setInterval(() => setIndex((i) => (i + 1) % SLIDES.length), AUTOPLAY_MS);
+    setIndex((i) => Math.min(i, Math.max(0, slides.length - 1)));
+  }, [slides.length]);
+
+  useEffect(() => {
+    const t = setInterval(() => setIndex((i) => (i + 1) % last), AUTOPLAY_MS);
     return () => clearInterval(t);
-  }, []);
+  }, [last]);
+
+  const marketImg = marketDay?.banner?.image_key ? mediaUrl(marketDay.banner.image_key) : null;
 
   return (
     <section className="max-w-[1200px] mx-auto px-6 py-4">
@@ -103,7 +112,7 @@ export function DesktopHero() {
 
           {/* Dots */}
           <div className="absolute z-[5] bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5">
-            {SLIDES.map((s, i) => (
+            {slides.map((s, i) => (
               <button
                 key={s.id}
                 type="button"
@@ -143,7 +152,10 @@ export function DesktopHero() {
             <div className="text-[10px] text-text-secondary font-extrabold uppercase tracking-wide">MARKET DAY</div>
             <h2 className="mt-1 mb-0 text-primary text-[20px] leading-tight">Wholesale Prices</h2>
             <p className="text-[11px] text-text-secondary leading-[1.5] mt-1">
-              Save more when you buy in bulk from trusted market sellers.
+              Save more when you buy in bulk from trusted market sellers
+              {marketDay?.next_date
+                ? ` — ${marketDay.market_count} markets, ${marketDay.product_count} products on ${formatMarketDayDate(marketDay.next_date)}.`
+                : '.'}
             </p>
             <button
               type="button"
@@ -156,13 +168,13 @@ export function DesktopHero() {
           <div
             className="h-[110px] bg-cover bg-center"
             style={{
-              backgroundImage: 'url(/images/market-day.jpeg)',
+              backgroundImage: marketImg ? `url(${marketImg})` : 'url(/images/market-day.jpeg)',
               backgroundColor: '#dce9c7',
             }}
           />
           <div className="flex justify-between px-4 py-2 border-t border-border text-[10px]">
             <span className="text-text-secondary flex items-center gap-1"><Icon name="calendar" size={12} /> Next Market Day</span>
-            <b className="text-text">Sat, 24 May</b>
+            <b className="text-text">{marketDay?.next_date ? formatMarketDayDate(marketDay.next_date) : '—'}</b>
           </div>
         </aside>
       </div>

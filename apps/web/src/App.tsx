@@ -10,6 +10,7 @@ import { SplashScreen } from './components/Loading';
 import { WelcomeModal, hasSeenWelcome, markWelcomeSeen } from './components/WelcomeModal';
 import { CookieConsent } from './components/CookieConsent';
 import { MarketActivityFeed } from './components/MarketActivityFeed';
+import { NegotiationCallbacks } from './components/NegotiationCallbacks';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -31,6 +32,11 @@ import CartPage from './pages/CartPage';
 import CheckoutPage from './pages/CheckoutPage';
 import Account from './pages/Account';
 import AdStudio from './pages/AdStudio';
+import { CrowdMarketPage } from './pages/CrowdMarketPage';
+import NegotiationPage from './pages/NegotiationPage';
+import NegotiationsPage from './pages/NegotiationsPage';
+import CategoriesPage from './pages/CategoriesPage';
+import OrdersPage from './pages/OrdersPage';
 
 const AUTH_PATHS = ['/login', '/register', '/otp', '/forgot', '/reset', '/oauth/callback'];
 
@@ -47,6 +53,8 @@ function AppShell() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/offers" element={<Offers />} />
+            <Route path="/categories" element={<CategoriesPage />} />
+            <Route path="/orders" element={<OrdersPage />} />
             <Route path="/offers/new" element={<RequireAuth><CreateOffer /></RequireAuth>} />
             <Route path="/offers/:id" element={<OfferDetail />} />
             <Route path="/market-days" element={<MarketDays />} />
@@ -66,6 +74,9 @@ function AppShell() {
             <Route path="/forgot" element={<ForgotPassword />} />
             <Route path="/reset" element={<ResetPassword />} />
             <Route path="/oauth/callback" element={<OAuthCallback />} />
+            <Route path="/crowd-market" element={<CrowdMarketPage />} />
+            <Route path="/negotiations/:id" element={<NegotiationPage />} />
+            <Route path="/negotiations" element={<NegotiationsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </PageTransition>
@@ -81,6 +92,8 @@ function AppShell() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/offers" element={<Offers />} />
+            <Route path="/categories" element={<CategoriesPage />} />
+            <Route path="/orders" element={<OrdersPage />} />
             <Route path="/offers/new" element={<RequireAuth><CreateOffer /></RequireAuth>} />
             <Route path="/offers/:id" element={<OfferDetail />} />
             <Route path="/market-days" element={<MarketDays />} />
@@ -100,6 +113,9 @@ function AppShell() {
             <Route path="/forgot" element={<ForgotPassword />} />
             <Route path="/reset" element={<ResetPassword />} />
             <Route path="/oauth/callback" element={<OAuthCallback />} />
+            <Route path="/crowd-market" element={<CrowdMarketPage />} />
+            <Route path="/negotiations/:id" element={<NegotiationPage />} />
+            <Route path="/negotiations" element={<NegotiationsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </PageTransition>
@@ -132,6 +148,7 @@ export function App() {
       {showWelcome && !showSplash && <WelcomeModal onClose={closeWelcome} />}
       <CookieConsent />
       <MarketActivityFeed />
+      <NegotiationCallbacks />
     </BrowserRouter>
   );
 }

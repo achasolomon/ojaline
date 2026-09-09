@@ -7,7 +7,7 @@ import {
   ACTIVE_CITIES,
   type Offer, type Category,
 } from '../lib/api';
-import { PROMO_SLIDES, promoImageUrl } from '../lib/promos';
+import { formatMarketDayDate, promoImageUrl, useMarketDay, usePromos } from '../lib/promos';
 import { useMediaQuery, DESKTOP_BREAKPOINT } from '../lib/useMediaQuery';
 import { DesktopHome } from '../components/desktop/DesktopHome';
 import { MarketBuzz } from '../components/MarketBuzz';
@@ -50,15 +50,20 @@ function MobileHero() {
   const navigate = useNavigate();
   const [index, setIndex] = useState(0);
   const [failed, setFailed] = useState<Record<string, boolean>>({});
-  const slide = PROMO_SLIDES[index];
+  const slides = usePromos();
+  const slide = slides[index % slides.length];
   const src = promoImageUrl(slide);
 
-  const goTo = (i: number) => setIndex(((i % PROMO_SLIDES.length) + PROMO_SLIDES.length) % PROMO_SLIDES.length);
+  const goTo = (i: number) => setIndex(((i % slides.length) + slides.length) % slides.length);
 
   useEffect(() => {
-    const t = setInterval(() => setIndex((i) => (i + 1) % PROMO_SLIDES.length), 6000);
+    if (index >= slides.length) setIndex(0);
+  }, [slides.length, index]);
+
+  useEffect(() => {
+    const t = setInterval(() => setIndex((i) => (i + 1) % slides.length), 6000);
     return () => clearInterval(t);
-  }, []);
+  }, [slides.length]);
 
   return (
     <div
@@ -125,7 +130,7 @@ function MobileHero() {
 
       {/* Dots */}
       <div className="absolute z-[5] bottom-2.5 right-3 flex gap-1">
-        {PROMO_SLIDES.map((s, i) => (
+        {slides.map((s, i) => (
           <button
             key={s.id}
             type="button"
@@ -237,6 +242,7 @@ export default function Home() {
 
 function MobileHome() {
   const navigate = useNavigate();
+  const marketDay = useMarketDay();
   const [categories, setCategories] = useState<Category[]>([]);
   const [deals, setDeals] = useState<Offer[]>([]);
   const [wholesale, setWholesale] = useState<Offer[]>([]);
@@ -285,12 +291,41 @@ function MobileHome() {
           <div className="p-3">
             <span className="text-[10px] text-textSecondary font-extrabold uppercase tracking-wide">MARKET DAY</span>
             <h3 className="text-primary text-base font-bold mt-0.5 mb-1">Wholesale Prices</h3>
-            <p className="text-[11px] text-textSecondary leading-snug mb-2">Save more when you buy in bulk from trusted market sellers.</p>
+            <p className="text-[11px] text-textSecondary leading-snug mb-2">
+              Save more when you buy in bulk from trusted market sellers
+              {marketDay?.next_date
+                ? ` — ${marketDay.market_count} markets, ${marketDay.product_count} products on ${formatMarketDayDate(marketDay.next_date)}.`
+                : '.'}
+            </p>
             <button type="button" onClick={() => navigate('/market-days')}
               className="bg-primary text-white text-xs font-bold rounded-lg px-4 py-1.5 border-none cursor-pointer">Shop Market Day</button>
           </div>
-          <div className="h-20 bg-cover bg-center" style={{ backgroundImage: 'url(/images/market-day.jpeg)', backgroundColor: '#dce9c7' }} />
+          <div className="h-20 bg-cover bg-center" style={{ backgroundImage: marketDay?.banner?.image_key ? `url(/api/media/${marketDay.banner.image_key})` : 'url(/images/market-day.jpeg)', backgroundColor: '#dce9c7' }} />
         </div>
+
+        {/* Crowd Market banner */}
+        <button
+          type="button"
+          onClick={() => navigate('/crowd-market')}
+          className="mx-4 mb-4 block rounded-2xl overflow-hidden relative text-left cursor-pointer border-none text-white"
+        >
+          <img src="/api/media/banner-market-day.jpeg" alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#056e31] via-[#07883f]/85 to-[#07883f]/35" />
+          <div className="relative z-[2] p-4">
+            <span className="inline-block rounded-[5px] bg-white/15 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-[1px] text-white/90">
+              Crowd Market
+            </span>
+            <h3 className="mt-2 text-[16px] font-extrabold leading-snug text-white">
+              Nothing no fit you? Post am — make sellers fight for your order.
+            </h3>
+            <p className="mt-1 text-[11px] leading-snug text-white/85">
+              Bargain, walk away — and dem fit call you back with better price.
+            </p>
+            <span className="mt-2.5 inline-flex items-center gap-1 rounded-lg bg-[#F5A623] px-3.5 py-1.5 text-[11px] font-bold text-[#4A2D00]">
+              Post a want <Icon name="arrowRight" size={12} />
+            </span>
+          </div>
+        </button>
 
         {/* Feature Row */}
         <div className="flex gap-2 px-4 pb-5">

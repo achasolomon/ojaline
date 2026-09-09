@@ -8,18 +8,25 @@ import { Icon, type IconName } from '../components/icons';
 
 const QUICK_LINKS: { label: string; sub: string; icon: IconName; to: string }[] = [
   { label: 'Sell on Kika', sub: 'List a product', icon: 'store', to: '/offers/new' },
-  { label: 'Ad Studio', sub: 'Popup ads & banners', icon: 'megaphone', to: '/ads' },
   { label: 'My Messages', sub: 'Chat with sellers', icon: 'message', to: '/chat' },
-  { label: 'My Orders', sub: 'Track purchases', icon: 'box', to: '/cart' },
+  { label: 'My Orders', sub: 'Track purchases', icon: 'box', to: '/orders' },
   { label: 'Notifications', sub: 'Alerts & updates', icon: 'bell', to: '/notifications' },
   { label: 'Saved Addresses', sub: 'Manage delivery details', icon: 'pin', to: '#addresses' },
   { label: 'Help Center', sub: 'FAQs & support', icon: 'help', to: '/help' },
 ];
 
+const AD_STUDIO_LINK: { label: string; sub: string; icon: IconName; to: string } = {
+  label: 'Ad Studio',
+  sub: 'Popup ads & banners',
+  icon: 'megaphone',
+  to: '/ads',
+};
+
 export default function Account() {
   const navigate = useNavigate();
   const user = getUser();
   const userId = getUserId();
+  const quickLinks = user?.seller_type ? [...QUICK_LINKS, AD_STUDIO_LINK] : QUICK_LINKS;
   const [addresses, setAddresses] = useState<SavedAddress[]>([]);
   const [cartCount, setCartCount] = useState(() => getCartCount());
   const [unread, setUnread] = useState(() => getUnreadCount());
@@ -121,7 +128,7 @@ export default function Account() {
 
       {/* Quick links */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
-        {QUICK_LINKS.map((l) => (
+        {quickLinks.map((l) => (
           <button
             key={l.label}
             type="button"

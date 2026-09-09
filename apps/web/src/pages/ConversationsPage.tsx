@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getUserConversations, type Conversation } from '../lib/api';
-import { getUserId } from '../lib/session';
+import { activeBuyerId } from '../lib/session';
+import { useMediaQuery, DESKTOP_BREAKPOINT } from '../lib/useMediaQuery';
+import { ChatThread } from '../components/ChatThread';
 import { Icon } from '../components/icons';
 
 function timeAgo(dateStr: string | null): string {
@@ -18,11 +20,13 @@ function timeAgo(dateStr: string | null): string {
 
 export default function ConversationsPage() {
   const navigate = useNavigate();
+  const isDesktop = useMediaQuery(DESKTOP_BREAKPOINT);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
-    const userId = getUserId();
+    const userId = activeBuyerId();
     if (!userId) return undefined;
     let cancelled = false;
     getUserConversations(userId).then((convos) => {
@@ -33,67 +37,107 @@ export default function ConversationsPage() {
     return () => { cancelled = true; };
   }, []);
 
-  return (
-    <div className="flex flex-col h-full bg-white">
-      <header className="flex items-center gap-3 border-b border-border px-4 py-3">
-        <button type="button" onClick={() => navigate(-1)} className="p-1">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
-        <h1 className="text-lg font-semibold">Messages</h1>
-      </header>
+  const selected = conversations.find((c) => c.id === selectedId) ?? conversations[0] ?? null;
 
-      <div className="flex-1 overflow-y-auto">
-        {loading ? (
-          <div>
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-3 border-b border-border px-4 py-3">
-                <div className="h-11 w-11 shrink-0 animate-pulse rounded-full bg-surface" />
-                <div className="min-w-0 flex-1 space-y-2">
-                  <div className="h-3.5 w-2/5 animate-pulse rounded bg-surface" />
-                  <div className="h-3 w-3/5 animate-pulse rounded bg-surface" />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : conversations.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
-            <div className="w-14 h-14 rounded-full bg-primary-light flex items-center justify-center mb-3">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#22A34A" strokeWidth="2">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+  const openConvo = (conv: Conversation) => {
+    if (isDesktop) setSelectedId(conv.id);
+    else navigate(`/chat/${conv.id}`);
+  };
+
+  const emptyState = (
+    <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+      <div className="mb-3 grid h-14 w-14 place-items-center rounded-full bg-primary-light text-primary">
+        <Icon name="message" size={24} />
+      </div>
+      <p className="text-sm font-medium text-text">No conversations yet</p>
+      <p className="mt-1 text-xs text-textSecondary">Start chatting with a seller from any product page</p>
+    </div>
+  );
+
+  return (
+    <div className="flex h-full flex-col bg-white lg:mx-auto lg:w-full lg:max-w-[1200px] lg:px-6 lg:py-6">
+      <div className="min-h-0 flex-1 lg:grid lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)] lg:items-stretch lg:gap-5">
+        {/* Left pane: conversations list */}
+        <div className="flex min-h-0 flex-col lg:overflow-hidden lg:rounded-2xl lg:border lg:border-border lg:bg-white">
+          <header className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
+            <button type="button" onClick={() => navigate(-1)} className="p-1 lg:hidden">
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-            </div>
-            <p className="text-sm font-medium text-text">No conversations yet</p>
-            <p className="text-xs text-textSecondary mt-1">Start chatting with a seller from any product page</p>
-          </div>
-        ) : (
-          <div>
-            {conversations.map((conv) => (
-              <button
-                key={conv.id}
-                type="button"
-                onClick={() => navigate(`/chat/${conv.id}`)}
-                className="w-full flex items-center gap-3 px-4 py-3 border-b border-border text-left cursor-pointer bg-white hover:bg-surface transition"
-              >
-                <div className="w-11 h-11 rounded-full bg-primary-light text-primary flex items-center justify-center shrink-0">
-                  <Icon name="user" size={20} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-text truncate">{conv.other_party_name}</span>
-                    {conv.last_message_at && (
-                      <span className="text-[11px] text-textSecondary shrink-0 ml-2">{timeAgo(conv.last_message_at)}</span>
-                    )}
+            </button>
+            <h1 className="flex-1 text-lg font-semibold text-text">Messages</h1>
+            <span className="flex items-center gap-1.5 rounded-full bg-primary-light px-2.5 py-1 text-[10px] font-bold text-primary">
+              <Icon name="message" size={12} />
+              {conversations.length} chat{conversations.length === 1 ? '' : 's'}
+            </span>
+          </header>
+
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {loading ? (
+              <div>
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-3 border-b border-border px-4 py-3">
+                    <div className="h-11 w-11 shrink-0 animate-pulse rounded-full bg-surface" />
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="h-3.5 w-2/5 animate-pulse rounded bg-surface" />
+                      <div className="h-3 w-3/5 animate-pulse rounded bg-surface" />
+                    </div>
                   </div>
-                  <p className="text-xs text-textSecondary truncate mt-0.5">
-                    {conv.last_message || 'No messages yet'}
-                  </p>
-                </div>
-              </button>
-            ))}
+                ))}
+              </div>
+            ) : conversations.length === 0 ? (
+              emptyState
+            ) : (
+              <div>
+                {conversations.map((conv) => {
+                  const isActive = isDesktop && selected?.id === conv.id;
+                  return (
+                    <button
+                      key={conv.id}
+                      type="button"
+                      onClick={() => openConvo(conv)}
+                      className={`w-full flex items-center gap-3 px-4 py-3 border-b border-border text-left cursor-pointer transition ${
+                        isActive ? 'bg-primary-light/30' : 'bg-white hover:bg-surface'
+                      }`}
+                    >
+                      <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-primary-light text-primary">
+                        <Icon name="user" size={20} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between">
+                          <span className="truncate text-sm font-semibold text-text">{conv.other_party_name}</span>
+                          {conv.last_message_at && (
+                            <span className="ml-2 shrink-0 text-[11px] text-textSecondary">{timeAgo(conv.last_message_at)}</span>
+                          )}
+                        </div>
+                        <p className="mt-0.5 truncate text-xs text-textSecondary">
+                          {conv.last_message || 'No messages yet'}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
-        )}
+        </div>
+
+        {/* Right pane (desktop): chat thread */}
+        <div className="hidden min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-white lg:flex">
+          {selected ? (
+            <ChatThread conversationId={selected.id} />
+          ) : (
+            <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
+              <span className="grid h-14 w-14 place-items-center rounded-full bg-surface text-textSecondary">
+                <Icon name="message" size={24} />
+              </span>
+              <p className="mt-3 text-sm font-bold text-text">No chat wey dey</p>
+              <p className="mt-1 text-[11px] text-textSecondary">
+                Tap any conversation here to keep the discussion going.
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -299,7 +299,6 @@ export function DesktopCategoryNav() {
             label="More"
             options={[
               { label: 'Sell on Kika', href: '/offers/new', icon: 'plus' },
-              { label: 'Ad Studio', href: '/ads', icon: 'megaphone' },
               { label: 'My Cart', href: '/cart', icon: 'cart' },
               { label: 'Notifications', href: '/notifications', icon: 'bell' },
               { label: 'Account', href: '/account', icon: 'user' },

@@ -10,6 +10,7 @@ import { BargainModal } from '../components/BargainModal';
 import { Icon } from '../components/icons';
 import { addToCart, getCartItems } from '../lib/cart';
 import { bargainPriceKobo, bargainFloorKobo } from '../lib/bargain';
+import { activeBuyerId } from '../lib/session';
 import { nextDeliveryDates, DELIVERY_WINDOWS } from '../lib/delivery';
 import type { DeliveryWindow } from '../lib/delivery';
 
@@ -258,7 +259,7 @@ export default function OfferDetail() {
 
   const startChat = async () => {
     try {
-      const conv = await createConversation('b1000000-0000-4000-8000-000000000001', offer.seller_id, offer.id);
+      const conv = await createConversation(activeBuyerId(), offer.seller_id, offer.id);
       navigate(`/chat/${conv.id}`);
     } catch { /* skip */ }
   };
@@ -542,7 +543,7 @@ export default function OfferDetail() {
           </div>
           {hasBargain && (
             <p className="mt-1.5 text-[10px] font-medium text-textSecondary">
-              Sellers usually settle around {fmt(floorKobo!)} · promote your own price
+              Sellers usually settle around {fmt(floorKobo!)} · bigger order, cheaper per {offer.unit?.trim() || 'unit'}
             </p>
           )}
 
@@ -721,6 +722,7 @@ export default function OfferDetail() {
       {bargainOpen && (
         <BargainModal
           offer={offer}
+          initialQty={qty}
           onClose={() => setBargainOpen(false)}
           onDeal={(k) => setAgreedKobo(k)}
         />

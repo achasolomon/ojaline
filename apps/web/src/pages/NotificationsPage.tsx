@@ -83,7 +83,10 @@ export default function NotificationsPage() {
             <button
               key={n.id}
               type="button"
-              onClick={() => { if (!n.read) markNotificationRead(n.id); }}
+              onClick={() => {
+                if (!n.read) markNotificationRead(n.id);
+                if (n.deep_link) navigate(n.deep_link);
+              }}
               className={`w-full flex items-start gap-3.5 px-5 py-4 text-left cursor-pointer transition hover:bg-surface ${n.read ? 'bg-white' : 'bg-primary-light/40'}`}
             >
               <span className="w-10 h-10 rounded-full shrink-0 flex items-center justify-center bg-white border border-border text-primary">

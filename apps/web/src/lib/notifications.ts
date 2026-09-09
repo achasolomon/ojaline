@@ -1,7 +1,13 @@
 import type { IconName } from '../components/icons';
-import { isLoggedIn } from './session';
+import {
+  fetchNotifications,
+  fetchUnreadCount,
+  markNotificationsRead,
+} from './api';
+import { connectMarketFeed, disconnectMarketFeed, type MarketEnvelope } from './realtime';
+import { activeBuyerId } from './session';
 
-const NOTIF_KEY = 'kika_notifications';
+const CLEARED_KEY = 'kika_notif_cleared';
 
 export type NotificationType = 'order' | 'chat' | 'market' | 'deal' | 'system';
 
@@ -9,7 +15,8 @@ export interface AppNotification {
   id: string;
   type: NotificationType;
   title: string;
-  body: string;
+  body: string | null;
+  deep_link?: string | null;
   created_at: string;
   read: boolean;
 }
@@ -26,110 +33,170 @@ type NotifListener = (items: AppNotification[]) => void;
 
 const listeners = new Set<NotifListener>();
 
+let items: AppNotification[] = [];
+let unread = 0;
+let loaded = false;
+let inFlight: Promise<void> | null = null;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+let feedConnected = false;
+
+const POLL_MS = 30000;
+
+function clearedIds(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(CLEARED_KEY) ?? '[]') as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
+function visible(): AppNotification[] {
+  const cleared = clearedIds();
+  return items.filter((n) => !cleared.has(n.id));
+}
+
 function emit() {
-  listeners.forEach((l) => l(read()));
+  const list = visible();
+  listeners.forEach((l) => l(list));
 }
 
-function read(): AppNotification[] {
-  try {
-    const raw = localStorage.getItem(NOTIF_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function write(items: AppNotification[]) {
-  try {
-    localStorage.setItem(NOTIF_KEY, JSON.stringify(items));
-  } catch { /* ignore */ }
-  emit();
-}
-
-function seed(): AppNotification[] {
-  const now = Date.now();
-  const mk = (minsAgo: number) => new Date(now - minsAgo * 60_000).toISOString();
-  return [
-    {
-      id: 'seed-1',
-      type: 'market',
-      title: 'Cele Cele Market Day tomorrow',
-      body: 'Mile 12, Lagos opens 5:30 AM — stock up on wholesale produce at market-day prices.',
-      created_at: mk(26),
-      read: false,
-    },
-    {
-      id: 'seed-2',
-      type: 'chat',
-      title: 'New message from Adebola Akinwale',
-      body: 'Your tatashe order is ready for pickup — when should we meet at the stall?',
-      created_at: mk(95),
-      read: false,
-    },
-    {
-      id: 'seed-3',
-      type: 'deal',
-      title: 'Deal alert: Fresh tomatoes',
-      body: 'Fresh tomatoes dropped to a new market-day low. Limited stock, grab it while it lasts.',
-      created_at: mk(320),
-      read: false,
-    },
-  ];
-}
-
-export function getNotifications(): AppNotification[] {
-  try {
-    if (!isLoggedIn()) return [];
-    const raw = localStorage.getItem(NOTIF_KEY);
-    if (!raw) {
-      const seeded = seed();
-      write(seeded);
-      return seeded;
+async function refresh(): Promise<void> {
+  if (inFlight) return inFlight;
+  inFlight = (async () => {
+    try {
+      const [list, count] = await Promise.all([
+        fetchNotifications(activeBuyerId(), 50),
+        fetchUnreadCount(activeBuyerId()),
+      ]);
+      items = list.map((n) => ({
+        id: n.id,
+        type: n.type,
+        title: n.title,
+        body: n.body,
+        deep_link: n.deep_link,
+        created_at: n.created_at,
+        read: n.read,
+      }));
+      unread = count;
+    } catch {
+      /* offline — keep the last known list */
+    } finally {
+      loaded = true;
+      inFlight = null;
+      emit();
     }
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
+  })();
+  return inFlight;
+}
+
+function ensureLoaded(): Promise<void> {
+  return refresh();
+}
+
+function startPoll(): void {
+  if (pollTimer) return;
+  pollTimer = setInterval(() => void refresh(), POLL_MS);
+}
+
+function stopPollIfIdle(): void {
+  if (listeners.size === 0 && pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
   }
 }
 
-export function getUnreadCount(): number {
-  return getNotifications().filter((n) => !n.read).length;
+function onEnvelope(env: MarketEnvelope): void {
+  if (env.event_type !== 'notification.feed') return;
+  const userId = (env.payload as { user_id?: string }).user_id;
+  if (userId && userId === activeBuyerId()) void refresh();
 }
 
-export function pushNotification(input: Omit<AppNotification, 'id' | 'created_at' | 'read'>): void {
-  const item: AppNotification = {
-    ...input,
-    id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    created_at: new Date().toISOString(),
-    read: false,
-  };
-  write([item, ...read()].slice(0, 50));
+function startFeed(): void {
+  if (feedConnected) return;
+  feedConnected = true;
+  connectMarketFeed(onEnvelope);
 }
 
-export function markNotificationRead(id: string): void {
-  const items = read();
-  const item = items.find((i) => i.id === id);
-  if (item && !item.read) {
-    item.read = true;
-    write(items);
+function stopFeedIfIdle(): void {
+  if (listeners.size === 0 && feedConnected) {
+    feedConnected = false;
+    disconnectMarketFeed(onEnvelope);
   }
-}
-
-export function markAllNotificationsRead(): void {
-  const items = read();
-  let changed = false;
-  items.forEach((i) => { if (!i.read) { i.read = true; changed = true; } });
-  if (changed) write(items);
-}
-
-export function clearNotifications(): void {
-  write([]);
 }
 
 export function subscribeNotifications(listener: NotifListener): () => void {
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  void ensureLoaded();
+  startPoll();
+  startFeed();
+  return () => {
+    listeners.delete(listener);
+    stopPollIfIdle();
+    stopFeedIfIdle();
+  };
+}
+
+export function getNotifications(): AppNotification[] {
+  if (!loaded) void ensureLoaded();
+  return visible();
+}
+
+export function getUnreadCount(): number {
+  if (!loaded) void ensureLoaded();
+  return unread;
+}
+
+/**
+ * Local-only push (no public write endpoint yet): used by checkout/order
+ * flows to surface an in-app notice immediately. Server-published events
+ * still take over via the SSE refresh.
+ */
+export function pushNotification(input: Omit<AppNotification, 'id' | 'created_at' | 'read'>): void {
+  const item: AppNotification = {
+    ...input,
+    id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    created_at: new Date().toISOString(),
+    read: false,
+  };
+  items = [item, ...items].slice(0, 100);
+  unread += 1;
+  emit();
+}
+
+export function markNotificationRead(id: string): void {
+  const n = items.find((i) => i.id === id);
+  if (!n || n.read) return;
+  n.read = true;
+  unread = Math.max(0, unread - 1);
+  emit();
+  void markNotificationsRead(activeBuyerId(), [id]).catch(() => {});
+}
+
+export function markAllNotificationsRead(): void {
+  if (!visible().some((n) => !n.read)) return;
+  items = items.map((n) => ({ ...n, read: true }));
+  unread = 0;
+  emit();
+  void markNotificationsRead(activeBuyerId()).catch(() => {});
+}
+
+export function clearNotifications(): void {
+  const ids = items.map((n) => n.id);
+  if (ids.length === 0) return;
+  try {
+    const merged = [...new Set([...clearedIds(), ...ids])];
+    localStorage.setItem(CLEARED_KEY, JSON.stringify(merged));
+  } catch {
+    /* ignore quota errors */
+  }
+  emit();
+}
+
+/** Map an API notification row to the app shape (currently identical). */
+export function forTesting(clear = false): void {
+  if (clear) {
+    items = [];
+    unread = 0;
+    loaded = false;
+  }
 }

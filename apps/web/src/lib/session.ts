@@ -50,3 +50,14 @@ export function getUser(): AuthUser | null {
 export function getUserId(): string | null {
   return getUser()?.id ?? null;
 }
+
+/**
+ * Identity used by unauthenticated-market features (crowd want, haggling,
+ * in-app feed). Logged-in buyers use their own id; visitors act as the
+ * seeded demo buyer so the marketplace still works before sign-up.
+ */
+export const DEMO_BUYER_ID = '7c068a1a-fcca-4c91-a3e3-a0a96adfba12';
+
+export function activeBuyerId(): string {
+  return getUserId() ?? DEMO_BUYER_ID;
+}

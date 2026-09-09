@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { isLoggedIn, AUTH_EVENT } from '../lib/session';
+import { useNegotiationCount } from '../lib/negotiation';
 
 const NAV_ITEMS: { path: string; label: string; icon: string; requiresAuth?: boolean }[] = [
   { path: '/', label: 'Home', icon: 'home' },
   { path: '/categories', label: 'Categories', icon: 'categories' },
+  { path: '/crowd-market', label: 'Crowd', icon: 'megaphone' },
   { path: '/orders', label: 'Orders', icon: 'orders' },
   { path: '/chat', label: 'Messages', icon: 'messages', requiresAuth: true },
+  { path: '/negotiations', label: 'Haggling', icon: 'handshake', requiresAuth: true },
   { path: '/account', label: 'Account', icon: 'account' },
 ];
 
@@ -46,6 +49,25 @@ function NavIcon({ icon, active }: { icon: string; active: boolean }) {
       </svg>
     );
   }
+  if (icon === 'megaphone') {
+    return (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className={cls} strokeWidth={active ? 2.5 : 2}>
+        <path d="M3 11l18-5v12L3 13v-2z"/>
+        <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>
+      </svg>
+    );
+  }
+  if (icon === 'handshake') {
+    return (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className={cls} strokeWidth={active ? 2.5 : 2}>
+        <path d="m11 17 2 2a1 1 0 1 0 3-3"/>
+        <path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"/>
+        <path d="m21 3 1 11h-2"/>
+        <path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"/>
+        <path d="M3 4h8"/>
+      </svg>
+    );
+  }
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className={cls} strokeWidth={active ? 2.5 : 2}>
       <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
@@ -58,6 +80,7 @@ export function BottomNav() {
   const location = useLocation();
   const navigate = useNavigate();
   const [authed, setAuthed] = useState(() => isLoggedIn());
+  const haggleCount = useNegotiationCount();
 
   useEffect(() => {
     const onAuth = () => setAuthed(isLoggedIn());
@@ -79,7 +102,7 @@ export function BottomNav() {
             key={item.path}
             type="button"
             onClick={() => navigate(item.path)}
-            className={`flex flex-1 flex-col items-center gap-0.5 py-1.5 bg-transparent border-none cursor-pointer min-w-[56px] transition ${
+            className={`relative flex flex-1 flex-col items-center gap-0.5 py-1.5 bg-transparent border-none cursor-pointer min-w-[56px] transition ${
               active ? 'text-primary' : 'text-[#8A8A8A]'
             }`}
           >
@@ -87,6 +110,11 @@ export function BottomNav() {
             <span className={`text-[10px] ${active ? 'font-semibold' : 'font-medium'}`}>
               {item.label}
             </span>
+            {item.icon === 'handshake' && haggleCount > 0 && (
+              <span className="absolute top-0 right-[calc(50%-26px)] min-w-4 h-4 rounded-full bg-[#F5A623] text-[#4A2D00] text-[9px] font-bold flex items-center justify-center px-1 leading-none">
+                {haggleCount > 99 ? '99+' : haggleCount}
+              </span>
+            )}
           </button>
         );
       })}

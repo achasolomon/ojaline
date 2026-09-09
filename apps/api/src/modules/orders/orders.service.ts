@@ -426,6 +426,39 @@ export class OrdersService {
     }
   }
 
+  async listOrders(buyerId: string): Promise<Array<Record<string, unknown>>> {
+    const { rows } = await this.pool.query(
+      `SELECT o.id, o.channel, o.status, o.multi_seller,
+              o.item_total_cents, o.delivery_fee_cents, o.landed_total_cents,
+              o.currency, o.created_at, o.updated_at,
+              COALESCE(
+                (SELECT json_agg(json_build_object(
+                  'offer_id', ol.offer_id,
+                  'product_name', l.product_name,
+                  'unit', ofr.unit,
+                  'qty', ol.qty,
+                  'unit_price_cents', ol.unit_price_cents,
+                  'status', ol.status
+                ) ORDER BY ol.created_at)
+                 FROM orders.order_lines ol
+                 JOIN catalog.offers ofr ON ofr.id = ol.offer_id
+                 JOIN catalog.lots l ON l.id = ofr.lot_id
+                WHERE ol.order_id = o.id),
+                '[]'::json
+              ) AS lines
+         FROM orders.orders o
+        WHERE o.buyer_id = $1
+        ORDER BY o.created_at DESC`,
+      [buyerId],
+    );
+    return rows.map((r) => ({
+      ...r,
+      item_total_cents: Number(r.item_total_cents),
+      delivery_fee_cents: Number(r.delivery_fee_cents),
+      landed_total_cents: Number(r.landed_total_cents),
+    }));
+  }
+
   async getOrder(orderId: string): Promise<Record<string, unknown>> {
     const orderResult = await this.pool.query<{
       id: string;
