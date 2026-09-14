@@ -1,6 +1,6 @@
 # OJALINE — Seller Platform Plan
 ### Derived from System Architecture v2.0, Data Model v1.0, and Buyer Platform implementation (Approved)
-**Status:** Phase 0 complete (verified) — Phase 1 next
+**Status:** Phase 1 complete (verified) — Phase 2 next
 **Date:** 14 Sep 2026
 
 ---
@@ -239,6 +239,16 @@ The escrow ledger has a `FEE` entry type and a `MANUAL_ADJUSTMENT` type, but the
 - Dispatch transitions line → DISPATCHED, pushes buyer notification
 - Decline triggers `recordLineFailure` + buyer notification + decision flow
 - Buyer confirmDelivery → escrow releases net (with commission deducted)
+
+**Phase 1 verified (all criteria met):**
+- Migrations **V32** (`ACCEPTED` status + `accepted_at`/`dispatched_at`/`tracking_ref`/`decline_reason` on `order_lines` + seller/status index) and **V33/V34** (fixed a latent Phase 0 bug: `stock_holds.paystack_reference` was globally UNIQUE, so multi-line PAYMENT confirm threw on the second hold; now a plain status-gated index — replay protection lives in `charges` + the webhook's status-gated conversion).
+- State machine gains `acceptLine` (PAID → ACCEPTED), `dispatchLine` (→ DISPATCHED + tracking, order rolls PAID → PARTIALLY_DISPATCHED/DISPATCHED), `declineLine` (→ CANCELLED + `decline_reason`, order → PARTIALLY_DISPATCHED + 24h `decision_deadline_at`, stock hold released + `reserved_qty` freed). All enforce seller ownership (or OPS/AGENT) inside the transaction.
+- `GET /orders?seller_id=&status=&line_status=&limit=&offset=` returns `{ orders, total, limit, offset }` with only the seller's lines + `buyer_name`; `GET /orders/:id` now narrows a non-buyer seller's view to their own lines (cross-seller leak closed).
+- Payment confirm notifies every seller with a line on the order (`New paid order`); accept/dispatch/decline notify the buyer (controller).
+- `confirmDelivery` now accepts `PARTIALLY_DISPATCHED`/`DISPATCHED` (a seller could otherwise never confirm a dispatched order).
+- Web: `SellerOrdersPage.tsx` at `/seller/orders` (RequireAuth) with line-level Accept / Dispatch (tracking ref prompt) / Decline (reason prompt) and filter chips; linked from Account for sellers.
+- Integration spec `fulfilment-seller.spec.ts` (2 tests): happy path (list → accept → dispatch → buyer confirm → escrow closes at 0, seller notification) + decline path (line CANCELLED, deadline armed, sibling seller still actionable). Auth negatives covered (other seller / anonymous rejected).
+- Full API suite: **67 passed / 6 skipped**; `tsc --noEmit` (api + web) clean; root eslint 0 new errors; contracts `check` passes.
 
 ### Phase 2 — Catalogue Management & Storefront
 

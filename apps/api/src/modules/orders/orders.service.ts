@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException, ConflictException, ForbiddenException, Inject, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, ConflictException, ForbiddenException, UnauthorizedException, Inject, Logger } from '@nestjs/common';
 import { Pool } from 'pg';
 import { FULFILMENT_MODES, FULFILMENT_PREFERENCE, DELIVERY_FEE_CENTS, type FulfilmentMode } from '@ojaline/contracts';
 import { OutboxService } from '../outbox/outbox.service.js';
@@ -492,6 +492,7 @@ export class OrdersService {
       );
 
       await client.query('COMMIT');
+      await this.notifySellersOfPaidOrder(input.order_id);
       return { order_id: input.order_id, status: 'PAID' };
     } catch (err) {
       await client.query('ROLLBACK');
@@ -519,7 +520,7 @@ export class OrdersService {
 
       const order = orderResult.rows[0];
       this.assertBuyerOrAnon(actor, order.buyer_id);
-      if (order.status !== 'PAID') {
+      if (!['PAID', 'PARTIALLY_DISPATCHED', 'DISPATCHED'].includes(order.status)) {
         throw new BadRequestException(`order ${order.id} is in status ${order.status}, expected PAID`);
       }
 
@@ -742,6 +743,94 @@ export class OrdersService {
     }));
   }
 
+  async listSellerOrders(
+    sellerId: string,
+    opts: { status?: string; line_status?: string; limit?: number; offset?: number } = {},
+    actor?: AuthUser,
+  ): Promise<{
+    orders: Array<Record<string, unknown>>;
+    total: number;
+    limit: number;
+    offset: number;
+  }> {
+    if (!actor) throw new UnauthorizedException('Authentication required');
+    const isOps = actor.roles.some((r) => r === 'OPS' || r === 'AGENT');
+    if (actor.id !== sellerId && !isOps) {
+      throw new ForbiddenException('You may only list your own seller orders');
+    }
+
+    const limit = Math.min(Math.max(opts.limit ?? 20, 1), 50);
+    const offset = Math.max(opts.offset ?? 0, 0);
+
+    const where = [
+      `EXISTS (SELECT 1 FROM orders.order_lines olx WHERE olx.order_id = o.id AND olx.seller_id = $1)`,
+    ];
+    const params: unknown[] = [sellerId];
+    if (opts.line_status) {
+      params.push(opts.line_status);
+      where.push(
+        `EXISTS (SELECT 1 FROM orders.order_lines olx2 WHERE olx2.order_id = o.id AND olx2.seller_id = $1 AND olx2.status = $${params.length})`,
+      );
+    }
+    if (opts.status) {
+      params.push(opts.status);
+      where.push(`o.status = $${params.length}`);
+    }
+    const whereSql = where.join(' AND ');
+
+    const total = await this.pool.query<{ n: string }>(
+      `SELECT count(*)::int AS n FROM orders.orders o WHERE ${whereSql}`,
+      params,
+    );
+
+    const { rows } = await this.pool.query(
+      `SELECT o.id, o.channel, o.status, o.multi_seller,
+              o.item_total_cents, o.delivery_fee_cents, o.landed_total_cents,
+              o.currency, o.created_at, o.updated_at, o.delivery_mode,
+              o.buyer_id, u.full_name AS buyer_name,
+              COALESCE(
+                (SELECT json_agg(json_build_object(
+                  'id', ol.id,
+                  'offer_id', ol.offer_id,
+                  'product_name', l.product_name,
+                  'unit', ofr.unit,
+                  'qty', ol.qty,
+                  'unit_price_cents', ol.unit_price_cents,
+                  'commission_cents', ol.commission_cents,
+                  'seller_payable_cents', ol.seller_payable_cents,
+                  'status', ol.status,
+                  'tracking_ref', ol.tracking_ref,
+                  'accepted_at', ol.accepted_at,
+                  'dispatched_at', ol.dispatched_at,
+                  'decline_reason', ol.decline_reason
+                ) ORDER BY ol.created_at)
+                 FROM orders.order_lines ol
+                 JOIN catalog.offers ofr ON ofr.id = ol.offer_id
+                 JOIN catalog.lots l ON l.id = ofr.lot_id
+                WHERE ol.order_id = o.id AND ol.seller_id = $1),
+                '[]'::json
+              ) AS lines
+         FROM orders.orders o
+         JOIN pii.users u ON u.id = o.buyer_id
+        WHERE ${whereSql}
+        ORDER BY o.created_at DESC
+        LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limit, offset],
+    );
+
+    return {
+      total: Number(total.rows[0].n),
+      limit,
+      offset,
+      orders: rows.map((r) => ({
+        ...r,
+        item_total_cents: Number(r.item_total_cents),
+        delivery_fee_cents: Number(r.delivery_fee_cents),
+        landed_total_cents: Number(r.landed_total_cents),
+      })),
+    };
+  }
+
   async getOrder(orderId: string, actor?: AuthUser): Promise<Record<string, unknown>> {
     const orderResult = await this.pool.query<{
       id: string;
@@ -787,12 +876,16 @@ export class OrdersService {
       [orderId],
     );
 
+    let visibleLines = linesResult.rows;
     if (actor) {
       const isBuyer = order.buyer_id === actor.id;
       const isSeller = linesResult.rows.some((l) => l.seller_id === actor.id);
       const isOps = actor.roles.some((r) => r === 'OPS' || r === 'AGENT');
       if (!isBuyer && !isSeller && !isOps) {
         throw new ForbiddenException('You do not have access to this order');
+      }
+      if (!isBuyer && !isOps) {
+        visibleLines = linesResult.rows.filter((l) => l.seller_id === actor.id);
       }
     }
 
@@ -808,7 +901,7 @@ export class OrdersService {
       item_total_cents: Number(order.item_total_cents),
       delivery_fee_cents: Number(order.delivery_fee_cents),
       landed_total_cents: Number(order.landed_total_cents),
-      lines: linesResult.rows.map((l) => ({
+      lines: visibleLines.map((l) => ({
         ...l,
         unit_price_cents: Number(l.unit_price_cents),
         commission_cents: Number(l.commission_cents),
@@ -825,6 +918,26 @@ export class OrdersService {
       await this.feed.push(userId, input);
     } catch (err) {
       this.logger.warn({ err }, 'notification push skipped');
+    }
+  }
+
+  /** After a payment lands, wake every seller who has a line on the order. */
+  private async notifySellersOfPaidOrder(orderId: string): Promise<void> {
+    try {
+      const { rows } = await this.pool.query<{ seller_id: string }>(
+        `SELECT DISTINCT seller_id FROM orders.order_lines WHERE order_id = $1`,
+        [orderId],
+      );
+      for (const r of rows) {
+        await this.safePush(r.seller_id, {
+          type: 'order',
+          title: 'New paid order',
+          body: 'A buyer has paid for your item — confirm and dispatch it.',
+          deep_link: `/orders/${orderId}`,
+        });
+      }
+    } catch (err) {
+      this.logger.warn({ err }, 'seller order notifications skipped');
     }
   }
 

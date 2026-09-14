@@ -15,11 +15,13 @@
       "type": "string",
       "enum": [
         "PAID",
+        "ACCEPTED",
         "DISPATCHED",
         "DELIVERED",
         "PENDING",
         "REFUNDED",
         "FAILED",
+        "CANCELLED",
         "REPLACED"
       ]
     }

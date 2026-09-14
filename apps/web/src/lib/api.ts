@@ -962,6 +962,70 @@ export async function cancelOrder(orderId: string): Promise<{ order_id: string; 
   return postJson<{ order_id: string; order_status: string; refunded_cents: number }>(`/orders/${orderId}/cancel`, {});
 }
 
+/* ── Seller fulfilment ── */
+
+export interface SellerOrderLine {
+  id: string;
+  offer_id: string;
+  product_name: string;
+  unit: string | null;
+  qty: number;
+  unit_price_cents: number;
+  commission_cents: number;
+  seller_payable_cents: number;
+  status: string;
+  tracking_ref: string | null;
+  accepted_at: string | null;
+  dispatched_at: string | null;
+  decline_reason: string | null;
+}
+
+export interface SellerOrderItem extends OrderSummary {
+  buyer_id: string;
+  buyer_name: string;
+  lines: SellerOrderLine[];
+}
+
+export interface SellerOrdersPage {
+  orders: SellerOrderItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export async function listSellerOrders(
+  sellerId: string,
+  opts: { status?: string; lineStatus?: string; limit?: number; offset?: number } = {},
+): Promise<SellerOrdersPage> {
+  const qs = new URLSearchParams({ seller_id: sellerId });
+  if (opts.status) qs.set('status', opts.status);
+  if (opts.lineStatus) qs.set('line_status', opts.lineStatus);
+  if (opts.limit != null) qs.set('limit', String(opts.limit));
+  if (opts.offset != null) qs.set('offset', String(opts.offset));
+  return getJson<SellerOrdersPage>(`/orders?${qs.toString()}`);
+}
+
+export async function acceptOrderLine(orderId: string, lineId: string) {
+  return postJson<{ order_id: string; line_id: string; status: string }>(
+    `/orders/${orderId}/lines/${lineId}/accept`,
+    {},
+  );
+}
+
+export async function dispatchOrderLine(orderId: string, lineId: string, trackingRef?: string) {
+  return postJson<{ order_id: string; line_id: string; status: string; order_status: string; tracking_ref: string | null }>(
+    `/orders/${orderId}/lines/${lineId}/dispatch`,
+    { tracking_ref: trackingRef },
+  );
+}
+
+export async function declineOrderLine(orderId: string, lineId: string, reason?: string) {
+  return postJson<{ order_id: string; line_id: string; status: string; order_status: string; decision_deadline_at: string | null }>(
+    `/orders/${orderId}/lines/${lineId}/decline`,
+    { reason },
+  );
+}
+
 export async function decideOrder(
   orderId: string,
   action: BuyerDecisionResult['action'],

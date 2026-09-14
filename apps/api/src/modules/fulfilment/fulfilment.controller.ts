@@ -5,12 +5,20 @@ import {
   BuyerDecision,
 } from './fulfilment-state-machine.js';
 import { FeedService } from '../notifications/feed.service.js';
-import { CurrentUser, type AuthUser } from '../auth/auth-guards.js';
+import { CurrentUser, AuthRequired, type AuthUser } from '../auth/auth-guards.js';
 
 interface DecisionBody {
   order_id: string;
   action: 'CONTINUE' | 'CANCEL' | 'REPLACE_SELLER';
   line_ids: string[];
+}
+
+interface DispatchBody {
+  tracking_ref?: string;
+}
+
+interface DeclineBody {
+  reason?: string;
 }
 
 @Controller('orders')
@@ -62,6 +70,68 @@ export class FulfilmentController {
       });
     } catch (err) {
       /* decision already committed — a failed notification must not fail the request */
+    }
+  }
+
+  @Post(':id/lines/:lineId/accept')
+  @HttpCode(200)
+  @AuthRequired()
+  async acceptLine(@Param('id') id: string, @Param('lineId') lineId: string, @CurrentUser() user: AuthUser) {
+    const result = await this.stateMachine.acceptLine(id, lineId, user);
+    await this.notifyBuyer(id, 'order', 'Order accepted', 'A seller has accepted and is preparing your item.', `/orders/${id}`);
+    return result;
+  }
+
+  @Post(':id/lines/:lineId/dispatch')
+  @HttpCode(200)
+  @AuthRequired()
+  async dispatchLine(
+    @Param('id') id: string,
+    @Param('lineId') lineId: string,
+    @Body() body: DispatchBody,
+    @CurrentUser() user: AuthUser,
+  ) {
+    const result = await this.stateMachine.dispatchLine(id, lineId, user, { tracking_ref: body.tracking_ref });
+    const tracking = result.tracking_ref ? ` Tracking ref: ${result.tracking_ref}.` : '';
+    await this.notifyBuyer(id, 'order', 'Item dispatched', `Your item is on its way.${tracking}`, `/orders/${id}`);
+    return result;
+  }
+
+  @Post(':id/lines/:lineId/decline')
+  @HttpCode(200)
+  @AuthRequired()
+  async declineLine(
+    @Param('id') id: string,
+    @Param('lineId') lineId: string,
+    @Body() body: DeclineBody,
+    @CurrentUser() user: AuthUser,
+  ) {
+    const result = await this.stateMachine.declineLine(id, lineId, user, { reason: body.reason });
+    await this.notifyBuyer(id, 'order', 'Seller could not fulfil one item', 'We notified you to decide: replace it, or we refund the affected item.', `/orders/${id}`);
+    return result;
+  }
+
+  private async notifyBuyer(
+    orderId: string,
+    type: 'order',
+    title: string,
+    body: string,
+    deepLink: string,
+  ): Promise<void> {
+    try {
+      const order = await this.pool.query<{ buyer_id: string }>(
+        `SELECT buyer_id FROM orders.orders WHERE id = $1`,
+        [orderId],
+      );
+      if (order.rowCount === 0) return;
+      await this.feed.push(order.rows[0].buyer_id, {
+        type,
+        title,
+        body,
+        deep_link: deepLink,
+      });
+    } catch {
+      /* line transition already committed — a failed notification must not fail the request */
     }
   }
 

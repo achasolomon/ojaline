@@ -35,8 +35,28 @@ export class OrdersController {
   constructor(@Inject(OrdersService) private readonly orders: OrdersService) {}
 
   @Get()
-  async list(@Query('buyer_id') buyerId: string, @CurrentUser() user?: AuthUser) {
-    if (!buyerId) throw new BadRequestException('buyer_id required');
+  async list(
+    @Query('buyer_id') buyerId: string,
+    @Query('seller_id') sellerId: string,
+    @Query('status') status: string,
+    @Query('line_status') lineStatus: string,
+    @Query('limit') limit: string,
+    @Query('offset') offset: string,
+    @CurrentUser() user?: AuthUser,
+  ) {
+    if (sellerId) {
+      return this.orders.listSellerOrders(
+        sellerId,
+        {
+          status,
+          line_status: lineStatus,
+          limit: limit ? Number(limit) : undefined,
+          offset: offset ? Number(offset) : undefined,
+        },
+        user,
+      );
+    }
+    if (!buyerId) throw new BadRequestException('buyer_id or seller_id required');
     return this.orders.listOrders(buyerId, user);
   }
 

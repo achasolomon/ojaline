@@ -1,9 +1,10 @@
-import { Injectable, Logger, BadRequestException, NotFoundException, Inject } from '@nestjs/common';
-import { Pool } from 'pg';
+import { Injectable, Logger, BadRequestException, NotFoundException, ForbiddenException, UnauthorizedException, Inject } from '@nestjs/common';
+import { Pool, type PoolClient } from 'pg';
 import { OutboxService } from '../outbox/outbox.service.js';
+import type { AuthUser } from '../auth/auth.service.js';
 
 type FulfilmentAction = 'CONTINUE' | 'CANCEL' | 'REPLACE_SELLER';
-type LineStatus = 'PENDING' | 'PAID' | 'DISPATCHED' | 'DELIVERED' | 'REFUNDED' | 'CANCELLED' | 'REPLACED';
+type LineStatus = 'PENDING' | 'PAID' | 'ACCEPTED' | 'DISPATCHED' | 'DELIVERED' | 'REFUNDED' | 'CANCELLED' | 'REPLACED';
 
 export interface LineFailure {
   line_id: string;
@@ -44,6 +45,234 @@ export class FulfilmentStateMachine {
     );
 
     this.logger.log({ lineId: failure.line_id, reason: failure.reason }, 'line failure recorded');
+  }
+
+  /* ── Seller fulfilment actions ─────────────────────────────────────── */
+
+  /**
+   * Seller accepts a paid line: PAID → ACCEPTED. Works while the order is
+   * PAID or PARTIALLY_DISPATCHED (a sibling line may have failed already).
+   */
+  async acceptLine(orderId: string, lineId: string, actor?: AuthUser): Promise<{
+    order_id: string;
+    line_id: string;
+    status: 'ACCEPTED';
+  }> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const line = await this.assertSellerLineOwned(client, orderId, lineId, actor);
+      if (line.line_status !== 'PAID') {
+        throw new BadRequestException(`line ${lineId} is in status ${line.line_status}, expected PAID`);
+      }
+      if (!['PAID', 'PARTIALLY_DISPATCHED'].includes(line.order_status)) {
+        throw new BadRequestException(`order ${orderId} is in status ${line.order_status}, cannot accept lines`);
+      }
+      await client.query(
+        `UPDATE orders.order_lines SET status = 'ACCEPTED', accepted_at = now(), updated_at = now() WHERE id = $1`,
+        [lineId],
+      );
+      await this.outbox.enqueue(client, 'order.line_status_changed', orderId, {
+        order_id: orderId,
+        line_id: lineId,
+        status: 'ACCEPTED',
+      });
+      await client.query('COMMIT');
+      return { order_id: orderId, line_id: lineId, status: 'ACCEPTED' };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Seller dispatches a line: PAID/ACCEPTED → DISPATCHED with tracking info.
+   * The order rolls PAID → DISPATCHED once no line is awaiting dispatch.
+   */
+  async dispatchLine(
+    orderId: string,
+    lineId: string,
+    actor?: AuthUser,
+    input: { tracking_ref?: string } = {},
+  ): Promise<{
+    order_id: string;
+    line_id: string;
+    status: 'DISPATCHED';
+    order_status: string;
+    tracking_ref: string | null;
+  }> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const line = await this.assertSellerLineOwned(client, orderId, lineId, actor);
+      if (!['PAID', 'ACCEPTED'].includes(line.line_status)) {
+        throw new BadRequestException(`line ${lineId} is in status ${line.line_status}, expected PAID or ACCEPTED`);
+      }
+      if (!['PAID', 'PARTIALLY_DISPATCHED'].includes(line.order_status)) {
+        throw new BadRequestException(`order ${orderId} is in status ${line.order_status}, cannot dispatch lines`);
+      }
+
+      const trackingRef = input.tracking_ref?.trim() || null;
+      await client.query(
+        `UPDATE orders.order_lines
+            SET status = 'DISPATCHED', dispatched_at = now(), tracking_ref = $2, updated_at = now()
+          WHERE id = $1`,
+        [lineId, trackingRef],
+      );
+
+      const pending = await client.query<{ n: string }>(
+        `SELECT count(*)::int AS n FROM orders.order_lines
+          WHERE order_id = $1 AND status IN ('PAID', 'ACCEPTED', 'PENDING')`,
+        [orderId],
+      );
+      const nextOrderStatus = Number(pending.rows[0].n) === 0 ? 'DISPATCHED' : 'PARTIALLY_DISPATCHED';
+
+      await client.query(
+        `UPDATE orders.orders
+            SET status = $1, updated_at = now()
+          WHERE id = $2 AND status IN ('PAID', 'PARTIALLY_DISPATCHED')`,
+        [nextOrderStatus, orderId],
+      );
+
+      await this.outbox.enqueue(client, 'order.line_status_changed', orderId, {
+        order_id: orderId,
+        line_id: lineId,
+        status: 'DISPATCHED',
+      });
+
+      await client.query('COMMIT');
+      return {
+        order_id: orderId,
+        line_id: lineId,
+        status: 'DISPATCHED',
+        order_status: nextOrderStatus,
+        tracking_ref: trackingRef,
+      };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Seller declines a line it cannot fulfil: PAID/ACCEPTED → CANCELLED.
+   * Mirrors recordLineFailure (order → PARTIALLY_DISPATCHED + 24h buyer
+   * decision deadline) and frees the reserved stock for the declined line.
+   */
+  async declineLine(
+    orderId: string,
+    lineId: string,
+    actor?: AuthUser,
+    input: { reason?: string } = {},
+  ): Promise<{
+    order_id: string;
+    line_id: string;
+    status: 'CANCELLED';
+    order_status: string;
+    decision_deadline_at: Date | null;
+  }> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const line = await this.assertSellerLineOwned(client, orderId, lineId, actor);
+      if (!['PAID', 'ACCEPTED'].includes(line.line_status)) {
+        throw new BadRequestException(`line ${lineId} is in status ${line.line_status}, expected PAID or ACCEPTED`);
+      }
+
+      await client.query(
+        `UPDATE orders.order_lines
+            SET status = 'CANCELLED', decline_reason = $2, updated_at = now()
+          WHERE id = $1`,
+        [lineId, input.reason?.trim() || null],
+      );
+
+      const deadline = await client.query<{ decision_deadline_at: Date }>(
+        `UPDATE orders.orders
+            SET status = 'PARTIALLY_DISPATCHED',
+                decision_deadline_at = now() + interval '24 hours',
+                updated_at = now()
+          WHERE id = $1
+            AND status NOT IN ('CANCELLED', 'PARTIALLY_REFUNDED')
+          RETURNING decision_deadline_at`,
+        [orderId],
+      );
+
+      await client.query(
+        `UPDATE orders.stock_holds
+            SET status = 'RELEASED'
+          WHERE order_id = $1 AND offer_id = $2 AND status IN ('CONVERTED', 'ACTIVE')`,
+        [orderId, line.offer_id],
+      );
+      await client.query(
+        `UPDATE catalog.offers
+            SET reserved_qty = GREATEST(reserved_qty - $1, 0), updated_at = now()
+          WHERE id = $2`,
+        [line.qty, line.offer_id],
+      );
+
+      await this.outbox.enqueue(client, 'order.line_status_changed', orderId, {
+        order_id: orderId,
+        line_id: lineId,
+        status: 'CANCELLED',
+      });
+
+      await client.query('COMMIT');
+      return {
+        order_id: orderId,
+        line_id: lineId,
+        status: 'CANCELLED',
+        order_status: 'PARTIALLY_DISPATCHED',
+        decision_deadline_at: deadline.rowCount === 0 ? null : deadline.rows[0].decision_deadline_at,
+      };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  private async assertSellerLineOwned(
+    client: PoolClient,
+    orderId: string,
+    lineId: string,
+    actor?: AuthUser,
+  ): Promise<{
+    line_seller_id: string;
+    line_status: string;
+    order_status: string;
+    offer_id: string;
+    qty: number;
+  }> {
+    if (!actor) throw new UnauthorizedException('Authentication required');
+    const res = await client.query<{
+      line_seller_id: string;
+      line_status: string;
+      order_status: string;
+      offer_id: string;
+      qty: number;
+    }>(
+      `SELECT ol.seller_id AS line_seller_id, ol.status AS line_status,
+              o.status AS order_status, ol.offer_id, ol.qty
+         FROM orders.order_lines ol
+         JOIN orders.orders o ON o.id = ol.order_id
+        WHERE ol.id = $1 AND ol.order_id = $2
+        FOR UPDATE OF ol`,
+      [lineId, orderId],
+    );
+    if (res.rowCount === 0) {
+      throw new NotFoundException(`line ${lineId} not found on order ${orderId}`);
+    }
+    const row = res.rows[0];
+    const isOps = actor.roles.some((r) => r === 'OPS' || r === 'AGENT');
+    if (actor.id !== row.line_seller_id && !isOps) {
+      throw new ForbiddenException('This order line belongs to another seller');
+    }
+    return row;
   }
 
   async handleBuyerDecision(decision: BuyerDecision): Promise<{
