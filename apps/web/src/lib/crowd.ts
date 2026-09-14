@@ -12,7 +12,7 @@ import { activeBuyerId } from './session';
 
 /**
  * A "crowd market" want: the buyer posts a request ("7 baskets of Jaji yam")
- * and the market answers — sellers who stock that produce come haggling for
+ * and the market answers — sellers who stock that produce come bargaining for
  * the sale, with location and ratings visible. The buyer can bargain with
  * several of them at once and settle with the best, like a real market.
  *

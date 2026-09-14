@@ -13,7 +13,6 @@ import {
   type Negotiation,
 } from '../lib/negotiation';
 import { NegotiationChat } from './NegotiationChat';
-import { Icon } from './icons';
 
 export function BargainModal({
   offer,
@@ -45,8 +44,8 @@ export function BargainModal({
         }
         if (currentId.startsWith('draft:')) {
           // First bid promoted the draft to a real thread: keep the modal on
-          // it. If the draft vanished without a real sibling (walked away /
-          // failed), the haggle never happened — close.
+          // it. If the draft vanished without a real sibling (ended / failed),
+          // the bargain never happened — close.
           const real = items.find((n) => !n.draft && n.basis.type === 'OFFER' && n.basis.offer.id === offer.id);
           if (real) setThread((prev) => (prev && prev.updated_at === real.updated_at ? prev : real));
           else onCloseRef.current?.();
@@ -60,7 +59,7 @@ export function BargainModal({
         await ensureLoaded();
         if (cancelled) return;
         const existing =
-          findOfferNegotiation(offer.id, ['OPEN', 'WALKED']) ??
+          findOfferNegotiation(offer.id, ['OPEN', 'ENDED']) ??
           (await createOfferNegotiation(offer, 'customer', initialQty));
         if (cancelled) return;
         setNegId(existing.id);
@@ -105,11 +104,6 @@ export function BargainModal({
                 per {offer.unit?.trim() || 'unit'} · {offer.product_name}
               </p>
             </div>
-            {current?.unseen_callbacks ? (
-              <span className="mt-0.5 flex shrink-0 items-center gap-1 rounded-full bg-[#8A5F00]/10 px-2.5 py-1 text-[10px] font-bold text-[#8A5F00]">
-                <Icon name="bell" size={11} /> Called you back
-              </span>
-            ) : null}
           </div>
         </div>
 

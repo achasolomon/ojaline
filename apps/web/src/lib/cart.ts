@@ -15,7 +15,9 @@ export interface CartItem {
   qty: number;
   delivery_date: string | null;
   delivery_window: DeliveryWindow | null;
-  /** Set when the price came from a settled negotiation (haggle). */
+  fulfilment_modes?: string[];
+  channel?: Offer['channel'];
+  /** Set when the price came from a settled negotiation (bargain). */
   negotiation_id?: string | null;
 }
 
@@ -75,6 +77,8 @@ export function addToCart(
   const nextQty = Math.min((existing?.qty ?? 0) + qty, offer.sellable_qty);
   if (existing) {
     existing.qty = nextQty;
+    existing.fulfilment_modes = offer.fulfilment_modes;
+    existing.channel = offer.channel;
     if (priceKoboOverride != null) existing.unit_price_kobo = priceKoboOverride;
     if (negotiationId) existing.negotiation_id = negotiationId;
     if (schedule) {
@@ -93,6 +97,8 @@ export function addToCart(
       qty: nextQty,
       delivery_date: schedule?.date ?? null,
       delivery_window: schedule?.window ?? null,
+      fulfilment_modes: offer.fulfilment_modes,
+      channel: offer.channel,
       negotiation_id: negotiationId ?? null,
     });
   }

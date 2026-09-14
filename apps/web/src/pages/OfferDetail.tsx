@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@ojaline/design';
 import { naira } from '@ojaline/design';
-import { getOfferById, getSimilarOffers, getReviews, trackView, createConversation, getSellerById, discoverOffers, getBatchOffers, getRecentlyViewedIds } from '../lib/api';
+import { getOfferById, getSimilarOffers, getReviews, trackView, createConversation, getSellerById, discoverOffers, getBatchOffers, getRecentlyViewedIds, addToWishlist, removeFromWishlist } from '../lib/api';
 import type { Offer, FulfilmentMode, Review, OfferImage } from '../lib/api';
 import { LandedCost } from '../components/LandedCost';
 import { OfferCard } from '../components/OfferCard';
@@ -10,15 +10,12 @@ import { BargainModal } from '../components/BargainModal';
 import { Icon } from '../components/icons';
 import { addToCart, getCartItems } from '../lib/cart';
 import { bargainPriceKobo, bargainFloorKobo } from '../lib/bargain';
-import { activeBuyerId } from '../lib/session';
+import { activeBuyerId, getUser } from '../lib/session';
+import { isWished, upsertWishlist, dropWishlist } from '../lib/wishlist';
 import { nextDeliveryDates, DELIVERY_WINDOWS } from '../lib/delivery';
 import type { DeliveryWindow } from '../lib/delivery';
-
-const DELIVERY_FEES: Record<FulfilmentMode, number> = {
-  INSTANT: 120000,
-  SCHEDULED: 80000,
-  MARKET_DAY: 50000,
-};
+import { DELIVERY_FEE_CENTS } from '@ojaline/contracts';
+import { PageTopBar } from '../components/PageTopBar';
 
 const DELIVERY_LABELS: Record<FulfilmentMode, string> = {
   INSTANT: 'Instant (2-3h)',
@@ -101,6 +98,8 @@ export default function OfferDetail() {
   const [deliveryDate, setDeliveryDate] = useState<string | null>(null);
   const [deliverySlot, setDeliverySlot] = useState<DeliveryWindow | null>(null);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [wishSaving, setWishSaving] = useState(false);
+  const [wished, setWished] = useState(false);
 
   // Escape + scroll lock while the image lightbox is open.
   useEffect(() => {
@@ -180,6 +179,33 @@ export default function OfferDetail() {
     if (offer) setActiveIdx(0);
   }, [offer]);
 
+  // Reflect saved-wishlist state whenever the offer loads.
+  useEffect(() => {
+    if (!offer) return;
+    setWished(isWished(activeBuyerId(), offer.id));
+  }, [offer]);
+
+  const toggleWishlist = async () => {
+    if (!offer || wishSaving) return;
+    setWishSaving(true);
+    const buyerId = activeBuyerId();
+    const next = !wished;
+    try {
+      if (next) {
+        await addToWishlist(buyerId, offer.id);
+        upsertWishlist(buyerId, { offer_id: offer.id, wished_at: new Date().toISOString(), offer });
+      } else {
+        await removeFromWishlist(buyerId, offer.id);
+        dropWishlist(buyerId, offer.id);
+      }
+      setWished(next);
+    } catch {
+      // wishlist service unavailable — keep current state
+    } finally {
+      setWishSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="mx-auto w-full max-w-[1200px] px-6 py-6 pb-10">
@@ -227,8 +253,10 @@ export default function OfferDetail() {
   }
 
   const originalKobo = offer.price_cents ?? 0;
+  const buyerChannel = getUser()?.channel ?? 'OPEN';
+  const buyerCanBuy = offer.channel === 'OPEN' || buyerChannel === 'OPEN' || offer.channel === buyerChannel;
   const unitKobo = agreedKobo ?? originalKobo;
-  const deliveryFee = DELIVERY_FEES[deliveryMode];
+  const deliveryFee = DELIVERY_FEE_CENTS[deliveryMode];
   const ratingRaw = offer.seller_stats?.avg_rating;
   const rating = ratingRaw != null && !Number.isNaN(Number(ratingRaw)) ? Number(ratingRaw) : null;
   const askKobo = bargainPriceKobo(offer);
@@ -265,9 +293,26 @@ export default function OfferDetail() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1200px] px-6 py-6 pb-10">
+    <div className="min-h-full bg-white lg:bg-surface/60">
+      <PageTopBar
+          title="Item details"
+          action={
+            <button
+              type="button"
+              onClick={toggleWishlist}
+              disabled={wishSaving}
+              aria-label={wished ? 'Remove from wishlist' : 'Save to wishlist'}
+              className={`grid h-9 w-9 place-items-center rounded-full border transition active:scale-95 ${
+                wished ? 'border-[#f5a623] bg-[#f5a623] text-white' : 'border-border text-text'
+              }`}
+            >
+              <Icon name="heart" size={18} className={wished ? 'fill-current' : ''} />
+            </button>
+          }
+        />
+    <div className="mx-auto w-full max-w-[1200px] px-4 py-4 pb-28 sm:px-6 sm:py-6 sm:pb-10">
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-xs text-textSecondary mb-5">
+      <div className="mb-5 hidden items-center gap-2 text-xs text-textSecondary lg:flex">
         <span className="cursor-pointer hover:text-primary" onClick={() => navigate('/')}>Home</span>
         <span>/</span>
         <span className="cursor-pointer hover:text-primary" onClick={() => navigate('/offers')}>Offers</span>
@@ -275,12 +320,12 @@ export default function OfferDetail() {
         <span className="max-w-[320px] truncate text-text font-medium">{offer.product_name}</span>
       </div>
 
-      <div className="grid items-start gap-6 md:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid items-start gap-4 md:grid-cols-[minmax(0,1fr)_360px] lg:gap-6">
         {/* ── LEFT COLUMN ── */}
         <div className="min-w-0 space-y-6">
           {/* Image gallery */}
           <div className="mx-auto w-full max-w-[440px] lg:max-w-[480px]">
-            <div className="relative aspect-square overflow-hidden bg-surface lg:aspect-[4/3]">
+            <div className="relative aspect-[1.05/1] overflow-hidden rounded-2xl bg-surface lg:aspect-[4/3] lg:rounded-none">
               {activeImage?.storage_key ? (
                 <img
                   src={`/api/media/${activeImage.storage_key}`}
@@ -351,8 +396,8 @@ export default function OfferDetail() {
           </div>
 
           {/* Offer info */}
-          <div className="rounded-2xl border border-border bg-white p-5 lg:p-6">
-            <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+          <div className="rounded-2xl border border-border bg-white p-4 sm:p-5 lg:p-6">
+            <div className="flex flex-col items-start justify-between gap-x-4 gap-y-3 sm:flex-row">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold shadow-sm ${CHANNEL_COLORS[offer.channel]}`}>
@@ -364,20 +409,20 @@ export default function OfferDetail() {
                     </span>
                   )}
                 </div>
-                <h1 className="mt-2.5 text-xl font-black tracking-tight text-text lg:text-2xl lg:leading-snug">
+                <h1 className="mt-2.5 text-[22px] font-black tracking-tight text-text lg:text-2xl lg:leading-snug">
                   {offer.product_name}
                 </h1>
               </div>
-              <div className="text-right">
+              <div className="text-left sm:text-right">
                 {originalKobo > 0 ? (
                   <>
-                    <div className="flex flex-wrap items-baseline justify-end gap-x-2 gap-y-0.5">
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 sm:justify-end">
                       <span className="text-[26px] font-black tracking-tight text-text lg:text-[28px]">{fmt(unitKobo)}</span>
                       {isAgreed && (
                         <span className="text-sm font-medium text-textSecondary line-through">{fmt(originalKobo)}</span>
                       )}
                     </div>
-                    <div className="flex items-center justify-end gap-1.5">
+                    <div className="flex items-center gap-1.5 sm:justify-end">
                       {offer.unit && <div className="text-[11px] text-textSecondary">per {offer.unit}</div>}
                       {isAgreed && (
                         <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold text-primary-dark">
@@ -402,6 +447,14 @@ export default function OfferDetail() {
               <span className="rounded-md border border-border bg-surface px-2 py-1 text-[11px] font-medium text-textSecondary">
                 {PERISHABILITY_LABELS[offer.perishability]}
               </span>
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-1.5 md:hidden">
+              {offer.fulfilment_modes.slice(0, 3).map((mode) => (
+                <span key={mode} className="flex min-w-0 flex-col items-center rounded-lg border border-border bg-white px-1 py-2 text-center text-[9px] font-bold text-text">
+                  <Icon name={mode === 'INSTANT' ? 'bolt' : mode === 'MARKET_DAY' ? 'calendar' : 'clock'} size={13} className="mb-1 text-primary" />
+                  {DELIVERY_LABELS[mode]}
+                </span>
+              ))}
             </div>
           </div>
 
@@ -488,7 +541,7 @@ export default function OfferDetail() {
         </div>
 
         {/* ── BUY BOX ── */}
-        <aside className="self-start rounded-2xl border border-border bg-white p-5 md:sticky md:top-[136px] md:p-6">
+        <aside className="hidden self-start rounded-2xl border border-border bg-white p-4 md:sticky md:top-[136px] md:block md:p-6">
           <div className="flex items-baseline justify-between gap-2">
             {originalKobo > 0 ? (
               <div className="flex items-baseline gap-2">
@@ -510,7 +563,7 @@ export default function OfferDetail() {
             </p>
           )}
 
-          {/* Haggle + chat seller — kept above the buying controls */}
+          {/* Bargain + chat seller — kept above the buying controls */}
           <div className="mt-4 flex gap-2.5">
             {hasBargain ? (
               <>
@@ -520,7 +573,7 @@ export default function OfferDetail() {
                   className="flex h-[52px] flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-secondary to-[#F5A623] text-sm font-bold text-primary-dark shadow-[0_6px_16px_rgba(217,158,0,0.22)] transition hover:from-[#F0BE1F] hover:to-[#F0A21F] active:scale-[0.99] cursor-pointer"
                 >
                   <Icon name="bolt" size={16} className="fill-current" />
-                  Haggle · from {fmt(askKobo!)}
+                  Bargain · from {fmt(askKobo!)}
                 </button>
                 <button
                   type="button"
@@ -602,7 +655,7 @@ export default function OfferDetail() {
                       </p>
                       <p className="text-[11px] text-textSecondary">{DELIVERY_TIMES[mode]}</p>
                     </div>
-                    <span className="shrink-0 text-[13px] font-bold text-text">{naira.format(DELIVERY_FEES[mode] / 100)}</span>
+                    <span className="shrink-0 text-[13px] font-bold text-text">{naira.format(DELIVERY_FEE_CENTS[mode] / 100)}</span>
                   </button>
                 );
               })}
@@ -682,7 +735,10 @@ export default function OfferDetail() {
             </p>
           </div>
           <p className="mt-2.5 text-[10px] leading-relaxed text-textSecondary">
-            This offer is listed on the {CHANNEL_LABELS[offer.channel]} channel. Your buyer role must match to purchase.
+            This offer is listed on the {CHANNEL_LABELS[offer.channel]} channel.
+            {buyerCanBuy
+              ? ' Your buyer channel matches, so you can purchase this now.'
+              : ` Your account is on ${CHANNEL_LABELS[buyerChannel]}. To buy, your buyer role must match — sellers on ${CHANNEL_LABELS[offer.channel]} can only sell to that channel. Save it to your wishlist while you arrange access.`}
           </p>
         </aside>
       </div>
@@ -799,6 +855,15 @@ export default function OfferDetail() {
           </div>
         </div>
       )}
+      <div className="fixed inset-x-0 bottom-[64px] z-30 border-t border-border bg-white px-4 py-3 shadow-[0_-5px_18px_rgba(15,48,28,0.10)] md:hidden">
+        <div className="mx-auto flex max-w-lg items-center gap-3">
+          <div className="min-w-0"><p className="text-[10px] text-textSecondary">{offer.unit ? `per ${offer.unit}` : 'Price'}</p><p className="text-lg font-black tracking-tight text-text">{fmt(unitKobo)}</p></div>
+          <button type="button" onClick={quickAdd} className={`flex h-12 flex-1 items-center justify-center gap-2 rounded-xl text-sm font-bold transition ${added ? 'bg-primary-light text-primary' : 'bg-primary text-white hover:bg-primary-dark'}`}>
+            <Icon name={added ? 'check' : 'cart'} size={17} /> {added ? 'Added to cart' : 'Add to Cart'}
+          </button>
+        </div>
+      </div>
+    </div>
     </div>
   );
 }

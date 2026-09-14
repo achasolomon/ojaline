@@ -19,6 +19,7 @@ export interface AuthUser {
   full_name: string;
   status: string;
   seller_type: string | null;
+  channel: 'RETAILER' | 'WHOLESALE' | 'DIRECT' | 'OPEN';
   roles: string[];
 }
 
@@ -40,7 +41,7 @@ export class AuthService {
 
   private async findByIdentity(identity: string) {
     const { rows } = await this.pool.query(
-      `SELECT id, phone, email, full_name, password_hash, status, seller_type
+      `SELECT id, phone, email, full_name, password_hash, status, seller_type, channel
        FROM pii.users
        WHERE phone = $1 OR (email IS NOT NULL AND email = lower($1))
        LIMIT 1`,
@@ -68,6 +69,7 @@ export class AuthService {
       full_name: String(row.full_name),
       status: String(row.status),
       seller_type: row.seller_type ? String(row.seller_type) : null,
+      channel: (row.channel as AuthUser['channel']) ?? 'RETAILER',
       roles,
     };
   }
@@ -90,7 +92,7 @@ export class AuthService {
     }
     if (!payload.sub) throw new UnauthorizedException('Invalid token');
     const { rows } = await this.pool.query(
-      `SELECT id, phone, email, full_name, password_hash, status, seller_type
+      `SELECT id, phone, email, full_name, password_hash, status, seller_type, channel
        FROM pii.users WHERE id = $1`,
       [payload.sub],
     );
@@ -155,7 +157,7 @@ export class AuthService {
     );
 
     const { rows } = await this.pool.query(
-      `SELECT id, phone, email, full_name, password_hash, status, seller_type
+      `SELECT id, phone, email, full_name, password_hash, status, seller_type, channel
        FROM pii.users WHERE id = $1`,
       [userId],
     );

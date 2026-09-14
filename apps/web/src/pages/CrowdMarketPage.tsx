@@ -13,7 +13,6 @@ import {
 import {
   subscribeNegotiations,
   findRequestNegotiation,
-  hasUnseenCallback,
   type Negotiation,
 } from '../lib/negotiation';
 import { getOfferById } from '../lib/api';
@@ -37,7 +36,7 @@ function initials(name: string): string {
 }
 
 function statusOf(negotiation?: Negotiation): { label: string; cls: string } | null {
-  if (negotiation?.status === 'WALKED') return { label: 'You walked away', cls: 'bg-surface text-textSecondary' };
+  if (negotiation?.status === 'ENDED') return { label: 'Price frozen', cls: 'bg-[#FFF6DA] text-[#8A5F00]' };
   if (negotiation?.status === 'SETTLED') return { label: 'You settle with this seller', cls: 'bg-primary-light text-primary' };
   if (negotiation?.status === 'REVOKED') return { label: 'Deal removed', cls: 'bg-[#FFF0EC] text-[#8F3A2B]' };
   return null;
@@ -64,7 +63,6 @@ function BiddingCard({
 }) {
   const settled = negotiation?.status === 'SETTLED';
   const fitsBudget = request.ceiling_kobo != null && bidder.quote_total_kobo <= request.ceiling_kobo;
-  const unseen = negotiation != null && hasUnseenCallback(negotiation.id);
   const statusBadge = statusOf(negotiation);
   const faded = !settled && request.bidders.length > 1 && requestHasSettled(request);
 
@@ -134,9 +132,6 @@ function BiddingCard({
                 expanded ? 'bg-secondary text-primary-dark' : 'bg-primary text-white hover:bg-primary-dark'
               }`}
             >
-              {unseen && (
-                <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#F5A623]" />
-              )}
               <Icon name="message" size={13} /> {expanded ? 'Close' : 'Bargain'}
             </button>
           )
@@ -190,6 +185,7 @@ export function CrowdMarketPage() {
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<{ requestId: string; sellerId: string } | null>(null);
+  const [dismissedId, setDismissedId] = useState<string | null>(null);
 
   const [productName, setProductName] = useState('');
   const [qty, setQty] = useState(3);
@@ -237,7 +233,7 @@ export function CrowdMarketPage() {
     };
   }, []);
 
-  const activeRequest = requests[0];
+  const activeRequest = dismissedId && requests[0]?.id === dismissedId ? undefined : requests[0];
 
   const settledSellerName = (() => {
     if (!activeRequest) return null;
@@ -537,6 +533,7 @@ export function CrowdMarketPage() {
             <button
               type="button"
               onClick={() => {
+                if (activeRequest) setDismissedId(activeRequest.id);
                 setExpanded({});
                 setSelected(null);
               }}
@@ -601,7 +598,7 @@ export function CrowdMarketPage() {
                 </span>
                 <p className="mt-3 text-sm font-bold text-text">Select one seller</p>
                 <p className="mt-1 text-[11px] text-textSecondary">
-                  Tap any bid for the full quote here — check price, haggle and settle, all for one pane.
+                  Tap any bid for the full quote here — check price, bargain and settle, all for one pane.
                 </p>
               </div>
             )}

@@ -13,12 +13,14 @@
   "dependencies": {
     "@ojaline/contracts": "workspace:*",
     "@ojaline/design": "workspace:*",
+    "leaflet": "^1.9.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.18.2"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
+    "@types/leaflet": "^1.9.22",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.0.0",
@@ -28,4 +30,3 @@
     "vitest": "^3.0.0"
   }
 }
-

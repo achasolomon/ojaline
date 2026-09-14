@@ -23,7 +23,7 @@ function timeAgo(iso: string): string {
   return `${Math.floor(hrs / 24)}d`;
 }
 
-const STATUS_PRIORITY: Record<Negotiation['status'], number> = { OPEN: 0, WALKED: 1, REVOKED: 2, SETTLED: 3 };
+const STATUS_PRIORITY: Record<Negotiation['status'], number> = { OPEN: 0, ENDED: 1, REVOKED: 2, SETTLED: 3 };
 
 function productName(n: Negotiation): string {
   return n.basis.type === 'OFFER' ? n.basis.offer.product_name : n.basis.offer_ref.product_name;
@@ -49,10 +49,10 @@ function StatusChip({ n }: { n: Negotiation }) {
       </span>
     );
   }
-  if (n.status === 'WALKED') {
+  if (n.status === 'ENDED') {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-surface px-2 py-0.5 text-[10px] font-bold text-textSecondary">
-        Walked away
+      <span className="inline-flex items-center gap-1 rounded-full bg-[#FFF6DA] px-2 py-0.5 text-[10px] font-bold text-[#8A5F00]">
+        Price frozen
       </span>
     );
   }
@@ -65,7 +65,7 @@ function StatusChip({ n }: { n: Negotiation }) {
       }`}
     >
       <Icon name={waiting ? 'clock' : 'handshake'} size={10} />
-      {waiting ? 'Waiting reply' : 'Haggling'}
+      {waiting ? 'Waiting reply' : 'Bargaining'}
     </span>
   );
 }
@@ -102,7 +102,7 @@ export default function NegotiationsPage() {
       <div className="mb-3 grid h-14 w-14 place-items-center rounded-full bg-primary-light text-primary">
         <Icon name="handshake" size={26} />
       </div>
-      <p className="text-sm font-bold text-text">You no dey haggle anyone now</p>
+      <p className="text-sm font-bold text-text">You no dey bargain anyone now</p>
       <p className="mt-1 text-xs text-textSecondary">
         Open any offer, bod da price button and start bargaining with the seller.
       </p>
@@ -126,7 +126,7 @@ export default function NegotiationsPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
-            <h1 className="flex-1 text-lg font-semibold text-text">Haggling</h1>
+            <h1 className="flex-1 text-lg font-semibold text-text">Bargaining</h1>
             <span className="flex items-center gap-1.5 rounded-full bg-primary-light px-2.5 py-1 text-[10px] font-bold text-primary">
               <Icon name="handshake" size={12} />
               {activeCount} active
@@ -154,9 +154,6 @@ export default function NegotiationsPage() {
                     >
                       <span className="relative grid h-11 w-11 shrink-0 place-items-center rounded-full bg-primary-light text-primary">
                         <Icon name="handshake" size={20} />
-                        {n.unseen_callbacks > 0 && (
-                          <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-white bg-[#F5A623]" />
-                        )}
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center justify-between gap-2">
@@ -214,7 +211,7 @@ export default function NegotiationsPage() {
               <span className="grid h-14 w-14 place-items-center rounded-full bg-surface text-textSecondary">
                 <Icon name="handshake" size={24} />
               </span>
-              <p className="mt-3 text-sm font-bold text-text">No haggle wey dey</p>
+              <p className="mt-3 text-sm font-bold text-text">No bargain wey dey</p>
               <p className="mt-1 text-[11px] text-textSecondary">
                 Open any offer, bod da price button and start bargaining with the seller.
               </p>

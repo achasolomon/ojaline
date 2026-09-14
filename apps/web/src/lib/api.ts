@@ -185,6 +185,7 @@ export interface AuthUser {
   full_name: string;
   status: string;
   seller_type: string | null;
+  channel: Channel;
   roles: string[];
 }
 
@@ -210,6 +211,58 @@ export async function register(input: { full_name: string; phone: string; email?
 
 export async function getMe(token: string): Promise<AuthUser> {
   return getJson<AuthUser>('/auth/me', { headers: { authorization: `Bearer ${token}` } });
+}
+
+/* ── Sellers / KYC ── */
+
+export type KycStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface SellerKyc {
+  id_type: string;
+  status: KycStatus;
+  review_note: string | null;
+  submitted_at: string;
+}
+
+export interface SellerStatus {
+  seller_type: SellerType | null;
+  kyc_tier: 'BASIC' | 'FULL' | null;
+  kyc: SellerKyc | null;
+}
+
+export interface SellerKycInput {
+  id_type: string;
+  id_number: string;
+  date_of_birth: string;
+  address_line1: string;
+  city: string;
+  state: string;
+}
+
+export interface SellerRegistrationInput {
+  seller_type: SellerType;
+  business_name?: string;
+  market_name?: string;
+  city: string;
+  state: string;
+  lga?: string;
+  bio?: string;
+}
+
+export async function getSellerStatus(token: string): Promise<SellerStatus> {
+  return getJson<SellerStatus>('/sellers/me', { headers: { authorization: `Bearer ${token}` } });
+}
+
+export async function registerSeller(token: string, input: SellerRegistrationInput): Promise<SellerStatus> {
+  return postJson<SellerStatus>('/sellers/register', input, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+}
+
+export async function submitSellerKyc(token: string, input: SellerKycInput): Promise<SellerStatus> {
+  return postJson<SellerStatus>('/sellers/kyc', input, {
+    headers: { authorization: `Bearer ${token}` },
+  });
 }
 
 /* ── Catalog API ── */
@@ -490,8 +543,30 @@ export async function getReviews(offerId: string): Promise<Review[]> {
   return getJson<Review[]>(`/catalog/offers/${offerId}/reviews`);
 }
 
-export async function addReview(offerId: string, reviewerId: string, rating: number, reviewText?: string): Promise<unknown> {
-  return postJson(`/catalog/offers/${offerId}/reviews`, { reviewer_id: reviewerId, rating, review_text: reviewText });
+export async function addReview(offerId: string, reviewerId: string, rating: number, reviewText?: string): Promise<Review> {
+  return postJson<Review>(`/catalog/offers/${offerId}/reviews`, { reviewer_id: reviewerId, rating, review_text: reviewText });
+}
+
+/* ── Wishlist ── */
+
+export interface WishlistEntry {
+  offer_id: string;
+  wished_at: string;
+  offer: Offer;
+}
+
+export async function getWishlist(userId: string): Promise<WishlistEntry[]> {
+  return getJson<WishlistEntry[]>(`/catalog/wishlist?user_id=${encodeURIComponent(userId)}`);
+}
+
+export async function addToWishlist(userId: string, offerId: string): Promise<{ added: boolean }> {
+  return postJson<{ added: boolean }>('/catalog/wishlist', { user_id: userId, offer_id: offerId });
+}
+
+export async function removeFromWishlist(userId: string, offerId: string): Promise<{ removed: boolean }> {
+  return deleteJson<{ removed: boolean }>(
+    `/catalog/wishlist?user_id=${encodeURIComponent(userId)}&offer_id=${encodeURIComponent(offerId)}`,
+  );
 }
 
 /* ── Chat ── */
@@ -535,7 +610,21 @@ export async function getUserConversations(userId: string): Promise<Conversation
   return getJson<Conversation[]>(`/chat/conversations?user_id=${userId}`);
 }
 
-/* ── Active Cities ── */
+/* ── Delivery States (nationwide) ── */
+
+export interface NigerianState {
+  state: string;
+  capital: string;
+  lgas: string[];
+  /** Selectable areas: curated neighbourhoods for hubs, otherwise LGAs. */
+  areas: string[];
+}
+
+export interface Ward {
+  name: string;
+  latitude: number;
+  longitude: number;
+}
 
 export const ACTIVE_CITIES = [
   { name: 'Lagos', state: 'Lagos' },
@@ -550,31 +639,54 @@ export const ACTIVE_CITIES = [
 export interface SavedAddress {
   id: string;
   label: string;
+  recipient_name?: string | null;
   address_line1: string;
   address_line2?: string | null;
   city: string;
   state: string;
+  area?: string | null;
   lga?: string | null;
+  ward?: string | null;
   landmark?: string | null;
+  instructions?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  phone_number?: string;
   is_default: boolean;
   created_at: string;
+}
+
+export interface CreateAddressInput {
+  label?: string;
+  recipient_name?: string;
+  address_line1: string;
+  address_line2?: string;
+  city?: string;
+  state: string;
+  area?: string;
+  lga?: string;
+  ward?: string;
+  landmark?: string;
+  instructions?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  phone_number: string;
+  is_default?: boolean;
+}
+
+export async function getAreas(): Promise<NigerianState[]> {
+  return getJson<NigerianState[]>('/addresses/areas');
+}
+
+export async function getWards(state: string, lga: string): Promise<Ward[]> {
+  return getJson<Ward[]>(`/addresses/wards?state=${encodeURIComponent(state)}&lga=${encodeURIComponent(lga)}`);
 }
 
 export async function getAddresses(userId: string): Promise<SavedAddress[]> {
   return getJson<SavedAddress[]>(`/addresses?user_id=${userId}`);
 }
 
-export async function createAddress(userId: string, input: {
-  label?: string;
-  address_line1: string;
-  address_line2?: string;
-  city: string;
-  state: string;
-  lga?: string;
-  landmark?: string;
-  phone_number: string;
-  is_default?: boolean;
-}): Promise<SavedAddress> {
+export async function createAddress(userId: string, input: CreateAddressInput): Promise<SavedAddress> {
   return postJson<SavedAddress>('/addresses?user_id=' + userId, input);
 }
 
@@ -584,6 +696,31 @@ export async function setDefaultAddress(userId: string, addressId: string): Prom
 
 export async function deleteAddress(userId: string, addressId: string): Promise<{ ok: boolean }> {
   return deleteJson(`/addresses/${addressId}?user_id=${userId}`);
+}
+
+/* ── Geocoding (OSM via the API proxy) ── */
+
+export interface GeoPlace {
+  label: string;
+  house?: string | null;
+  road?: string | null;
+  area?: string | null;
+  city?: string | null;
+  state?: string | null;
+  lga?: string | null;
+  lat: number | null;
+  lon: number | null;
+  covered: boolean;
+  /** Curated city/neighbourhood hit (no pin — pick from the lists). */
+  is_area?: boolean;
+}
+
+export async function geoSearch(q: string): Promise<GeoPlace[]> {
+  return getJson<GeoPlace[]>(`/geo/search?q=${encodeURIComponent(q)}`);
+}
+
+export async function geoReverse(lat: number, lon: number): Promise<GeoPlace> {
+  return getJson<GeoPlace>(`/geo/reverse?lat=${lat}&lon=${lon}`);
 }
 
 /* ── Push Notifications ── */
@@ -712,6 +849,7 @@ export interface OrderSummary {
   delivery_fee_cents: number;
   landed_total_cents: number;
   currency: string;
+  delivery_mode?: FulfilmentMode;
   created_at: string;
   updated_at: string;
   lines: OrderLine[];
@@ -721,9 +859,129 @@ export async function listOrders(buyerId: string): Promise<OrderSummary[]> {
   return getJson<OrderSummary[]>(`/orders?buyer_id=${encodeURIComponent(buyerId)}`);
 }
 
+export interface CheckoutItem {
+  offer_id: string;
+  qty: number;
+  unit_price_cents: number;
+}
+
+export interface CreateCheckoutResponse {
+  order_id: string;
+  checkout_session_id: string;
+  channel: string;
+  delivery_mode?: FulfilmentMode;
+  item_total_cents: number;
+  delivery_fee_cents: number;
+  landed_total_cents: number;
+  currency: string;
+  soft_hold_expires_at: string | null;
+  items: CheckoutItem[];
+}
+
+export interface PayOrderResponse {
+  authorization_url: string;
+  reference: string;
+}
+
+export async function createCheckout(params: {
+  buyerId: string;
+  items: CheckoutItem[];
+  windowStart: string;
+  windowEnd: string;
+  deliveryMode?: FulfilmentMode;
+}): Promise<CreateCheckoutResponse> {
+  return postJson<CreateCheckoutResponse>('/orders/checkout', {
+    buyer_id: params.buyerId,
+    items: params.items,
+    soft_hold_ids: [],
+    window_start: params.windowStart,
+    window_end: params.windowEnd,
+    delivery_mode: params.deliveryMode,
+  });
+}
+
+export async function payOrder(orderId: string, callbackUrl?: string): Promise<PayOrderResponse> {
+  return postJson<PayOrderResponse>(`/orders/${orderId}/pay`, { callback_url: callbackUrl });
+}
+
+export interface OrderDetailLine extends OrderLine {
+  id: string;
+  order_id: string;
+  seller_id: string;
+  seller_name?: string;
+  stock_hold_id?: string | null;
+}
+
+export interface EscrowSummary {
+  id: string;
+  status: string;
+  amount_held_cents: number;
+  release_scheduled_at?: string | null;
+}
+
+export interface OrderDetail extends OrderSummary {
+  buyer_id: string;
+  checkout_session_id?: string | null;
+  window_start?: string | null;
+  window_end?: string | null;
+  decision_deadline_at?: string | null;
+  escrow?: EscrowSummary | null;
+  lines: OrderDetailLine[];
+}
+
+export interface FulfilmentLineStatus {
+  line_id: string;
+  offer_id: string;
+  seller_id: string;
+  qty: number;
+  status: string;
+}
+
+export interface FulfilmentStatus {
+  order_id: string;
+  order_status: string;
+  lines: FulfilmentLineStatus[];
+  pending_decisions: string[];
+}
+
+export interface BuyerDecisionResult {
+  order_id: string;
+  order_status: string;
+  affected_lines: string[];
+  action: 'CONTINUE' | 'CANCEL' | 'REPLACE_SELLER';
+}
+
+export async function getOrder(orderId: string): Promise<OrderDetail> {
+  return getJson<OrderDetail>(`/orders/${orderId}`);
+}
+
+export async function getFulfilmentStatus(orderId: string): Promise<FulfilmentStatus> {
+  return getJson<FulfilmentStatus>(`/orders/${orderId}/fulfilment`);
+}
+
+export async function confirmDelivery(orderId: string): Promise<{ order_id: string; escrow_status: string; release_scheduled_at: string }> {
+  return postJson<{ order_id: string; escrow_status: string; release_scheduled_at: string }>(`/orders/${orderId}/deliver`, {});
+}
+
+export async function cancelOrder(orderId: string): Promise<{ order_id: string; order_status: string; refunded_cents: number }> {
+  return postJson<{ order_id: string; order_status: string; refunded_cents: number }>(`/orders/${orderId}/cancel`, {});
+}
+
+export async function decideOrder(
+  orderId: string,
+  action: BuyerDecisionResult['action'],
+  lineIds: string[],
+): Promise<BuyerDecisionResult> {
+  return postJson<BuyerDecisionResult>(`/orders/${orderId}/decide`, {
+    order_id: orderId,
+    action,
+    line_ids: lineIds,
+  });
+}
+
 /* ── Negotiations ── */
 
-export type NegotiationStatus = 'OPEN' | 'SETTLED' | 'WALKED' | 'REVOKED';
+export type NegotiationStatus = 'OPEN' | 'ENDED' | 'SETTLED' | 'REVOKED';
 export type NegotiationMessageKind =
   | 'BUYER_BID'
   | 'SELLER_OFFER'
@@ -759,9 +1017,11 @@ export interface NegotiationThread {
   status: NegotiationStatus;
   messages: NegotiationMessage[];
   demeanor: 'easy' | 'fair' | 'tough';
-  dropped_at: string | null;
-  callback: { at: number | null; sent: boolean };
-  unseen_callbacks: number;
+  ended_at: string | null;
+  ended_by: 'BUYER' | 'SELLER' | null;
+  frozen_seller_per_unit_kobo: number | null;
+  frozen_buyer_per_unit_kobo: number | null;
+  freeze_expires_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -798,13 +1058,6 @@ export async function acceptNegotiation(negotiationId: string, buyerId: string, 
   );
 }
 
-export async function walkAwayNegotiation(negotiationId: string, buyerId: string, message?: string): Promise<NegotiationThread> {
-  return postJson<NegotiationThread>(
-    `/negotiations/${negotiationId}/walk?buyer_id=${encodeURIComponent(buyerId)}`,
-    { message },
-  );
-}
-
 export async function revokeNegotiation(negotiationId: string, buyerId: string): Promise<NegotiationThread> {
   return postJson<NegotiationThread>(
     `/negotiations/${negotiationId}/revoke?buyer_id=${encodeURIComponent(buyerId)}`,
@@ -812,10 +1065,35 @@ export async function revokeNegotiation(negotiationId: string, buyerId: string):
   );
 }
 
-export async function markNegotiationSeen(negotiationId: string, buyerId: string): Promise<{ ok: boolean }> {
-  return postJson<{ ok: boolean }>(
-    `/negotiations/${negotiationId}/seen?buyer_id=${encodeURIComponent(buyerId)}`,
+/** Either party can end a bargain; the last prices are frozen for 24h. */
+export async function endNegotiation(
+  negotiationId: string,
+  buyerId: string,
+  message?: string,
+): Promise<NegotiationThread> {
+  return postJson<NegotiationThread>(
+    `/negotiations/${negotiationId}/end?buyer_id=${encodeURIComponent(buyerId)}`,
+    message ? { message } : {},
+  );
+}
+
+/** Buyer "Pays this" — accepts the seller's frozen price. */
+export async function payFrozenNegotiation(negotiationId: string, buyerId: string): Promise<NegotiationThread> {
+  return postJson<NegotiationThread>(
+    `/negotiations/${negotiationId}/accept-frozen?buyer_id=${encodeURIComponent(buyerId)}`,
     {},
+  );
+}
+
+/** Buyer reopens an ended bargain with a fresh price. */
+export async function continueNegotiation(
+  negotiationId: string,
+  buyerId: string,
+  input: { per_unit_kobo: number; qty?: number; message?: string },
+): Promise<NegotiationThread> {
+  return postJson<NegotiationThread>(
+    `/negotiations/${negotiationId}/continue?buyer_id=${encodeURIComponent(buyerId)}`,
+    input,
   );
 }
 

@@ -32,7 +32,7 @@ const HELP_TOPICS: { icon: IconName; title: string; body: string; to?: string }[
   {
     icon: 'message',
     title: 'Chat with sellers',
-    body: 'Message sellers before you buy to confirm availability, haggle, or arrange pickup. Conversations are logged for your protection.',
+    body: 'Message sellers before you buy to confirm availability, bargain, or arrange pickup. Conversations are logged for your protection.',
   },
 ];
 

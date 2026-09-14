@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Icon } from '../icons';
 import { SearchBox } from '../SearchBox';
+import { AddressSwitcher, roleLabel } from '../AddressSwitcher';
 import { getCartCount, subscribeCart } from '../../lib/cart';
 import { getUnreadCount, subscribeNotifications } from '../../lib/notifications';
 import { useNegotiationCount } from '../../lib/negotiation';
 import { isLoggedIn, AUTH_EVENT, getUser } from '../../lib/session';
+import { subscribeAddresses, activeAddress, addressShortLabel, addressSummary } from '../../lib/addresses';
 
 export function DesktopHeader() {
   const navigate = useNavigate();
@@ -14,18 +16,23 @@ export function DesktopHeader() {
   const haggleCount = useNegotiationCount();
   const [authed, setAuthed] = useState(() => isLoggedIn());
   const [userName, setUserName] = useState(() => getUser()?.full_name?.split(' ')[0] ?? '');
+  const [addr, setAddr] = useState(() => activeAddress());
+  const [addrOpen, setAddrOpen] = useState(false);
 
   useEffect(() => {
     const unsubCart = subscribeCart((items) => setCartCount(items.reduce((s, i) => s + i.qty, 0)));
     const unsubNotif = subscribeNotifications((list) => setUnreadCount(list.filter((n) => !n.read).length));
+    const unsubAddr = subscribeAddresses(() => setAddr(activeAddress()));
     const onAuth = () => {
       setAuthed(isLoggedIn());
       setUserName(getUser()?.full_name?.split(' ')[0] ?? '');
+      setAddr(activeAddress());
     };
     window.addEventListener(AUTH_EVENT, onAuth);
     return () => {
       unsubCart();
       unsubNotif();
+      unsubAddr();
       window.removeEventListener(AUTH_EVENT, onAuth);
     };
   }, []);
@@ -41,12 +48,25 @@ export function DesktopHeader() {
           </a>
 
           {/* Location */}
-          <div className="text-[11px] text-text-secondary flex items-center gap-1.5 min-w-0">
-            <Icon name="pin" size={17} className="text-primary shrink-0" />
-            <div className="min-w-0">
-              Deliver to
-              <b className="block text-[13px] text-text mt-0.5 font-semibold truncate">Sabo, Yaba, Lagos</b>
-            </div>
+          <div className="relative min-w-0">
+            <button
+              type="button"
+              onClick={() => setAddrOpen((v) => !v)}
+              title={addr ? addressSummary(addr) : 'Set your address'}
+              className={`flex w-full items-center gap-1.5 bg-transparent border-none cursor-pointer text-left min-w-0 rounded-lg p-1.5 -m-1.5 transition hover:bg-surface ${
+                addrOpen ? 'bg-surface' : ''
+              }`}
+            >
+              <Icon name="pin" size={17} className="text-primary shrink-0" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[11px] text-textSecondary">{roleLabel()}</span>
+                <b className="block truncate text-[13px] text-text font-semibold">
+                  {addr ? addressShortLabel(addr) : 'Set your address'}
+                </b>
+              </span>
+              <Icon name="chevronDown" size={13} className="shrink-0 text-textSecondary" />
+            </button>
+            {addrOpen && <AddressSwitcher variant="dropdown" onClose={() => setAddrOpen(false)} />}
           </div>
 
           {/* Search */}
@@ -67,7 +87,7 @@ export function DesktopHeader() {
                 type="button"
                 onClick={() => navigate('/negotiations')}
                 aria-label="Your negotiations"
-                title="Haggling"
+                title="Bargaining"
                 className="relative grid h-9 w-9 place-items-center rounded-full text-text transition hover:bg-surface hover:text-primary shrink-0"
               >
                 <Icon name="handshake" size={18} />

@@ -7,7 +7,7 @@ import { FeedService } from '../notifications/feed.service.js';
  * Server-side Crowd Market + Negotiation engine.
  *
  * Replaces the old localStorage simulation: wants, bids, haggling
- * threads, walk-away callbacks and the in-app feed all live in postgres
+ * threads, deal freezing and the in-app feed all live in postgres
  * so behaviour is identical across devices and survives reloads.
  * ================================================================ */
 
@@ -170,10 +170,6 @@ function sellerMessageText(kind: 'SELLER_OFFER' | 'SELLER_ACCEPT', kobo: number,
   return lines[roll % lines.length];
 }
 
-function buyerHello(buyerName: string): string {
-  return buyerName === 'customer' ? 'my customer' : `my ${firstName(buyerName)}`;
-}
-
 /* ================================================================ service */
 
 @Injectable()
@@ -189,7 +185,6 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     this.timer = setInterval(() => {
-      void this.callbackSweep();
       void this.replySweep();
       void this.pruneEmptyThreads();
     }, 3000);
@@ -561,7 +556,7 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
       },
       buyer_name: String(n.buyer_name),
       qty: Number(n.qty),
-      status: String(n.observable) as 'OPEN' | 'SETTLED' | 'WALKED' | 'REVOKED',
+      status: String(n.observable) as 'OPEN' | 'ENDED' | 'SETTLED' | 'REVOKED',
       messages: messages.map((m) => ({
         id: String(m.id),
         kind: String(m.kind),
@@ -572,16 +567,17 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
         at: m.created_at,
       })),
       demeanor: String(n.demeanor),
-      dropped_at: n.dropped_at,
-      callback: { at: n.callback_at ? new Date(String(n.callback_at)).getTime() : null, sent: Boolean(n.callback_sent) },
-      unseen_callbacks: Number(n.unseen_callbacks),
+      ended_at: n.ended_at,
+      ended_by: n.ended_by ? String(n.ended_by) : null,
+      frozen_seller_per_unit_kobo: n.frozen_seller_per_unit_kobo == null ? null : Number(n.frozen_seller_per_unit_kobo),
+      frozen_buyer_per_unit_kobo: n.frozen_buyer_per_unit_kobo == null ? null : Number(n.frozen_buyer_per_unit_kobo),
+      freeze_expires_at: n.freeze_expires_at,
       created_at: n.created_at,
       updated_at: n.updated_at,
     };
   }
 
   async listNegotiations(buyerId: string): Promise<Array<Record<string, unknown>>> {
-    await this.callbackSweep();
     await this.replySweep();
     const { rows } = await this.pool.query(
       `SELECT id FROM market.negotiations WHERE buyer_id = $1 ORDER BY updated_at DESC`,
@@ -731,42 +727,11 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
       kind: 'BUYER_BID', side: 'BUYER', qty, perUnitKobo: perUnit, message: msgText,
     });
     await this.pool.query(
-      `UPDATE market.negotiations SET qty = $1, callback_at = NULL, callback_sent = FALSE, updated_at = now() WHERE id = $2`,
+      `UPDATE market.negotiations SET qty = $1, updated_at = now() WHERE id = $2`,
       [qty, negotiationId],
     );
 
-    const { rows: msgs } = await this.pool.query(
-      `SELECT kind FROM market.negotiation_messages WHERE negotiation_id = $1 AND kind = 'BUYER_BID' ORDER BY created_at`,
-      [negotiationId],
-    );
-    const round = Math.max(0, msgs.length - 1);
-    const r = sellerResponse({
-      bidPerUnitKobo: perUnit,
-      qty,
-      askPerUnitKobo: Number(n.ask_per_unit_kobo),
-      floorPerUnitKobo: Number(n.floor_per_unit_kobo),
-      demeanor: String(n.demeanor) as 'easy' | 'fair' | 'tough',
-      round,
-    });
-    const unit = n.basis_type === 'OFFER' ? (n.offer_unit ? String(n.offer_unit) : null) : null;
-    const delayMs = 5000 + (hashCode(`${negotiationId}:${perUnit}:${Date.now()}`) % 7000);
-    await this.pool.query(
-      `UPDATE market.negotiations
-          SET qty = $1, callback_at = NULL, callback_sent = FALSE,
-              reply_at = now() + ($2 || ' milliseconds')::interval,
-              reply_kind = $3, reply_per_unit_kobo = $4, reply_qty = $5, reply_text = $6,
-              updated_at = now()
-        WHERE id = $7`,
-      [
-        qty,
-        delayMs,
-        r.kind,
-        r.perUnitKobo,
-        qty,
-        sellerMessageText(r.kind, r.perUnitKobo, unit ?? 'unit', qty),
-        negotiationId,
-      ],
-    );
+    await this.parkSellerReply(negotiationId, n, perUnit, qty);
 
     void this.feed.publishMarket('market.negotiation_message', negotiationId, {
       negotiation_id: negotiationId,
@@ -777,6 +742,49 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
     });
 
     return this.threadPayload(negotiationId);
+  }
+
+  /**
+   * Park the seller's (simulated) answer to a buyer bid so the thread doesn't
+   * resolve instantly: the reply_* columns are swept into real messages by
+   * replySweep once due, then an SSE event + notification pull the buyer back.
+   */
+  private async parkSellerReply(
+    negotiationId: string,
+    n: Record<string, unknown>,
+    bidPerUnitKobo: number,
+    qty: number,
+  ): Promise<void> {
+    const { rows: msgs } = await this.pool.query(
+      `SELECT kind FROM market.negotiation_messages WHERE negotiation_id = $1 AND kind = 'BUYER_BID' ORDER BY created_at`,
+      [negotiationId],
+    );
+    const round = Math.max(0, msgs.length - 1);
+    const r = sellerResponse({
+      bidPerUnitKobo,
+      qty,
+      askPerUnitKobo: Number(n.ask_per_unit_kobo),
+      floorPerUnitKobo: Number(n.floor_per_unit_kobo),
+      demeanor: String(n.demeanor) as 'easy' | 'fair' | 'tough',
+      round,
+    });
+    const unit = n.basis_type === 'OFFER' ? (n.offer_unit ? String(n.offer_unit) : null) : null;
+    const delayMs = 5000 + (hashCode(`${negotiationId}:${bidPerUnitKobo}:${Date.now()}`) % 7000);
+    await this.pool.query(
+      `UPDATE market.negotiations
+          SET reply_at = now() + ($1 || ' milliseconds')::interval,
+              reply_kind = $2, reply_per_unit_kobo = $3, reply_qty = $4, reply_text = $5,
+              updated_at = now()
+        WHERE id = $6`,
+      [
+        delayMs,
+        r.kind,
+        r.perUnitKobo,
+        qty,
+        sellerMessageText(r.kind, r.perUnitKobo, unit ?? 'unit', qty),
+        negotiationId,
+      ],
+    );
   }
 
   async accept(negotiationId: string, buyerId: string, perUnitKobo: number): Promise<Record<string, unknown>> {
@@ -790,7 +798,7 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
     });
     await this.pool.query(
       `UPDATE market.negotiations
-          SET observable = 'SETTLED', dropped_at = NULL, callback_at = NULL, callback_sent = TRUE,
+          SET observable = 'SETTLED', freeze_expires_at = NULL,
               reply_at = NULL, reply_kind = NULL, reply_per_unit_kobo = NULL, reply_qty = NULL, reply_text = NULL,
               updated_at = now()
         WHERE id = $1`,
@@ -799,59 +807,172 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
     return this.threadPayload(negotiationId);
   }
 
-  async walkAway(negotiationId: string, buyerId: string, message?: string): Promise<Record<string, unknown>> {
+  /**
+   * Either party ends the haggle. The last price each side put on the table is
+   * frozen for the other to grab ("Pay this" / "Sell for this") and the freeze
+   * lasts 24h. The thread can be reopened on either side with continueBargain.
+   */
+  async endBargain(
+    negotiationId: string,
+    actorId: string,
+    side: 'BUYER' | 'SELLER',
+    message?: string,
+  ): Promise<Record<string, unknown>> {
     const n = await this.assertThread(negotiationId);
-    if (String(n.buyer_id) !== buyerId) throw new Error('Not your negotiation');
-    if (String(n.observable) === 'SETTLED') return this.threadPayload(negotiationId);
+    if (side === 'BUYER' && String(n.buyer_id) !== actorId) throw new Error('Not your negotiation');
+    if (side === 'SELLER' && String(n.seller_id) !== actorId) throw new Error('Not your negotiation');
+    if (String(n.observable) === 'SETTLED' || String(n.observable) === 'REVOKED') {
+      throw new Error('Bargain don close for this side');
+    }
+    if (String(n.observable) === 'ENDED') return this.threadPayload(negotiationId);
 
-    await this.insertMessage(negotiationId, {
-      kind: 'WALK', side: 'BUYER', qty: Number(n.qty), perUnitKobo: null,
-      message: message?.trim() || 'I go check other stalls, thank you.',
-    });
-
-    // The seller calls back once. If they already reached out (a CALLBACK
-    // message exists in the thread), this walk closes the haggle for both
-    // sides for good: no callback_at is scheduled, so the sweep never
-    // resurrects it.
-    const { rows } = await this.pool.query(
-      `SELECT EXISTS(
-         SELECT 1 FROM market.negotiation_messages
-          WHERE negotiation_id = $1 AND kind = 'CALLBACK'
-       ) AS called_back`,
+    const { rows: prices } = await this.pool.query(
+      `SELECT side, per_unit_kobo FROM market.negotiation_messages
+        WHERE negotiation_id = $1 AND per_unit_kobo IS NOT NULL AND side IN ('BUYER', 'SELLER')
+        ORDER BY created_at DESC, id DESC`,
       [negotiationId],
     );
-    const sellerCalledBack = Boolean(rows[0]?.called_back);
-
-    if (sellerCalledBack) {
-      await this.pool.query(
-        `UPDATE market.negotiations
-            SET observable = 'WALKED', dropped_at = now(), callback_at = NULL, callback_sent = TRUE,
-                reply_at = NULL, reply_kind = NULL, reply_per_unit_kobo = NULL, reply_qty = NULL, reply_text = NULL,
-                updated_at = now()
-          WHERE id = $1`,
-        [negotiationId],
-      );
-    } else {
-      const delay = 14000 + (hashCode(negotiationId) % 12000);
-      await this.pool.query(
-        `UPDATE market.negotiations
-            SET observable = 'WALKED', dropped_at = now(), callback_at = now() + ($1 || ' milliseconds')::interval,
-                callback_sent = FALSE,
-                reply_at = NULL, reply_kind = NULL, reply_per_unit_kobo = NULL, reply_qty = NULL, reply_text = NULL,
-                updated_at = now()
-          WHERE id = $2`,
-        [delay, negotiationId],
-      );
+    let frozenSeller: number | null = null;
+    let frozenBuyer: number | null = null;
+    for (const p of prices) {
+      if (String(p.side) === 'SELLER' && frozenSeller == null) frozenSeller = Number(p.per_unit_kobo);
+      else if (String(p.side) === 'BUYER' && frozenBuyer == null) frozenBuyer = Number(p.per_unit_kobo);
     }
+
+    const endMsgId = await this.insertMessage(negotiationId, {
+      kind: 'END', side, qty: Number(n.qty), perUnitKobo: null,
+      message:
+        message?.trim() ||
+        (side === 'BUYER'
+          ? 'Abeg make we lock dis one for now — I go reason am first.'
+          : 'E don stand this side. If you wan run am, e still dey.'),
+    });
+    await this.pool.query(
+      `UPDATE market.negotiations
+          SET observable = 'ENDED', ended_at = now(), ended_by = $1,
+              frozen_seller_per_unit_kobo = $2, frozen_buyer_per_unit_kobo = $3,
+              freeze_expires_at = now() + interval '24 hours',
+              reply_at = NULL, reply_kind = NULL, reply_per_unit_kobo = NULL, reply_qty = NULL, reply_text = NULL,
+              updated_at = now()
+        WHERE id = $4`,
+      [side, frozenSeller, frozenBuyer, negotiationId],
+    );
+
+    void this.feed.publishMarket('market.negotiation_message', negotiationId, {
+      negotiation_id: negotiationId,
+      buyer_id: String(n.buyer_id),
+      seller_id: String(n.seller_id),
+      message_id: endMsgId,
+      kind: 'END', side, qty: Number(n.qty), per_unit_kobo: null,
+    });
     return this.threadPayload(negotiationId);
   }
 
-  async markThreadSeen(negotiationId: string, buyerId: string): Promise<{ ok: boolean }> {
-    await this.pool.query(
-      `UPDATE market.negotiations SET unseen_callbacks = 0 WHERE id = $1 AND buyer_id = $2`,
-      [negotiationId, buyerId],
+  /**
+   * Accept the other side's frozen price while a bargain is ENDED. The buyer
+   * "Pays this" (frozen seller price), the seller "Sells for this" (frozen
+   * buyer price). Only the first side lands a deal — the second gets a race
+   * error. The freeze also expires server-side after 24h.
+   */
+  async acceptFrozen(negotiationId: string, actorId: string, side: 'BUYER' | 'SELLER'): Promise<Record<string, unknown>> {
+    const n = await this.assertThread(negotiationId);
+    if (side === 'BUYER' && String(n.buyer_id) !== actorId) throw new Error('Not your negotiation');
+    if (side === 'SELLER' && String(n.seller_id) !== actorId) throw new Error('Not your negotiation');
+    if (String(n.observable) === 'REVOKED') throw new Error('Bargain don close for this side');
+    if (String(n.observable) !== 'ENDED') throw new Error('Negotiation is not ended');
+
+    const perUnit = side === 'BUYER' ? Number(n.frozen_seller_per_unit_kobo) : Number(n.frozen_buyer_per_unit_kobo);
+    if (!Number.isFinite(perUnit) || perUnit <= 0) {
+      throw new Error(side === 'BUYER' ? 'Seller never drop any price — no fit pay' : 'Buyer never drop any price — no fit sell');
+    }
+    const expires = n.freeze_expires_at ? new Date(String(n.freeze_expires_at)).getTime() : null;
+    if (expires != null && expires < Date.now()) {
+      throw new Error('The frozen price don expire — run continue bargain make e still dey');
+    }
+
+    const updated = await this.pool.query(
+      `UPDATE market.negotiations
+          SET observable = 'SETTLED', freeze_expires_at = NULL, updated_at = now()
+        WHERE id = $1 AND observable = 'ENDED'
+        RETURNING id`,
+      [negotiationId],
     );
-    return { ok: true };
+    if ((updated.rowCount ?? 0) === 0) throw new Error('The deal don close for the other side first');
+    await this.pool.query(
+      `UPDATE market.negotiations
+          SET reply_at = NULL, reply_kind = NULL, reply_per_unit_kobo = NULL, reply_qty = NULL, reply_text = NULL
+        WHERE id = $1`,
+      [negotiationId],
+    );
+
+    const kind = side === 'BUYER' ? 'BUYER_ACCEPT' : 'SELLER_ACCEPT';
+    const msgText =
+      side === 'BUYER'
+        ? `Oya na so! ${label(perUnit)} each. I don collect am — make you pack am.`
+        : `Since you talk am be that, na so we go do. ${label(perUnit)} each — don send am to your cart.`;
+    const msgId = await this.insertMessage(negotiationId, {
+      kind, side, qty: Number(n.qty), perUnitKobo: perUnit, message: msgText,
+    });
+    void this.feed.publishMarket('market.negotiation_message', negotiationId, {
+      negotiation_id: negotiationId,
+      buyer_id: String(n.buyer_id),
+      seller_id: String(n.seller_id),
+      message_id: msgId,
+      kind, side, qty: Number(n.qty), per_unit_kobo: perUnit,
+    });
+    return this.threadPayload(negotiationId);
+  }
+
+  /**
+   * Either side reopens an ENDED thread by putting a new price on the table:
+   * the freeze is lifted and normal haggling resumes. A buyer reopening parks
+   * the seller's automated reply (same as a normal bid); a seller reopening
+   * drops their price straight onto the thread.
+   */
+  async continueBargain(
+    negotiationId: string,
+    actorId: string,
+    side: 'BUYER' | 'SELLER',
+    perUnitKobo: number,
+    qty?: number,
+    message?: string,
+  ): Promise<Record<string, unknown>> {
+    const n = await this.assertThread(negotiationId);
+    if (side === 'BUYER' && String(n.buyer_id) !== actorId) throw new Error('Not your negotiation');
+    if (side === 'SELLER' && String(n.seller_id) !== actorId) throw new Error('Not your negotiation');
+    if (String(n.observable) !== 'ENDED') throw new Error('Negotiation is not ended');
+
+    const perUnit = Math.max(50, Math.round(perUnitKobo / 50) * 50);
+    const newQty = qty != null ? Math.max(1, Math.floor(qty)) : Number(n.qty);
+    const kind = side === 'BUYER' ? 'BUYER_BID' : 'SELLER_OFFER';
+    const msgText =
+      message?.trim() ||
+      (side === 'BUYER'
+        ? `Abeg make we still talk. I go pay ${label(perUnit)} each for the ${newQty}.`
+        : `Oya make we still talk. I fit do ${label(perUnit)} each for the ${newQty}.`);
+    const msgId = await this.insertMessage(negotiationId, {
+      kind, side, qty: newQty, perUnitKobo: perUnit, message: msgText,
+    });
+    await this.pool.query(
+      `UPDATE market.negotiations
+          SET observable = 'OPEN', ended_at = NULL, ended_by = NULL,
+              frozen_seller_per_unit_kobo = NULL, frozen_buyer_per_unit_kobo = NULL,
+              freeze_expires_at = NULL, qty = $1, updated_at = now()
+        WHERE id = $2`,
+      [newQty, negotiationId],
+    );
+
+    if (side === 'BUYER') {
+      await this.parkSellerReply(negotiationId, n, perUnit, newQty);
+    }
+    void this.feed.publishMarket('market.negotiation_message', negotiationId, {
+      negotiation_id: negotiationId,
+      buyer_id: String(n.buyer_id),
+      seller_id: String(n.seller_id),
+      message_id: msgId,
+      kind, side, qty: newQty, per_unit_kobo: perUnit,
+    });
+    return this.threadPayload(negotiationId);
   }
 
   /**
@@ -1010,79 +1131,4 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /* ------------------------- callback machine ------------------------- */
-
-  /**
-   * Sweeps for due walk-away callbacks: the seller "calls back" with their
-   * floor price, reopens the thread, notifies the buyer and pushes an SSE
-   * event so any open tab floats the toast immediately. Runs on a 3s
-   * interval and defensively on every read.
-   */
-  async callbackSweep(): Promise<void> {
-    const client = await this.pool.connect();
-    let ids: string[] = [];
-    try {
-      await client.query('BEGIN');
-      const { rows } = await client.query(
-        `SELECT id FROM market.negotiations
-          WHERE observable = 'WALKED' AND callback_sent = FALSE AND callback_at IS NOT NULL
-            AND callback_at <= now()
-          FOR UPDATE SKIP LOCKED`,
-      );
-      ids = rows.map((r) => String(r.id));
-      for (const id of ids) {
-        const n = await this.assertThread(id);
-        const floor = Number(n.floor_per_unit_kobo);
-        const unit = n.basis_type === 'OFFER' ? (n.offer_unit ? String(n.offer_unit) : null) : null;
-
-        // The seller "calls back" roughly half the time. The coin flip is a
-        // pure hash of the thread id, so it is stable across sweeps: declined
-        // threads (callback_at = NULL) stay WALKED and the haggle ends there.
-        if (hashCode(id) % 100 >= 50) {
-          await client.query(
-            `UPDATE market.negotiations
-                SET callback_at = NULL, callback_sent = TRUE, updated_at = now()
-              WHERE id = $1`,
-            [id],
-          );
-          continue;
-        }
-
-        await client.query(
-          `INSERT INTO market.negotiation_messages (negotiation_id, kind, side, qty, per_unit_kobo, message)
-           VALUES ($1,'CALLBACK','SELLER',$2,$3,$4)`,
-          [id, Number(n.qty), floor,
-           `${firstName(String(n.seller_name))}: "${buyerHello(String(n.buyer_name))}, come back o. Since e be you, ${label(floor)} each for the ${Number(n.qty)} ${pluralUnit(unit ?? 'unit', Number(n.qty))}. No vex, na market struggle."`],
-        );
-        await client.query(
-          `UPDATE market.negotiations
-              SET observable = 'OPEN', callback_sent = TRUE, unseen_callbacks = unseen_callbacks + 1,
-                  dropped_at = NULL, updated_at = now()
-            WHERE id = $1`,
-          [id],
-        );
-        void this.feed.publishMarket('market.callback', id, {
-          negotiation_id: id,
-          buyer_id: String(n.buyer_id),
-          seller_id: String(n.seller_id),
-          per_unit_kobo: floor,
-          seller_name: String(n.seller_name),
-          unit,
-          qty: Number(n.qty),
-        });
-        await this.feedService.push(String(n.buyer_id), {
-          type: 'deal',
-          title: `${firstName(String(n.seller_name))} don call you back`,
-          body: `New price ${label(floor)} each — e wan settle.`,
-          deep_link: `/negotiations/${id}`,
-        });
-      }
-      await client.query('COMMIT');
-    } catch (err) {
-      await client.query('ROLLBACK');
-      this.logger.error(`callback sweep failed: ${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      client.release();
-    }
   }
-}

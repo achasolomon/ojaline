@@ -126,7 +126,7 @@ export function NegotiationDetail({
                 onClick={restart}
                 className="shrink-0 rounded-lg bg-primary px-3 py-2 text-[11px] font-bold text-white transition hover:bg-primary-dark"
               >
-                Fresh haggle
+                Fresh bargain
               </button>
             )}
           </div>

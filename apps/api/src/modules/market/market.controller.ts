@@ -21,6 +21,13 @@ export class MarketController {
     throw err;
   }
 
+  /** Negotiation endpoints accept the acting side as ?buyer_id= or ?seller_id=. */
+  private actor(query: { buyer_id?: string; seller_id?: string }): { id: string; side: 'BUYER' | 'SELLER' } {
+    if (query.buyer_id) return { id: query.buyer_id, side: 'BUYER' };
+    if (query.seller_id) return { id: query.seller_id, side: 'SELLER' };
+    throw new BadRequestException('buyer_id or seller_id required');
+  }
+
   /* ------------------------------ wants ------------------------------ */
 
   @Post('wants')
@@ -106,14 +113,41 @@ export class MarketController {
     }
   }
 
-  @Post('negotiations/:id/walk')
-  async walk(
+  @Post('negotiations/:id/end')
+  async endBargain(
     @Param('id') id: string,
-    @Query('buyer_id') buyerId: string,
+    @Query() query: { buyer_id?: string; seller_id?: string },
     @Body() body: { message?: string },
   ) {
     try {
-      return await this.market.walkAway(id, buyerId, body?.message);
+      const { id: actorId, side } = this.actor(query);
+      return await this.market.endBargain(id, actorId, side, body?.message);
+    } catch (err) {
+      this.map(err);
+    }
+  }
+
+  @Post('negotiations/:id/accept-frozen')
+  @HttpCode(HttpStatus.OK)
+  async acceptFrozen(@Param('id') id: string, @Query() query: { buyer_id?: string; seller_id?: string }) {
+    try {
+      const { id: actorId, side } = this.actor(query);
+      return await this.market.acceptFrozen(id, actorId, side);
+    } catch (err) {
+      this.map(err);
+    }
+  }
+
+  @Post('negotiations/:id/continue')
+  @HttpCode(HttpStatus.OK)
+  async continueBargain(
+    @Param('id') id: string,
+    @Query() query: { buyer_id?: string; seller_id?: string },
+    @Body() body: { per_unit_kobo: number; qty?: number; message?: string },
+  ) {
+    try {
+      const { id: actorId, side } = this.actor(query);
+      return await this.market.continueBargain(id, actorId, side, body.per_unit_kobo, body.qty, body?.message);
     } catch (err) {
       this.map(err);
     }
@@ -124,16 +158,6 @@ export class MarketController {
   async revoke(@Param('id') id: string, @Query('buyer_id') buyerId: string) {
     try {
       return await this.market.revokeDeal(id, buyerId);
-    } catch (err) {
-      this.map(err);
-    }
-  }
-
-  @Post('negotiations/:id/seen')
-  @HttpCode(HttpStatus.OK)
-  async seen(@Param('id') id: string, @Query('buyer_id') buyerId: string) {
-    try {
-      return await this.market.markThreadSeen(id, buyerId);
     } catch (err) {
       this.map(err);
     }

@@ -1,16 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getAddresses, createAddress, setDefaultAddress, deleteAddress, type SavedAddress } from '../lib/api';
+import { getAddresses, setDefaultAddress, deleteAddress, type SavedAddress } from '../lib/api';
 import { getCartCount, subscribeCart } from '../lib/cart';
 import { getUnreadCount, subscribeNotifications } from '../lib/notifications';
 import { getUser, getUserId, clearSession } from '../lib/session';
 import { Icon, type IconName } from '../components/icons';
+import { AddressForm } from '../components/AddressForm';
 
 const QUICK_LINKS: { label: string; sub: string; icon: IconName; to: string }[] = [
   { label: 'Sell on Kika', sub: 'List a product', icon: 'store', to: '/offers/new' },
   { label: 'My Messages', sub: 'Chat with sellers', icon: 'message', to: '/chat' },
   { label: 'My Orders', sub: 'Track purchases', icon: 'box', to: '/orders' },
   { label: 'Notifications', sub: 'Alerts & updates', icon: 'bell', to: '/notifications' },
+  { label: 'My Wishlist', sub: 'Items you saved', icon: 'heart', to: '/wishlist' },
   { label: 'Saved Addresses', sub: 'Manage delivery details', icon: 'pin', to: '#addresses' },
   { label: 'Help Center', sub: 'FAQs & support', icon: 'help', to: '/help' },
 ];
@@ -22,48 +24,37 @@ const AD_STUDIO_LINK: { label: string; sub: string; icon: IconName; to: string }
   to: '/ads',
 };
 
+const PAYOUTS_LINK: { label: string; sub: string; icon: IconName; to: string } = {
+  label: 'Payouts', sub: 'Earnings & withdrawals', icon: 'bank', to: '/payouts',
+};
+
 export default function Account() {
   const navigate = useNavigate();
   const user = getUser();
   const userId = getUserId();
-  const quickLinks = user?.seller_type ? [...QUICK_LINKS, AD_STUDIO_LINK] : QUICK_LINKS;
+  const quickLinks = user?.seller_type ? [...QUICK_LINKS, PAYOUTS_LINK, AD_STUDIO_LINK] : QUICK_LINKS;
   const [addresses, setAddresses] = useState<SavedAddress[]>([]);
   const [cartCount, setCartCount] = useState(() => getCartCount());
   const [unread, setUnread] = useState(() => getUnreadCount());
 
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ label: '', address_line1: '', address_line2: '', city: '', state: 'Lagos', lga: '', landmark: '', phone: '' });
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!userId) return;
     getAddresses(userId).then(setAddresses).catch(() => {});
+    if (window.location.hash === '#addresses') {
+      setTimeout(() => {
+        document.getElementById('addresses')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 60);
+    }
     const unsubCart = subscribeCart((items) => setCartCount(items.reduce((s, i) => s + i.qty, 0)));
     const unsubNotif = subscribeNotifications((items) => setUnread(items.filter((n) => !n.read).length));
     return () => { unsubCart(); unsubNotif(); };
   }, [userId]);
 
-  const submitAddress = async () => {
-    if (!userId) return;
-    setSaving(true);
-    try {
-      const addr = await createAddress(userId, {
-        label: form.label || 'Home',
-        address_line1: form.address_line1,
-        address_line2: form.address_line2 || undefined,
-        city: form.city,
-        state: form.state,
-        lga: form.lga || undefined,
-        landmark: form.landmark || undefined,
-        phone_number: form.phone || '08000000000',
-        is_default: addresses.length === 0,
-      });
-      setAddresses([...addresses, addr]);
-      setShowAdd(false);
-      setForm({ label: '', address_line1: '', address_line2: '', city: '', state: 'Lagos', lga: '', landmark: '', phone: '' });
-    } catch { /* skip */ } finally {
-      setSaving(false);
-    }
+  const onSubmitAddress = async (addr: SavedAddress) => {
+    setAddresses((prev) => [...prev, addr]);
+    setShowAdd(false);
   };
 
   const makeDefault = async (id: string) => {
@@ -90,8 +81,6 @@ export default function Account() {
       navigate(to);
     }
   };
-
-  const inputCls = 'h-10 px-3 border border-border rounded-lg text-sm outline-none focus:border-primary bg-white';
 
   return (
     <div className="max-w-[1200px] mx-auto px-6 py-8">
@@ -151,7 +140,9 @@ export default function Account() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-base font-black text-text">Saved Addresses</h2>
-            <p className="text-xs text-textSecondary mt-0.5">Delivery details used at checkout</p>
+            <p className="text-xs text-textSecondary mt-0.5">
+              {user?.seller_type ? 'Pickup location buyers see on your listings' : 'Delivery details used at checkout'}
+            </p>
           </div>
           <button
             type="button"
@@ -163,20 +154,12 @@ export default function Account() {
         </div>
 
         {showAdd && (
-          <div className="bg-surface rounded-xl p-4 mb-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <input className={inputCls} placeholder="Label (Home / Office)" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} />
-            <input className={inputCls} placeholder="City" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
-            <input className={`${inputCls} sm:col-span-2`} placeholder="Street address" value={form.address_line1} onChange={(e) => setForm({ ...form, address_line1: e.target.value })} />
-            <input className={inputCls} placeholder="State" value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} />
-            <input className={inputCls} placeholder="Phone number" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-            <button
-              type="button"
-              onClick={submitAddress}
-              disabled={saving || !form.address_line1.trim()}
-              className="sm:col-span-2 bg-primary text-white text-sm font-semibold rounded-lg py-2.5 border-none cursor-pointer hover:bg-primary-dark transition disabled:opacity-50"
-            >
-              {saving ? 'Saving...' : 'Save address'}
-            </button>
+          <div className="mb-4">
+            <AddressForm
+              makeDefault={addresses.length === 0}
+              onSaved={onSubmitAddress}
+              onCancel={() => setShowAdd(false)}
+            />
           </div>
         )}
 
@@ -191,12 +174,18 @@ export default function Account() {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-bold text-text">{a.label}</span>
+                    {a.recipient_name && (
+                      <span className="text-[10px] font-semibold text-textSecondary">{a.recipient_name}</span>
+                    )}
                     {a.is_default && (
                       <button type="button" onClick={() => makeDefault(a.id)} className="text-[9px] font-bold bg-primary-light text-primary rounded-full px-2 py-0.5 border-none cursor-pointer">Default</button>
                     )}
                   </div>
-                  <p className="text-xs text-textSecondary mt-1">{a.address_line1}</p>
-                  <p className="text-xs text-textSecondary">{a.city}, {a.state}</p>
+                  <p className="text-xs text-textSecondary mt-1">
+                    {[a.address_line1, a.area, a.city, a.state].filter(Boolean).join(', ')}
+                  </p>
+                  {a.landmark && <p className="text-[11px] text-textSecondary">Near: {a.landmark}</p>}
+                  {a.phone_number && <p className="text-[11px] text-textSecondary">{a.phone_number}</p>}
                   {!a.is_default && (
                     <button
                       type="button"

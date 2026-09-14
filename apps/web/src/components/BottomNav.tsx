@@ -9,7 +9,7 @@ const NAV_ITEMS: { path: string; label: string; icon: string; requiresAuth?: boo
   { path: '/crowd-market', label: 'Crowd', icon: 'megaphone' },
   { path: '/orders', label: 'Orders', icon: 'orders' },
   { path: '/chat', label: 'Messages', icon: 'messages', requiresAuth: true },
-  { path: '/negotiations', label: 'Haggling', icon: 'handshake', requiresAuth: true },
+  { path: '/negotiations', label: 'Bargain', icon: 'handshake', requiresAuth: true },
   { path: '/account', label: 'Account', icon: 'account' },
 ];
 

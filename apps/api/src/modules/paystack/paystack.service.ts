@@ -6,6 +6,7 @@ export interface InitializeInput {
   reference: string;
   amount_kobo: number;
   email: string;
+  callback_url?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -41,12 +42,13 @@ export class PaystackService {
 
   async initialize(input: InitializeInput): Promise<InitializeResult> {
     const url = `${this.baseUrl}/transaction/initialize`;
-    const body = {
+    const body: Record<string, unknown> = {
       reference: input.reference,
       amount: input.amount_kobo,
       email: input.email,
       metadata: input.metadata ?? {},
     };
+    if (input.callback_url) body.callback_url = input.callback_url;
 
     this.logger.log({ reference: input.reference, amount: input.amount_kobo }, 'paystack initialize');
 

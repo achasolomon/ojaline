@@ -17,6 +17,11 @@ interface CheckoutBody {
   soft_hold_ids: string[];
   window_start: string;
   window_end: string;
+  delivery_mode?: string;
+}
+
+interface PayBody {
+  callback_url?: string;
 }
 
 interface ConfirmBody {
@@ -43,14 +48,15 @@ export class OrdersController {
       soft_hold_ids: body.soft_hold_ids,
       window_start: body.window_start,
       window_end: body.window_end,
+      delivery_mode: body.delivery_mode,
     };
     return this.orders.createCheckout(input);
   }
 
   @Post(':id/pay')
   @HttpCode(200)
-  async pay(@Param('id') id: string) {
-    return this.orders.initializePayment(id);
+  async pay(@Param('id') id: string, @Body() body: PayBody) {
+    return this.orders.initializePayment(id, body.callback_url);
   }
 
   @Post('confirm')
@@ -67,6 +73,12 @@ export class OrdersController {
   @HttpCode(200)
   async deliver(@Param('id') id: string) {
     return this.orders.confirmDelivery(id);
+  }
+
+  @Post(':id/cancel')
+  @HttpCode(200)
+  async cancel(@Param('id') id: string) {
+    return this.orders.cancelOrder(id);
   }
 
   @Get(':id')

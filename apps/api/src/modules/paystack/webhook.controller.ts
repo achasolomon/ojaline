@@ -10,6 +10,7 @@ import {
 import { Pool } from 'pg';
 import { PaystackService, PaystackEvent } from './paystack.service.js';
 import { OutboxService } from '../outbox/outbox.service.js';
+import { FeedService } from '../notifications/feed.service.js';
 
 const PARTIAL_PAY_THRESHOLD = 0.01;
 
@@ -21,6 +22,7 @@ export class WebhookController {
     @Inject(PaystackService) private readonly paystack: PaystackService,
     @Inject(Pool) private readonly pool: Pool,
     @Inject(OutboxService) private readonly outbox: OutboxService,
+    @Inject(FeedService) private readonly feed: FeedService,
   ) {}
 
   @Post('paystack')
@@ -123,7 +125,7 @@ export class WebhookController {
       }
 
       const orderTotalCents = Number(order.landed_total_cents);
-      const paidCents = Math.floor(paidAmountKobo / 100);
+      const paidCents = Math.floor(paidAmountKobo);
       const isPartial = paidCents < orderTotalCents - PARTIAL_PAY_THRESHOLD;
 
       if (isPartial) {
@@ -234,6 +236,19 @@ export class WebhookController {
 
       await client.query('COMMIT');
       this.logger.log({ orderId: order.id, reference, partial: isPartial }, 'order confirmed via webhook');
+
+      try {
+        await this.feed.push(order.buyer_id, {
+          type: 'order',
+          title: 'Payment confirmed',
+          body: isPartial
+            ? 'Your payment was received. Funds are held in escrow until delivery.'
+            : 'Your order was paid — funds are held in escrow until delivery.',
+          deep_link: `/orders/${order.id}`,
+        });
+      } catch (err) {
+        this.logger.warn({ err, orderId: order.id }, 'payment notification push skipped');
+      }
     } catch (err) {
       await client.query('ROLLBACK');
       this.logger.error({ err, reference }, 'webhook charge.success handler failed');

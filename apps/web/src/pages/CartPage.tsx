@@ -6,6 +6,7 @@ import {
 } from '../lib/cart';
 import { naira } from '@ojaline/design';
 import { Icon } from '../components/icons';
+import { PageTopBar } from '../components/PageTopBar';
 
 export default function CartPage() {
   const navigate = useNavigate();
@@ -21,8 +22,10 @@ export default function CartPage() {
   }, []);
 
   return (
-    <div className="max-w-[1200px] mx-auto px-6 py-8">
-      <div className="flex items-center justify-between mb-6">
+    <div className="min-h-full bg-surface/60">
+      <PageTopBar title={`Your Cart${items.length ? ` (${items.length})` : ''}`} action={<button type="button" onClick={() => navigate('/offers')} className="text-[11px] font-bold text-primary">Edit</button>} />
+      <div className="max-w-[1120px] mx-auto px-4 py-5 sm:px-6 sm:py-8">
+      <div className="mb-5 hidden items-center justify-between lg:flex">
         <div>
           <h1 className="text-xl font-black text-text">Your Cart</h1>
           <p className="text-xs text-textSecondary mt-1">{items.length === 0 ? '' : `${items.length} item${items.length === 1 ? '' : 's'}`}</p>
@@ -52,11 +55,11 @@ export default function CartPage() {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
-          <div className="bg-white border border-border rounded-xl divide-y divide-border overflow-hidden">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_340px] lg:gap-6 items-start">
+          <div className="overflow-hidden rounded-2xl border border-border bg-white divide-y divide-border">
             {items.map((item) => (
-              <div key={item.offer_id} className="flex gap-4 p-4">
-                <div className="w-20 h-20 rounded-lg overflow-hidden bg-surface shrink-0">
+              <div key={item.offer_id} className="flex gap-3 p-3.5 sm:gap-4 sm:p-4">
+                <div className="h-[74px] w-[74px] shrink-0 overflow-hidden rounded-xl bg-surface sm:h-20 sm:w-20">
                   {item.image_url ? (
                     <img src={`/api/media/${item.image_url}`} alt={item.product_name} className="w-full h-full object-cover" />
                   ) : (
@@ -66,13 +69,13 @@ export default function CartPage() {
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-text truncate">{item.product_name}</p>
-                  <p className="text-xs text-textSecondary mt-0.5">{item.seller_name}</p>
-                  <p className="text-xs text-textSecondary mt-0.5">
+                  <p className="truncate text-[13px] font-extrabold text-text sm:text-sm">{item.product_name}</p>
+                  <p className="mt-0.5 text-[11px] text-textSecondary">{item.seller_name}</p>
+                  <p className="mt-0.5 text-[11px] text-textSecondary">
                     {naira.format(item.unit_price_kobo / 100)}{item.unit ? ` / ${item.unit}` : ''}
                   </p>
 
-                  <div className="flex items-center justify-between mt-3">
+                  <div className="mt-3 flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
                       <button
                         type="button"
@@ -111,7 +114,7 @@ export default function CartPage() {
 
           {/* Summary */}
           <div className="bg-white border border-border rounded-xl p-5 sticky top-[135px]">
-            <h2 className="text-sm font-bold text-text mb-4">Order summary</h2>
+            <h2 className="mb-4 text-sm font-extrabold text-text">Order summary</h2>
             <div className="flex justify-between text-sm mb-2">
               <span className="text-textSecondary">Subtotal</span>
               <span className="font-semibold text-text">{naira.format(subtotal / 100)}</span>
@@ -127,7 +130,7 @@ export default function CartPage() {
             <button
               type="button"
               onClick={() => navigate('/checkout')}
-              className="w-full bg-primary text-white text-sm font-semibold rounded-xl py-3.5 border-none cursor-pointer hover:bg-primary-dark transition"
+              className="w-full rounded-xl border-none bg-primary py-3.5 text-sm font-bold text-white transition hover:bg-primary-dark cursor-pointer"
             >
               Proceed to checkout
             </button>
@@ -137,6 +140,7 @@ export default function CartPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

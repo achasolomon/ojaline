@@ -1,8 +1,10 @@
 import { Body, Controller, Get, Post, Param, Inject, HttpCode } from '@nestjs/common';
+import { Pool } from 'pg';
 import {
   FulfilmentStateMachine,
   BuyerDecision,
 } from './fulfilment-state-machine.js';
+import { FeedService } from '../notifications/feed.service.js';
 
 interface DecisionBody {
   order_id: string;
@@ -14,6 +16,8 @@ interface DecisionBody {
 export class FulfilmentController {
   constructor(
     @Inject(FulfilmentStateMachine) private readonly stateMachine: FulfilmentStateMachine,
+    @Inject(Pool) private readonly pool: Pool,
+    @Inject(FeedService) private readonly feed: FeedService,
   ) {}
 
   @Post(':id/decide')
@@ -24,7 +28,32 @@ export class FulfilmentController {
       action: body.action,
       line_ids: body.line_ids,
     };
-    return this.stateMachine.handleBuyerDecision(decision);
+    const result = await this.stateMachine.handleBuyerDecision(decision);
+    await this.broadcastDecision(id, body.action);
+    return result;
+  }
+
+  private async broadcastDecision(orderId: string, action: BuyerDecision['action']): Promise<void> {
+    try {
+      const order = await this.pool.query<{ buyer_id: string }>(
+        `SELECT buyer_id FROM orders.orders WHERE id = $1`,
+        [orderId],
+      );
+      if (order.rowCount === 0) return;
+      const text = {
+        CANCEL: { title: 'Order cancelled', body: 'Your order has been cancelled and refunded.' },
+        CONTINUE: { title: 'Refund requested', body: 'We will refund the affected items. The rest of your order continues.' },
+        REPLACE_SELLER: { title: 'Order updated', body: 'The affected items will be replaced by another seller.' },
+      }[action];
+      await this.feed.push(order.rows[0].buyer_id, {
+        type: 'order',
+        title: text.title,
+        body: text.body,
+        deep_link: `/orders/${orderId}`,
+      });
+    } catch (err) {
+      /* decision already committed — a failed notification must not fail the request */
+    }
   }
 
   @Get(':id/fulfilment')

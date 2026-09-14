@@ -51,7 +51,7 @@ export default function NegotiationPage() {
           </svg>
         </button>
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-base font-semibold text-text">{title ?? 'Haggling'}</h1>
+          <h1 className="truncate text-base font-semibold text-text">{title ?? 'Bargaining'}</h1>
           {neg && (
             <p className="truncate text-[11px] font-medium text-textSecondary">
               {neg.seller.name}

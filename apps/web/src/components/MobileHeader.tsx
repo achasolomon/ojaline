@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Icon } from './icons';
 import { SearchBox } from './SearchBox';
+import { AddressSwitcher, roleLabel } from './AddressSwitcher';
 import { getUnreadCount, subscribeNotifications } from '../lib/notifications';
 import { getCartCount, subscribeCart } from '../lib/cart';
 import { useNegotiationCount } from '../lib/negotiation';
 import { isLoggedIn, AUTH_EVENT } from '../lib/session';
+import { subscribeAddresses, activeAddress, addressShortLabel } from '../lib/addresses';
 
 export function MobileHeader({ minimal = false }: { minimal?: boolean }) {
   const navigate = useNavigate();
@@ -14,20 +16,25 @@ export function MobileHeader({ minimal = false }: { minimal?: boolean }) {
   const [notifCount, setNotifCount] = useState(() => getUnreadCount());
   const [cartCount, setCartCount] = useState(() => getCartCount());
   const [authed, setAuthed] = useState(() => isLoggedIn());
+  const [addr, setAddr] = useState(() => activeAddress());
+  const [addrOpen, setAddrOpen] = useState(false);
   const haggleCount = useNegotiationCount();
 
   useEffect(() => {
     const unsubNotif = subscribeNotifications((list) =>
       setNotifCount(list.filter((n) => !n.read).length));
     const unsubCart = subscribeCart(() => setCartCount(getCartCount()));
+    const unsubAddr = subscribeAddresses(() => setAddr(activeAddress()));
     const onAuth = () => {
       setAuthed(isLoggedIn());
       setNotifCount(getUnreadCount());
+      setAddr(activeAddress());
     };
     window.addEventListener(AUTH_EVENT, onAuth);
     return () => {
       unsubNotif();
       unsubCart();
+      unsubAddr();
       window.removeEventListener(AUTH_EVENT, onAuth);
     };
   }, []);
@@ -75,13 +82,20 @@ export function MobileHeader({ minimal = false }: { minimal?: boolean }) {
       {!minimal && (
         <>
           <div className="px-4 pb-2">
-            <div className="flex items-center gap-2">
-              <Icon name="pin" size={16} className="text-primary" />
-              <div>
-                <span className="block text-[11px] text-textSecondary">Deliver to</span>
-                <span className="text-[13px] font-semibold text-text">Sabo, Yaba, Lagos</span>
-              </div>
-            </div>
+            <button
+              type="button"
+              onClick={() => setAddrOpen((v) => !v)}
+              className="flex w-full items-center gap-2 rounded-lg bg-transparent border-none cursor-pointer p-0 text-left"
+            >
+              <Icon name="pin" size={16} className="shrink-0 text-primary" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[11px] text-textSecondary">{roleLabel()}</span>
+                <span className="block truncate text-[13px] font-semibold text-text">
+                  {addr ? addressShortLabel(addr) : 'Set your address'}
+                </span>
+              </span>
+              <Icon name="chevronDown" size={14} className="shrink-0 text-textSecondary" />
+            </button>
           </div>
 
           <div className="px-4 pb-3">
@@ -89,6 +103,8 @@ export function MobileHeader({ minimal = false }: { minimal?: boolean }) {
           </div>
         </>
       )}
+
+      {addrOpen && <AddressSwitcher variant="sheet" onClose={() => setAddrOpen(false)} />}
     </header>
   );
 }

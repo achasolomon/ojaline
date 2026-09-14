@@ -22,12 +22,14 @@ import { ChatModule } from './modules/chat/chat.module.js';
 import { EscrowReleaseService } from './modules/escrow/escrow-release.service.js';
 import { EscrowController } from './modules/escrow/escrow.controller.js';
 import { AddressesModule } from './modules/addresses/addresses.module.js';
+import { GeoModule } from './modules/geo/geo.module.js';
 import { PushService } from './modules/push/push.service.js';
 import { PushController } from './modules/push/push.controller.js';
 import { ToSEnforcementService } from './modules/tos/tos.service.js';
 import { ToSController } from './modules/tos/tos.controller.js';
 import { MarketRealtimeModule } from './modules/realtime/market-realtime.module.js';
 import { AdsModule } from './modules/ads/ads.module.js';
+import { SellersModule } from './modules/sellers/sellers.module.js';
 import { ContentController } from './modules/content/content.controller.js';
 import { ContentService } from './modules/content/content.service.js';
 import { MarketController } from './modules/market/market.controller.js';
@@ -44,8 +46,10 @@ import { FeedService } from './modules/notifications/feed.service.js';
     AuthModule,
     ChatModule,
     AddressesModule,
+    GeoModule,
     MarketRealtimeModule,
     AdsModule,
+    SellersModule,
   ],
   controllers: [HealthController, MetricsController, ReservationsController, OrdersController, WebhookController, CatalogController, FulfilmentController, MediaController, EscrowController, PushController, ToSController, ContentController, MarketController, NotificationsController],
   providers: [

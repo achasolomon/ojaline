@@ -6,9 +6,27 @@ import { activeBuyerId } from '../lib/session';
 import { Icon } from '../components/icons';
 
 const fmt = (kobo: number) => naira.format(kobo / 100);
+type OrderFilter = 'ALL' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+
+const FILTERS: Array<{ id: OrderFilter; label: string }> = [
+  { id: 'ALL', label: 'All' },
+  { id: 'IN_PROGRESS', label: 'In Progress' },
+  { id: 'COMPLETED', label: 'Completed' },
+  { id: 'CANCELLED', label: 'Cancelled' },
+];
+
+function matchesFilter(status: string, filter: OrderFilter) {
+  if (filter === 'ALL') return true;
+  if (filter === 'IN_PROGRESS') return ['CHECKOUT', 'PENDING_PAYMENT', 'PAID', 'DISPATCHED', 'PARTIALLY_DISPATCHED'].includes(status);
+  if (filter === 'COMPLETED') return status === 'DELIVERED';
+  return ['CANCELLED', 'REFUNDED', 'PARTIALLY_REFUNDED'].includes(status);
+}
 
 function statusBadge(s: string): { label: string; cls: string } {
   if (s === 'PAID') return { label: 'Paid', cls: 'bg-primary-light text-primary' };
+  if (s === 'DISPATCHED' || s === 'PARTIALLY_DISPATCHED') return { label: 'In progress', cls: 'bg-primary-light text-primary' };
+  if (s === 'DELIVERED') return { label: 'Delivered', cls: 'bg-primary-light text-primary' };
+  if (s === 'CANCELLED' || s === 'REFUNDED') return { label: 'Cancelled', cls: 'bg-danger/10 text-danger' };
   if (s === 'CHECKOUT') return { label: 'Awaiting payment', cls: 'bg-[#FFF6DA] text-[#A36A00]' };
   return { label: s, cls: 'bg-surface text-textSecondary' };
 }
@@ -26,6 +44,7 @@ function timeAgo(iso: string): string {
 export default function OrdersPage() {
   const navigate = useNavigate();
   const [orders, setOrders] = useState<OrderSummary[] | null>(null);
+  const [filter, setFilter] = useState<OrderFilter>('ALL');
 
   useEffect(() => {
     let cancelled = false;
@@ -45,8 +64,10 @@ export default function OrdersPage() {
     };
   }, []);
 
+  const visibleOrders = orders?.filter((order) => matchesFilter(order.status, filter)) ?? [];
+
   return (
-    <div className="flex h-full flex-col bg-white">
+    <div className="flex h-full flex-col bg-surface/60">
       <header className="flex items-center gap-3 border-b border-border px-4 py-3">
         <button type="button" onClick={() => navigate(-1)} className="p-1">
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -60,7 +81,7 @@ export default function OrdersPage() {
         </span>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
         {orders == null ? (
           <div className="flex flex-col items-center justify-center px-6 py-16">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -85,10 +106,15 @@ export default function OrdersPage() {
           </div>
         ) : (
           <div className="mx-auto max-w-2xl">
-            {orders.map((o) => {
+            <div className="mb-4 flex gap-2 overflow-x-auto scrollbar-none">
+              {FILTERS.map((item) => <button key={item.id} type="button" onClick={() => setFilter(item.id)} className={`shrink-0 rounded-lg px-3 py-1.5 text-[10px] font-bold transition ${filter === item.id ? 'bg-primary text-white' : 'border border-border bg-white text-textSecondary hover:border-primary/40'}`}>{item.label}</button>)}
+            </div>
+            {visibleOrders.length === 0 ? (
+              <div className="rounded-2xl border border-border bg-white px-5 py-10 text-center"><p className="text-sm font-bold text-text">No {FILTERS.find((item) => item.id === filter)?.label.toLowerCase()} orders</p><p className="mt-1 text-xs text-textSecondary">Orders in this status will show here.</p></div>
+            ) : visibleOrders.map((o) => {
               const badge = statusBadge(o.status);
               return (
-                <div key={o.id} className="border-b border-border bg-white px-4 py-3">
+                <div key={o.id} role="button" tabIndex={0} onClick={() => navigate(`/orders/${o.id}`)} onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/orders/${o.id}`); }} className="mb-3 cursor-pointer rounded-2xl border border-border bg-white px-4 py-3.5 shadow-[0_4px_16px_rgba(15,48,28,0.04)] transition hover:border-primary/30 hover:shadow-sm">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-[11px] font-bold uppercase tracking-wide text-textSecondary">
                       Order · {o.id.slice(0, 8)}

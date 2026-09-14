@@ -37,6 +37,9 @@ import NegotiationPage from './pages/NegotiationPage';
 import NegotiationsPage from './pages/NegotiationsPage';
 import CategoriesPage from './pages/CategoriesPage';
 import OrdersPage from './pages/OrdersPage';
+import OrderDetailPage from './pages/OrderDetailPage';
+import PayoutsPage from './pages/PayoutsPage';
+import WishlistPage from './pages/WishlistPage';
 
 const AUTH_PATHS = ['/login', '/register', '/otp', '/forgot', '/reset', '/oauth/callback'];
 
@@ -44,6 +47,8 @@ function AppShell() {
   const location = useLocation();
   const isDesktop = useMediaQuery(DESKTOP_BREAKPOINT);
   const isAuth = AUTH_PATHS.includes(location.pathname);
+const appScreen = location.pathname === '/cart' || location.pathname === '/checkout' || location.pathname === '/payouts' || /^\/orders(?:\/|$)/.test(location.pathname) || /^\/offers\/[^/]+$/.test(location.pathname);
+  const checkoutScreen = location.pathname === '/checkout';
   const transitionKey = location.pathname;
 
   const desktop = (
@@ -55,6 +60,7 @@ function AppShell() {
             <Route path="/offers" element={<Offers />} />
             <Route path="/categories" element={<CategoriesPage />} />
             <Route path="/orders" element={<OrdersPage />} />
+            <Route path="/orders/:id" element={<OrderDetailPage />} />
             <Route path="/offers/new" element={<RequireAuth><CreateOffer /></RequireAuth>} />
             <Route path="/offers/:id" element={<OfferDetail />} />
             <Route path="/market-days" element={<MarketDays />} />
@@ -67,6 +73,8 @@ function AppShell() {
             <Route path="/cart" element={<CartPage />} />
             <Route path="/checkout" element={<RequireAuth><CheckoutPage /></RequireAuth>} />
             <Route path="/account" element={<RequireAuth><Account /></RequireAuth>} />
+            <Route path="/payouts" element={<RequireAuth><PayoutsPage /></RequireAuth>} />
+            <Route path="/wishlist" element={<WishlistPage />} />
             <Route path="/ads" element={<RequireAuth><AdStudio /></RequireAuth>} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
@@ -86,7 +94,7 @@ function AppShell() {
 
   const mobile = (
     <div className="flex h-dvh flex-col bg-white">
-      {!isAuth && <MobileHeader minimal={false} />}
+      {!isAuth && !appScreen && <MobileHeader minimal={false} />}
       <main className="flex-1 overflow-y-auto">
         <PageTransition locationKey={transitionKey}>
           <Routes>
@@ -94,6 +102,7 @@ function AppShell() {
             <Route path="/offers" element={<Offers />} />
             <Route path="/categories" element={<CategoriesPage />} />
             <Route path="/orders" element={<OrdersPage />} />
+            <Route path="/orders/:id" element={<OrderDetailPage />} />
             <Route path="/offers/new" element={<RequireAuth><CreateOffer /></RequireAuth>} />
             <Route path="/offers/:id" element={<OfferDetail />} />
             <Route path="/market-days" element={<MarketDays />} />
@@ -106,6 +115,8 @@ function AppShell() {
             <Route path="/cart" element={<CartPage />} />
             <Route path="/checkout" element={<RequireAuth><CheckoutPage /></RequireAuth>} />
             <Route path="/account" element={<RequireAuth><Account /></RequireAuth>} />
+            <Route path="/payouts" element={<RequireAuth><PayoutsPage /></RequireAuth>} />
+            <Route path="/wishlist" element={<WishlistPage />} />
             <Route path="/ads" element={<RequireAuth><AdStudio /></RequireAuth>} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
@@ -120,7 +131,7 @@ function AppShell() {
           </Routes>
         </PageTransition>
       </main>
-      {!isAuth && <BottomNav />}
+      {!isAuth && !checkoutScreen && <BottomNav />}
     </div>
   );
 

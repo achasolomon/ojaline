@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Post, Param, Query, Body, Inject, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Patch, Post, Delete, Param, Query, Body, Inject, NotFoundException, BadRequestException } from '@nestjs/common';
 import { CatalogService, DiscoverOffersQuery } from './catalog.service.js';
 
 @Controller('catalog')
@@ -149,5 +149,27 @@ export class CatalogController {
     },
   ) {
     return this.catalog.createOffer(body);
+  }
+
+  @Get('wishlist')
+  async getWishlist(@Query('user_id') userId?: string) {
+    if (!userId) return [];
+    return this.catalog.listWishlist(userId);
+  }
+
+  @Post('wishlist')
+  async addToWishlist(@Body() body: { user_id: string; offer_id: string }) {
+    return this.catalog.addWishlistItem(body.user_id, body.offer_id);
+  }
+
+  @Delete('wishlist')
+  async removeFromWishlist(
+    @Query('user_id') userId?: string,
+    @Query('offer_id') offerId?: string,
+  ) {
+    if (!userId || !offerId) {
+      throw new BadRequestException('user_id and offer_id are required');
+    }
+    return this.catalog.removeWishlistItem(userId, offerId);
   }
 }

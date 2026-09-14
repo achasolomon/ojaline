@@ -1,9 +1,12 @@
-import { Injectable, BadRequestException, NotFoundException, ConflictException, Inject, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, ConflictException, ForbiddenException, Inject, Logger } from '@nestjs/common';
 import { Pool } from 'pg';
+import { FULFILMENT_MODES, FULFILMENT_PREFERENCE, DELIVERY_FEE_CENTS, type FulfilmentMode } from '@ojaline/contracts';
 import { OutboxService } from '../outbox/outbox.service.js';
 import { PaystackService } from '../paystack/paystack.service.js';
 import { ReservationGate } from '../reservation/reservation.gate.js';
 import { MultiSellerGate } from '../fulfilment/multi-seller-gate.js';
+import { FulfilmentStateMachine } from '../fulfilment/fulfilment-state-machine.js';
+import { FeedService, type NotificationType } from '../notifications/feed.service.js';
 
 const SOFT_HOLD_TTL_SECONDS = 8 * 60;
 
@@ -19,6 +22,7 @@ export interface CreateCheckoutInput {
   soft_hold_ids: string[];
   window_start: string;
   window_end: string;
+  delivery_mode?: string;
 }
 
 export interface ConfirmPaymentInput {
@@ -36,12 +40,24 @@ export class OrdersService {
     @Inject(PaystackService) private readonly paystack: PaystackService,
     @Inject(ReservationGate) private readonly gate: ReservationGate,
     @Inject(MultiSellerGate) private readonly multiSellerGate: MultiSellerGate,
+    @Inject(FulfilmentStateMachine) private readonly stateMachine: FulfilmentStateMachine,
+    @Inject(FeedService) private readonly feed: FeedService,
   ) {}
+
+  private async resolveBuyerChannel(client: import('pg').PoolClient, userId: string): Promise<'RETAILER' | 'WHOLESALE' | 'DIRECT' | 'OPEN'> {
+    const { rows } = await client.query<{ channel: string | null }>(
+      'SELECT channel FROM pii.users WHERE id = $1',
+      [userId],
+    );
+    if (rows.length === 0) throw new NotFoundException('Buyer account not found');
+    return (rows[0].channel as 'RETAILER' | 'WHOLESALE' | 'DIRECT' | 'OPEN') ?? 'RETAILER';
+  }
 
   async createCheckout(input: CreateCheckoutInput): Promise<{
     order_id: string;
     checkout_session_id: string;
     channel: string;
+    delivery_mode: FulfilmentMode;
     item_total_cents: number;
     delivery_fee_cents: number;
     landed_total_cents: number;
@@ -58,8 +74,8 @@ export class OrdersService {
       await client.query('BEGIN');
 
       const offerIds = input.items.map((i) => i.offer_id);
-      const offersResult = await client.query<{ id: string; channel: string; available_qty: number; seller_id: string; cluster_id: string }>(
-        `SELECT id, channel, available_qty, seller_id, cluster_id FROM catalog.offers WHERE id = ANY($1)`,
+      const offersResult = await client.query<{ id: string; channel: string; available_qty: number; seller_id: string; cluster_id: string; fulfilment_modes: string[] }>(
+        `SELECT id, channel, available_qty, seller_id, cluster_id, fulfilment_modes FROM catalog.offers WHERE id = ANY($1)`,
         [offerIds],
       );
 
@@ -68,6 +84,16 @@ export class OrdersService {
       for (const item of input.items) {
         if (!offerMap.has(item.offer_id)) {
           throw new NotFoundException(`offer ${item.offer_id} not found`);
+        }
+      }
+
+      const buyerChannel = await this.resolveBuyerChannel(client, input.buyer_id);
+      for (const item of input.items) {
+        const offer = offerMap.get(item.offer_id)!;
+        if (offer.channel !== 'OPEN' && buyerChannel !== 'OPEN' && offer.channel !== buyerChannel) {
+          throw new ForbiddenException(
+            `This item is on the ${offer.channel} channel and your buyer channel is ${buyerChannel} — your buyer role must match to purchase`,
+          );
         }
       }
 
@@ -115,7 +141,22 @@ export class OrdersService {
         (sum, item) => sum + BigInt(item.unit_price_cents * item.qty),
         0n,
       );
-      const deliveryFeeCents = 0n;
+
+      const offeredModes = new Set(offersResult.rows.flatMap((o) => o.fulfilment_modes));
+      let deliveryMode: FulfilmentMode;
+      if (input.delivery_mode) {
+        if (!FULFILMENT_MODES.includes(input.delivery_mode as FulfilmentMode)) {
+          throw new BadRequestException(`unsupported delivery_mode: ${input.delivery_mode}`);
+        }
+        const requested = input.delivery_mode as FulfilmentMode;
+        deliveryMode = offeredModes.has(requested)
+          ? requested
+          : (FULFILMENT_PREFERENCE.find((m) => offeredModes.has(m)) ?? requested);
+      } else {
+        deliveryMode = FULFILMENT_PREFERENCE.find((m) => offeredModes.has(m)) ?? 'SCHEDULED';
+      }
+
+      const deliveryFeeCents = BigInt(DELIVERY_FEE_CENTS[deliveryMode]);
       const landedTotalCents = itemTotalCents + deliveryFeeCents;
       const multiSeller = new Set(input.items.map((i) => i.offer_id)).size > 1;
 
@@ -123,8 +164,8 @@ export class OrdersService {
         `INSERT INTO orders.orders
            (buyer_id, channel, status, multi_seller, checkout_session_id,
             item_total_cents, delivery_fee_cents, landed_total_cents,
-            window_start, window_end)
-         VALUES ($1, $2, 'CHECKOUT', $3, $4, $5, $6, $7, $8, $9)
+            window_start, window_end, delivery_mode)
+         VALUES ($1, $2, 'CHECKOUT', $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING id`,
         [
           input.buyer_id,
@@ -136,6 +177,7 @@ export class OrdersService {
           landedTotalCents,
           input.window_start,
           input.window_end,
+          deliveryMode,
         ],
       );
       const orderId = orderResult.rows[0].id;
@@ -196,6 +238,7 @@ export class OrdersService {
         order_id: orderId,
         checkout_session_id: checkoutSessionId,
         channel: orderChannel,
+        delivery_mode: deliveryMode,
         item_total_cents: Number(itemTotalCents),
         delivery_fee_cents: Number(deliveryFeeCents),
         landed_total_cents: Number(landedTotalCents),
@@ -216,7 +259,7 @@ export class OrdersService {
     }
   }
 
-  async initializePayment(orderId: string): Promise<{ authorization_url: string; reference: string }> {
+  async initializePayment(orderId: string, callbackUrl?: string): Promise<{ authorization_url: string; reference: string }> {
     const orderResult = await this.pool.query<{
       id: string;
       status: string;
@@ -231,8 +274,8 @@ export class OrdersService {
     if (orderResult.rowCount === 0) throw new NotFoundException(`order ${orderId} not found`);
 
     const order = orderResult.rows[0];
-    if (order.status !== 'CHECKOUT') {
-      throw new BadRequestException(`order ${order.id} is in status ${order.status}, expected CHECKOUT`);
+    if (order.status !== 'CHECKOUT' && order.status !== 'PENDING_PAYMENT') {
+      throw new BadRequestException(`order ${order.id} is in status ${order.status}, expected CHECKOUT or PENDING_PAYMENT`);
     }
 
     const holdsResult = await this.pool.query<{
@@ -258,13 +301,14 @@ export class OrdersService {
       reference,
       amount_kobo: amountKobo,
       email: `${order.buyer_id}@ojaline.dev`,
+      callback_url: callbackUrl,
       metadata: { order_id: orderId },
     });
 
     await this.pool.query(
       `UPDATE orders.stock_holds
        SET kind = 'HARD', paystack_reference = $1
-       WHERE order_id = $2 AND status = 'ACTIVE' AND kind = 'SOFT'`,
+       WHERE order_id = $2 AND status = 'ACTIVE' AND kind IN ('SOFT', 'HARD')`,
       [reference, orderId],
     );
 
@@ -370,8 +414,9 @@ export class OrdersService {
       const orderResult = await client.query<{
         id: string;
         status: string;
+        buyer_id: string;
       }>(
-        `SELECT id, status FROM orders.orders WHERE id = $1 FOR UPDATE`,
+        `SELECT id, status, buyer_id FROM orders.orders WHERE id = $1 FOR UPDATE`,
         [orderId],
       );
 
@@ -413,6 +458,13 @@ export class OrdersService {
         'delivery confirmed, escrow release scheduled',
       );
 
+      await this.safePush(order.buyer_id, {
+        type: 'order',
+        title: 'Delivery confirmed',
+        body: 'Your order has been delivered. The seller will be paid from escrow within 24 hours.',
+        deep_link: `/orders/${orderId}`,
+      });
+
       return {
         order_id: orderId,
         escrow_status: 'HELD',
@@ -426,11 +478,142 @@ export class OrdersService {
     }
   }
 
+  async cancelOrder(orderId: string): Promise<{
+    order_id: string;
+    order_status: string;
+    refunded_cents: number;
+  }> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const orderResult = await client.query<{ id: string; status: string; buyer_id: string }>(
+        `SELECT id, status, buyer_id FROM orders.orders WHERE id = $1 FOR UPDATE`,
+        [orderId],
+      );
+
+      if (orderResult.rowCount === 0) throw new NotFoundException(`order ${orderId} not found`);
+
+      const order = orderResult.rows[0];
+
+      if (['CANCELLED', 'REFUNDED', 'PARTIALLY_REFUNDED'].includes(order.status)) {
+        throw new BadRequestException(`order ${order.id} is already ${order.status}`);
+      }
+
+      const linesResult = await client.query<{ id: string }>(
+        `SELECT id FROM orders.order_lines WHERE order_id = $1`,
+        [orderId],
+      );
+
+      if (order.status === 'CHECKOUT' || order.status === 'PENDING_PAYMENT') {
+        const holds = await client.query<{
+          hold_id: string;
+          offer_id: string;
+          qty: number;
+          kind: string;
+          hold_status: string;
+          idempotency_key: string;
+        }>(
+          `SELECT h.id AS hold_id, h.offer_id, h.qty, h.kind, h.status AS hold_status, h.idempotency_key
+           FROM orders.order_lines ol
+           JOIN orders.stock_holds h ON h.id = ol.stock_hold_id
+           WHERE ol.order_id = $1`,
+          [orderId],
+        );
+
+        for (const hold of holds.rows) {
+          if (hold.hold_status !== 'ACTIVE') continue;
+          if (hold.kind === 'SOFT') {
+            await this.gate.releaseSoftHold(hold.idempotency_key, hold.qty);
+            await client.query(
+              `UPDATE catalog.offers
+               SET soft_held_qty = GREATEST(soft_held_qty - $1, 0),
+                   available_qty = available_qty + $1,
+                   updated_at = now()
+               WHERE id = $2`,
+              [hold.qty, hold.offer_id],
+            );
+          } else {
+            await client.query(
+              `UPDATE catalog.offers
+               SET reserved_qty = GREATEST(reserved_qty - $1, 0), updated_at = now()
+               WHERE id = $2`,
+              [hold.qty, hold.offer_id],
+            );
+          }
+          await client.query(
+            `UPDATE orders.stock_holds SET status = 'RELEASED' WHERE id = $1`,
+            [hold.hold_id],
+          );
+        }
+
+        await client.query(
+          `UPDATE orders.order_lines SET status = 'CANCELLED', updated_at = now() WHERE order_id = $1`,
+          [orderId],
+        );
+        await client.query(
+          `UPDATE orders.orders SET status = 'CANCELLED', updated_at = now() WHERE id = $1`,
+          [orderId],
+        );
+
+        await client.query('COMMIT');
+        this.logger.log({ orderId }, 'unpaid order cancelled, holds released');
+
+        await this.safePush(order.buyer_id, {
+          type: 'order',
+          title: 'Order cancelled',
+          body: 'Your order was cancelled and your stock reservation released.',
+          deep_link: `/orders/${orderId}`,
+        });
+
+        return { order_id: orderId, order_status: 'CANCELLED', refunded_cents: 0 };
+      }
+
+      if (!['PAID', 'PARTIALLY_DISPATCHED', 'DISPATCHED'].includes(order.status)) {
+        throw new BadRequestException(`order ${order.id} is in status ${order.status}, cannot be cancelled`);
+      }
+
+      const escrowBefore = await client.query<{ amount_held_cents: string }>(
+        `SELECT amount_held_cents FROM escrow.escrow_orders WHERE order_id = $1 LIMIT 1`,
+        [orderId],
+      );
+      await client.query('COMMIT');
+
+      const lineIds = linesResult.rows.map((l) => l.id);
+      const result = await this.stateMachine.handleBuyerDecision({
+        order_id: orderId,
+        action: 'CANCEL',
+        line_ids: lineIds,
+      });
+
+      const refunded = escrowBefore.rowCount ? Number(escrowBefore.rows[0].amount_held_cents) : 0;
+      await this.safePush(order.buyer_id, {
+        type: 'order',
+        title: result.order_status === 'CANCELLED' ? 'Order cancelled' : 'Refund initiated',
+        body: refunded > 0
+          ? `Your refund of the escrow amount is being released.`
+          : 'Your order has been cancelled.',
+        deep_link: `/orders/${orderId}`,
+      });
+
+      return {
+        order_id: result.order_id,
+        order_status: result.order_status,
+        refunded_cents: refunded,
+      };
+    } catch (err) {
+      try { await client.query('ROLLBACK'); } catch (_) { /* already committed */ }
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
   async listOrders(buyerId: string): Promise<Array<Record<string, unknown>>> {
     const { rows } = await this.pool.query(
       `SELECT o.id, o.channel, o.status, o.multi_seller,
               o.item_total_cents, o.delivery_fee_cents, o.landed_total_cents,
-              o.currency, o.created_at, o.updated_at,
+              o.currency, o.created_at, o.updated_at, o.delivery_mode,
               COALESCE(
                 (SELECT json_agg(json_build_object(
                   'offer_id', ol.offer_id,
@@ -482,17 +665,32 @@ export class OrdersService {
       id: string;
       offer_id: string;
       seller_id: string;
+      seller_name: string;
+      product_name: string;
+      unit: string | null;
       qty: number;
       unit_price_cents: string;
       status: string;
       stock_hold_id: string | null;
-    }>(`SELECT * FROM orders.order_lines WHERE order_id = $1`, [orderId]);
+    }>(
+      `SELECT ol.id, ol.offer_id, ol.seller_id,
+              u.full_name AS seller_name,
+              l.product_name, ofr.unit,
+              ol.qty, ol.unit_price_cents, ol.status, ol.stock_hold_id
+       FROM orders.order_lines ol
+       JOIN catalog.offers ofr ON ofr.id = ol.offer_id
+       JOIN catalog.lots l ON l.id = ofr.lot_id
+       JOIN pii.users u ON u.id = ol.seller_id
+       WHERE ol.order_id = $1`,
+      [orderId],
+    );
 
     const escrowResult = await this.pool.query<{
       id: string;
       status: string;
       amount_held_cents: string;
-    }>(`SELECT id, status, amount_held_cents FROM escrow.escrow_orders WHERE order_id = $1`, [orderId]);
+      release_scheduled_at: Date | null;
+    }>(`SELECT id, status, amount_held_cents, release_scheduled_at FROM escrow.escrow_orders WHERE order_id = $1`, [orderId]);
 
     return {
       ...order,
@@ -503,7 +701,17 @@ export class OrdersService {
         ...l,
         unit_price_cents: Number(l.unit_price_cents),
       })),
-      escrow: escrowResult.rows[0] ?? null,
+      escrow: escrowResult.rows[0]
+        ? { ...escrowResult.rows[0], amount_held_cents: Number(escrowResult.rows[0].amount_held_cents) }
+        : null,
     };
+  }
+
+  private async safePush(userId: string, input: { type: NotificationType; title: string; body?: string; deep_link?: string }): Promise<void> {
+    try {
+      await this.feed.push(userId, input);
+    } catch (err) {
+      this.logger.warn({ err }, 'notification push skipped');
+    }
   }
 }

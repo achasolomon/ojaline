@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import type { Offer } from './api';
 import {
   acceptNegotiation,
+  continueNegotiation,
+  endNegotiation,
   listNegotiations,
-  markNegotiationSeen,
   openNegotiation,
+  payFrozenNegotiation,
   revokeNegotiation,
   submitNegotiationBid,
-  walkAwayNegotiation,
   type NegotiationThread,
 } from './api';
 import { hashCode, volumeFloorKobo, volumePerUnitKobo } from './bargain';
@@ -17,14 +18,14 @@ import { activeBuyerId } from './session';
 /**
  * Multi-round negotiation threads, now backed by the API (market.negotiations
  * + market.negotiation_messages in postgres). Buyer bids, seller counters,
- * walk-aways and the "seller called you back" callback all run server-side:
- * the store here mirrors the server, refreshes on a light poll and instantly
- * on SSE events, and every buyer action fires an optimistic update followed
- * by the server's authoritative thread.
+ * deal freezing ("Pay this" / "Sell for this") all run server-side: the store
+ * mirrors the server, refreshes on a light poll and instantly on SSE events,
+ * and every buyer action fires an optimistic update followed by the server's
+ * authoritative thread.
  */
 
 export type NegotiationSide = 'BUYER' | 'SELLER';
-export type NegotiationStatus = 'OPEN' | 'SETTLED' | 'WALKED' | 'REVOKED';
+export type NegotiationStatus = 'OPEN' | 'ENDED' | 'SETTLED' | 'REVOKED';
 export type NegotiationKind =
   | 'BUYER_BID'
   | 'SELLER_OFFER'
@@ -33,7 +34,8 @@ export type NegotiationKind =
   | 'WALK'
   | 'CALLBACK'
   | 'NOTE'
-  | 'REVOKE';
+  | 'REVOKE'
+  | 'END';
 
 export interface NegotiationMessage {
   id: string;
@@ -75,9 +77,11 @@ export interface Negotiation {
   status: NegotiationStatus;
   messages: NegotiationMessage[];
   demeanor: 'easy' | 'fair' | 'tough';
-  dropped_at: number | null;
-  callback: { at: number; sent: boolean } | null;
-  unseen_callbacks: number;
+  ended_at: number | null;
+  ended_by: 'BUYER' | 'SELLER' | null;
+  frozen_seller_per_unit_kobo: number | null;
+  frozen_buyer_per_unit_kobo: number | null;
+  freeze_expires_at: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -95,9 +99,9 @@ let pollTimer: ReturnType<typeof setInterval> | null = null;
 let feedConnected = false;
 
 /**
- * `draft` negotiations are local-only: created when you open a haggle but
+ * `draft` negotiations are local-only: created when you open a bargain but
  * promoted to a real server thread on the first bid. Do nothing and they
- * never touch the API, so tapping "Haggle" and walking away records nothing.
+ * never touch the API, so tapping "Bargain" and walking away records nothing.
  */
 interface DraftSeed {
   basis_type: 'OFFER' | 'REQUEST';
@@ -149,9 +153,11 @@ function baseFromThread(t: NegotiationThread): Negotiation {
     status: t.status,
     messages: t.messages as NegotiationMessage[],
     demeanor: t.demeanor,
-    dropped_at: t.dropped_at ? new Date(String(t.dropped_at)).getTime() : null,
-    callback: t.callback.at ? { at: Number(t.callback.at), sent: t.callback.sent } : null,
-    unseen_callbacks: t.unseen_callbacks,
+    ended_at: t.ended_at ? new Date(String(t.ended_at)).getTime() : null,
+    ended_by: t.ended_by,
+    frozen_seller_per_unit_kobo: t.frozen_seller_per_unit_kobo,
+    frozen_buyer_per_unit_kobo: t.frozen_buyer_per_unit_kobo,
+    freeze_expires_at: t.freeze_expires_at ? new Date(String(t.freeze_expires_at)).getTime() : null,
     created_at: t.created_at,
     updated_at: t.updated_at,
   };
@@ -187,9 +193,11 @@ function applyVolatile(existing: Negotiation, fresh: Negotiation): Negotiation {
     status: fresh.status,
     messages: fresh.messages,
     demeanor: fresh.demeanor,
-    dropped_at: fresh.dropped_at,
-    callback: fresh.callback,
-    unseen_callbacks: fresh.unseen_callbacks,
+    ended_at: fresh.ended_at,
+    ended_by: fresh.ended_by,
+    frozen_seller_per_unit_kobo: fresh.frozen_seller_per_unit_kobo,
+    frozen_buyer_per_unit_kobo: fresh.frozen_buyer_per_unit_kobo,
+    freeze_expires_at: fresh.freeze_expires_at,
     updated_at: fresh.updated_at,
   };
 }
@@ -258,7 +266,7 @@ function stopPollIfIdle(): void {
 }
 
 function onEnvelope(env: MarketEnvelope): void {
-  if (env.event_type !== 'market.negotiation_message' && env.event_type !== 'market.callback') return;
+  if (env.event_type !== 'market.negotiation_message') return;
   const buyerId = (env.payload as { buyer_id?: string }).buyer_id;
   if (buyerId && buyerId === activeBuyerId()) void refresh();
 }
@@ -332,24 +340,12 @@ export function activeNegotiationCount(): number {
   return items.filter((n) => !n.draft && n.status === 'OPEN').length;
 }
 
-/**
- * A walked-away haggle is over unless the seller calls back. Pending = the
- * call-back window is still open (`callback.at` in the future). Terminal =
- * no call-back was ever scheduled, or the window passed without the seller
- * coming back — closed for both sides.
- */
-export function isTerminalWalk(n: Negotiation): boolean {
-  if (n.status !== 'WALKED') return false;
-  if (!n.callback || !n.callback.at) return true;
-  return n.callback.at <= Date.now();
-}
-
 /* -------------------------------- creation --------------------------------- */
 
 export async function createOfferNegotiation(_offer: Offer, _buyerName: string, seedQty?: number): Promise<Negotiation> {
   const offer = _offer;
   await ensureLoaded();
-  const existing = findOfferNegotiation(offer.id, ['OPEN', 'WALKED']);
+  const existing = findOfferNegotiation(offer.id, ['OPEN', 'ENDED']);
   if (existing) return existing;
 
   const base = Math.min(Math.max(offer.min_order_qty, 1), offer.sellable_qty);
@@ -375,9 +371,11 @@ export async function createOfferNegotiation(_offer: Offer, _buyerName: string, 
     status: 'OPEN',
     messages: [],
     demeanor: 'fair',
-    dropped_at: null,
-    callback: null,
-    unseen_callbacks: 0,
+    ended_at: null,
+    ended_by: null,
+    frozen_seller_per_unit_kobo: null,
+    frozen_buyer_per_unit_kobo: null,
+    freeze_expires_at: null,
     created_at: nowIso(),
     updated_at: nowIso(),
   };
@@ -419,9 +417,11 @@ export async function createRequestNegotiation(input: {
     status: 'OPEN',
     messages: [],
     demeanor: 'fair',
-    dropped_at: null,
-    callback: null,
-    unseen_callbacks: 0,
+    ended_at: null,
+    ended_by: null,
+    frozen_seller_per_unit_kobo: null,
+    frozen_buyer_per_unit_kobo: null,
+    freeze_expires_at: null,
     created_at: nowIso(),
     updated_at: nowIso(),
   };
@@ -470,7 +470,7 @@ export function buyerBid(negotiationId: string, qty: number, totalKobo: number, 
   if (n.draft) {
     // Draft threads only exist client-side: the first bid both creates the
     // server thread and lands this message. If it fails, the draft is dropped
-    // and nothing was ever recorded — the haggle "didn't happen".
+    // and nothing was ever recorded — the bargain "didn't happen".
     upsert({ ...n, qty, messages: [...n.messages, optimistic] });
     void (async () => {
       const seed = draftSeeds.get(negotiationId);
@@ -543,37 +543,33 @@ export function buyerAccept(negotiationId: string, perUnitKobo: number): void {
 }
 
 /**
- * Buyer walks away. First walk: the seller may (sometimes) call back and
- * reopen the thread. If they already called back once, this walk is final —
- * the haggle closes for both sides and no second callback is scheduled.
+ * Buyer ends the haggle. The last price each side put on the table is frozen
+ * server-side (24h): then either side can grab it — the buyer "Pays this" or
+ * the seller "Sells for this" — or continue bargaining.
  */
-export function walkAway(negotiationId: string, message?: string): void {
+export function endBargain(negotiationId: string, message?: string): void {
   const n = items.find((x) => x.id === negotiationId);
-  if (!n || n.status === 'SETTLED') return;
+  if (!n || n.status === 'SETTLED' || n.status === 'ENDED') return;
   if (n.draft) {
-    // Drafts were never persisted — walking away just forgets the haggle.
+    // Drafts were never persisted — ending just forgets the bargain.
     items = items.filter((x) => x.id !== negotiationId);
     draftSeeds.delete(negotiationId);
     emit();
     return;
   }
-  const sent = message?.trim() || 'I go check other stalls, thank you.';
 
-  // The seller only calls back once. If a CALLBACK already happened, this
-  // walk is closed for both sides (server leaves callback_at empty); else
-  // mirror the pending call-back window so the UI shows "may call you back".
-  const sellerCalledBack = n.messages.some((m) => m.kind === 'CALLBACK');
-
+  const sent = message?.trim() || 'Abeg make we lock dis one for now — I go reason am first.';
   upsert({
     ...n,
-    status: 'WALKED',
-    dropped_at: Date.now(),
-    callback: sellerCalledBack ? null : { at: Date.now() + 20000, sent: false },
+    status: 'ENDED',
+    ended_at: Date.now(),
+    ended_by: 'BUYER',
+    frozen_seller_per_unit_kobo: n.frozen_seller_per_unit_kobo,
     messages: [
       ...n.messages,
       {
         id: `pending-${Date.now()}`,
-        kind: 'WALK',
+        kind: 'END',
         side: 'BUYER',
         qty: n.qty,
         per_unit_kobo: null,
@@ -583,7 +579,79 @@ export function walkAway(negotiationId: string, message?: string): void {
     ],
   });
 
-  void walkAwayNegotiation(negotiationId, activeBuyerId(), sent)
+  void endNegotiation(negotiationId, activeBuyerId(), sent)
+    .then(applyThread)
+    .catch(() => void refresh());
+}
+
+/** Buyer "Pays this" — takes the seller's frozen price and settles. */
+export function payFrozen(negotiationId: string): void {
+  const n = items.find((x) => x.id === negotiationId);
+  if (!n || n.status !== 'ENDED') return;
+  const price = n.frozen_seller_per_unit_kobo;
+  if (price == null) return;
+
+  upsert({
+    ...n,
+    status: 'SETTLED',
+    messages: [
+      ...n.messages,
+      {
+        id: `pending-${Date.now()}`,
+        kind: 'BUYER_ACCEPT',
+        side: 'BUYER',
+        qty: n.qty,
+        per_unit_kobo: price,
+        message: `Oya na so! ${label(price)} each. I don collect am — make you pack am.`,
+        at: new Date().toISOString(),
+      },
+    ],
+  });
+
+  void payFrozenNegotiation(negotiationId, activeBuyerId())
+    .then(applyThread)
+    .catch(() => void refresh());
+}
+
+/** Buyer reopens an ended bargain with a fresh price (normal haggling resumes). */
+export function continueBargain(
+  negotiationId: string,
+  perUnitKobo: number,
+  qty: number,
+  message?: string,
+): void {
+  const n = items.find((x) => x.id === negotiationId);
+  if (!n || n.status !== 'ENDED') return;
+  const perUnit = roundGrid(perUnitKobo);
+  const sentence = message?.trim() || `Abeg make we still talk. I go pay ${label(perUnit)} each for the ${qty}.`;
+
+  upsert({
+    ...n,
+    status: 'OPEN',
+    ended_at: null,
+    ended_by: null,
+    frozen_seller_per_unit_kobo: null,
+    frozen_buyer_per_unit_kobo: null,
+    freeze_expires_at: null,
+    messages: [
+      ...n.messages,
+      {
+        id: `pending-${Date.now()}`,
+        kind: 'BUYER_BID',
+        side: 'BUYER',
+        qty,
+        per_unit_kobo: perUnit,
+        message: sentence,
+        at: new Date().toISOString(),
+      },
+    ],
+  });
+
+  void continueNegotiation(negotiationId, activeBuyerId(), {
+    per_unit_kobo: perUnit,
+    qty,
+    message: sentence,
+  })
     .then(applyThread)
     .catch(() => void refresh());
 }
@@ -613,29 +681,6 @@ export function revokeDeal(negotiationId: string): void {
   void revokeNegotiation(negotiationId, activeBuyerId())
     .then(applyThread)
     .catch(() => void refresh());
-}
-
-/** Zero the callback badge locally and tell the server the thread was seen. */
-export function markThreadSeen(negotiationId: string): void {
-  const n = items.find((x) => x.id === negotiationId);
-  if (!n) return;
-  if (n.unseen_callbacks > 0) upsert({ ...n, unseen_callbacks: 0 });
-  void markNegotiationSeen(negotiationId, activeBuyerId()).catch(() => {});
-}
-
-export function hasUnseenCallback(negotiationId: string): boolean {
-  const n = items.find((x) => x.id === negotiationId);
-  return n != null && n.unseen_callbacks > 0;
-}
-
-/** Sweep-and-refresh: the API resolves due callbacks; we just re-sync. */
-export function resumeCallbacks(): void {
-  void refresh();
-}
-
-/** @deprecated server-owned — kept for API compatibility. */
-export function sendCallbackIfDue(_negotiationId: string): void {
-  void refresh();
 }
 
 export function forTesting(clear = false): void {

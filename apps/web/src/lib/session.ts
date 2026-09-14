@@ -52,7 +52,7 @@ export function getUserId(): string | null {
 }
 
 /**
- * Identity used by unauthenticated-market features (crowd want, haggling,
+ * Identity used by unauthenticated-market features (crowd want, bargaining,
  * in-app feed). Logged-in buyers use their own id; visitors act as the
  * seeded demo buyer so the marketplace still works before sign-up.
  */

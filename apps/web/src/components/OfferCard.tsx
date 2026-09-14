@@ -25,9 +25,11 @@ const CHANNEL_STYLES: Record<Offer['channel'], string> = {
 export interface OfferCardProps {
   offer: Offer;
   onClick?: (offer: Offer) => void;
+  wished?: boolean;
+  onWishlistToggle?: (offerId: string, wished: boolean) => void;
 }
 
-export function OfferCard({ offer, onClick }: OfferCardProps) {
+export function OfferCard({ offer, onClick, wished, onWishlistToggle }: OfferCardProps) {
   const [added, setAdded] = useState(false);
   const [bargainOpen, setBargainOpen] = useState(false);
   const ratingRaw = offer.seller_stats?.avg_rating;
@@ -50,6 +52,11 @@ export function OfferCard({ offer, onClick }: OfferCardProps) {
   const openBargain = (e: MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
     setBargainOpen(true);
+  };
+
+  const toggleWishlist = (e: MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    onWishlistToggle?.(offer.id, !wished);
   };
 
   return (
@@ -91,6 +98,20 @@ export function OfferCard({ offer, onClick }: OfferCardProps) {
         >
           {CHANNEL_LABELS[offer.channel]}
         </span>
+        {onWishlistToggle && (
+          <button
+            type="button"
+            onClick={toggleWishlist}
+            aria-label={wished ? 'Remove from wishlist' : 'Save to wishlist'}
+            className={`absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full border shadow-sm transition hover:scale-110 ${
+              wished
+                ? 'border-[#f5a623] bg-[#f5a623] text-white'
+                : 'border-border bg-white/95 text-textSecondary'
+            }`}
+          >
+            <Icon name="heart" size={14} className={wished ? 'fill-current' : ''} />
+          </button>
+        )}
         {offer.negotiable && (
           <span className="absolute bottom-2 left-2 rounded-md bg-[#f5a623] px-1.5 py-0.5 text-[9px] font-bold text-white shadow-sm">
             Negotiable
@@ -156,7 +177,7 @@ export function OfferCard({ offer, onClick }: OfferCardProps) {
                     onClick={openBargain}
                     className="flex items-center gap-0.5 bg-transparent text-[10px] font-bold text-[#B7790A] hover:text-[#A36A00] hover:underline lg:text-[9px]"
                   >
-                    <Icon name="bolt" size={10} className="fill-current" /> Haggle
+                    <Icon name="bolt" size={10} className="fill-current" /> Bargain
                   </button>
                 )}
               </div>

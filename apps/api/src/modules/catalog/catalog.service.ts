@@ -1,4 +1,4 @@
-import { Injectable, Inject, NotFoundException } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException, ForbiddenException, BadRequestException, ConflictException } from '@nestjs/common';
 import { Pool } from 'pg';
 import { MarketFeedService } from '../realtime/market-feed.service.js';
 
@@ -247,6 +247,7 @@ export class CatalogService {
     category_id?: string;
     unit?: string;
   }): Promise<{ offer_id: string; lot_id: string }> {
+    await this.assertCanSell(input.seller_id);
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
@@ -294,6 +295,22 @@ export class CatalogService {
       throw err;
     } finally {
       client.release();
+    }
+  }
+
+  /**
+   * Any registered seller (BASIC tier) may list offers — the account info
+   * gathered at sign-up plus their business profile is enough to start.
+   * Full identity KYC unlocks payouts and the verified badge, not listing.
+   */
+  private async assertCanSell(sellerId: string): Promise<void> {
+    const { rows } = await this.pool.query(
+      `SELECT id, full_name FROM pii.users
+        WHERE id = $1 AND seller_type IS NOT NULL AND status = 'ACTIVE'`,
+      [sellerId],
+    );
+    if (rows.length === 0) {
+      throw new ForbiddenException('Only registered sellers can create offers. Register as a seller to get started.');
     }
   }
 
@@ -679,6 +696,7 @@ export class CatalogService {
     const { rows } = await this.pool.query(
       `SELECT
          o.id, o.seller_id, u.full_name AS seller_name, o.channel,
+         o.unit, o.negotiable,
          o.available_qty - o.reserved_qty - o.soft_held_qty AS sellable_qty,
          o.min_order_qty, o.perishability, o.fulfilment_modes, o.cluster_id,
          o.created_at, l.product_name, l.physical_ref, l.category_id,
@@ -700,6 +718,61 @@ export class CatalogService {
     return rows;
   }
 
+  /* ── wishlist ── */
+
+  async listWishlist(userId: string): Promise<Array<Record<string, unknown>>> {
+    const { rows } = await this.pool.query(
+      `SELECT wi.created_at AS wished_at,
+              o.id, o.seller_id, u.full_name AS seller_name, o.channel, o.status,
+              o.unit, o.negotiable,
+              o.available_qty - o.reserved_qty - o.soft_held_qty AS sellable_qty,
+              o.min_order_qty, o.perishability, o.fulfilment_modes, o.cluster_id,
+              o.created_at, l.product_name, l.physical_ref, l.category_id,
+              p.new_price_cents::int AS price_cents,
+              COALESCE(
+                (SELECT json_build_object('id', m.id, 'storage_key', m.storage_key)
+                 FROM catalog.offer_media m WHERE m.offer_id = o.id AND m.is_primary = TRUE LIMIT 1),
+                'null'
+              ) AS primary_image
+       FROM catalog.wishlist_items wi
+       JOIN catalog.offers o ON o.id = wi.offer_id
+       JOIN catalog.lots l ON l.id = o.lot_id
+       JOIN pii.users u ON u.id = o.seller_id
+       LEFT JOIN catalog.offer_price_history p ON p.offer_id = o.id
+         AND p.changed_at = (SELECT max(p2.changed_at) FROM catalog.offer_price_history p2 WHERE p2.offer_id = o.id)
+       WHERE wi.user_id = $1
+       ORDER BY wi.created_at DESC`,
+      [userId],
+    );
+    return rows.map((r) => {
+      const { wished_at, ...offer } = r;
+      return { offer_id: String(offer.id), wished_at: String(wished_at), offer };
+    });
+  }
+
+  async addWishlistItem(userId: string, offerId: string): Promise<Record<string, unknown>> {
+    const offer = await this.pool.query(
+      'SELECT 1 FROM catalog.offers WHERE id = $1',
+      [offerId],
+    );
+    if (offer.rows.length === 0) throw new NotFoundException('Offer not found');
+    await this.pool.query(
+      `INSERT INTO catalog.wishlist_items (user_id, offer_id)
+       VALUES ($1, $2)
+       ON CONFLICT (user_id, offer_id) DO NOTHING`,
+      [userId, offerId],
+    );
+    return { added: true };
+  }
+
+  async removeWishlistItem(userId: string, offerId: string): Promise<Record<string, unknown>> {
+    await this.pool.query(
+      'DELETE FROM catalog.wishlist_items WHERE user_id = $1 AND offer_id = $2',
+      [userId, offerId],
+    );
+    return { removed: true };
+  }
+
   async getReviews(offerId: string): Promise<Array<Record<string, unknown>>> {
     const { rows } = await this.pool.query(
       `SELECT r.id, r.rating, r.review_text, r.reviewer_photo_url, r.created_at,
@@ -714,20 +787,40 @@ export class CatalogService {
   }
 
   async addReview(offerId: string, reviewerId: string, rating: number, reviewText?: string): Promise<Record<string, unknown>> {
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      throw new BadRequestException('rating must be an integer between 1 and 5');
+    }
+
     const offer = await this.pool.query(
       `SELECT o.seller_id FROM catalog.offers o WHERE o.id = $1`,
       [offerId],
     );
     if (offer.rows.length === 0) throw new NotFoundException(`Offer ${offerId} not found`);
-
     const sellerId = offer.rows[0].seller_id;
 
-    const { rows } = await this.pool.query(
-      `INSERT INTO catalog.reviews (offer_id, reviewer_id, seller_id, rating, review_text)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING *`,
-      [offerId, reviewerId, sellerId, rating, reviewText || null],
+    const purchase = await this.pool.query(
+      `SELECT o.id AS order_id
+       FROM orders.orders o
+       JOIN orders.order_lines ol ON ol.order_id = o.id
+       WHERE ol.offer_id = $1 AND o.buyer_id = $2 AND o.status = 'DELIVERED'
+       ORDER BY o.created_at DESC
+       LIMIT 1`,
+      [offerId, reviewerId],
     );
+    if (purchase.rows.length === 0) {
+      throw new ForbiddenException('Only buyers with a delivered order for this item can leave a review');
+    }
+
+    const { rows } = await this.pool.query(
+      `INSERT INTO catalog.reviews (offer_id, reviewer_id, seller_id, rating, review_text, order_id)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (reviewer_id, offer_id) DO NOTHING
+       RETURNING *`,
+      [offerId, reviewerId, sellerId, rating, reviewText || null, purchase.rows[0].order_id],
+    );
+    if (rows.length === 0) {
+      throw new ConflictException('You have already reviewed this item');
+    }
 
     const stats = await this.pool.query(
       `SELECT AVG(rating)::numeric(3,2) AS avg_rating, COUNT(*)::int AS review_count

@@ -47,6 +47,18 @@ const samples: Record<EventType, EventPayload<EventType>> = {
   'escrow.disputed': { escrow_order_id: uuid(), dispute_id: uuid(), type: 'QUALITY' },
   'notification.sent': { channel: 'SMS', recipient: '+2348000000001', template: 'order.confirmed' },
   'market.seller_online': { seller_id: uuid(), seller_name: 'Bisi Olatunji', seller_type: 'MARKET_WOMAN' },
+  'market.want_created': {
+    want_id: uuid(), buyer_id: uuid(), product_name: 'Crayfish',
+    qty: 2, unit: 'kg', ceiling_kobo: 150000, bid_count: 3,
+  },
+  'market.negotiation_message': {
+    negotiation_id: uuid(), buyer_id: uuid(), seller_id: uuid(), message_id: uuid(),
+    kind: 'BUYER_BID', side: 'BUYER', qty: 2, per_unit_kobo: 120000,
+  },
+  'notification.feed': {
+    notification_id: uuid(), user_id: uuid(), type: 'market',
+    title: 'Flat price on crayfish', body: 'From Bisi Olatunji', deep_link: '/offer/123',
+  },
   'market.offer_created': {
     offer_id: uuid(), seller_id: uuid(), seller_name: 'Bisi Olatunji', product_name: 'Crayfish',
     price_cents: 180000, unit: 'unit',

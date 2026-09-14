@@ -28,7 +28,7 @@ export function sellerTitle(offer: Offer): string {
 }
 
 /**
- * Deterministic haggle price: a stable discount (5-13%) derived from the
+ * Deterministic bargain price: a stable discount (5-13%) derived from the
  * offer id, rounded down to the nearest ₦50. Stable across page loads so the
  * buyer always sees the same "market price".
  */

@@ -131,7 +131,7 @@ export function MarketBuzz({ offers, slice = 4 }: MarketBuzzProps) {
           }}
           className="relative shrink-0 rounded-lg bg-secondary px-3.5 py-2 text-[11px] font-bold text-primary-dark shadow-sm transition hover:bg-[#F0BE1F] active:scale-[0.97]"
         >
-          Haggle
+          Bargain
         </button>
       </div>
 
