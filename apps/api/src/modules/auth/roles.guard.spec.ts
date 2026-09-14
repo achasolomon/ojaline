@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { Reflector } from '@nestjs/core';
+import 'reflect-metadata';
+import { Module } from '@nestjs/common';
+import { NestFactory, Reflector } from '@nestjs/core';
 import { RolesGuard } from './guards/roles.guard.js';
 import { assertOwnedOrAnon, requireAuth, requireRoles } from './guards/auth-helpers.js';
 import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
@@ -33,6 +35,28 @@ describe('RolesGuard', () => {
       getAllAndOverride: (_k: string) => ['OPS'],
     } as unknown as Reflector);
     expect(guard.canActivate(ctxFor(['BUYER']))).toBe(false);
+  });
+});
+
+describe('RolesGuard (Nest DI)', () => {
+  it('receives Reflector when resolved through the real container', async () => {
+    @Module({ providers: [RolesGuard] })
+    class HostModule {}
+
+    const app = await NestFactory.createApplicationContext(HostModule, { logger: false });
+    try {
+      const guard = app.get(RolesGuard);
+      expect(guard).toBeInstanceOf(RolesGuard);
+      expect((guard as unknown as { reflector: unknown }).reflector).toBeInstanceOf(Reflector);
+      const ctx = {
+        switchToHttp: () => ({ getRequest: () => ({ user: rolesUser(['BUYER']) }) }),
+        getHandler: () => function handler() {},
+        getClass: () => class Controller {},
+      } as never;
+      expect(guard.canActivate(ctx)).toBe(true);
+    } finally {
+      await app.close();
+    }
   });
 });
 

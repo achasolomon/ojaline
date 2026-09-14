@@ -17,7 +17,7 @@ import { AuthService, type AuthUser } from '../auth.service.js';
 export class JwtAuthGuard implements CanActivate {
   constructor(
     @Inject(AuthService) private readonly auth: AuthService,
-    private readonly reflector: Reflector,
+    @Inject(Reflector) private readonly reflector: Reflector,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {

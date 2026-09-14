@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { describe, it, expect } from 'vitest';
-import { ExecutionContext } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
+import { ExecutionContext, Module } from '@nestjs/common';
+import { NestFactory, Reflector } from '@nestjs/core';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import { AuthService, type AuthUser } from './auth.service.js';
 
@@ -65,5 +65,29 @@ describe('JwtAuthGuard', () => {
     const ctx = fakeContext({ authorization: 'Bearer good' });
     const result = await guard.canActivate(ctx);
     expect(result).toBe(true);
+  });
+});
+
+describe('JwtAuthGuard (Nest DI)', () => {
+  it('receives AuthService and Reflector when resolved through the real container', async () => {
+    @Module({
+      providers: [JwtAuthGuard, { provide: AuthService, useValue: fakeAuthService() }],
+    })
+    class HostModule {}
+
+    const app = await NestFactory.createApplicationContext(HostModule, { logger: false });
+    try {
+      const guard = app.get(JwtAuthGuard);
+      expect(guard).toBeInstanceOf(JwtAuthGuard);
+      expect((guard as unknown as { reflector: unknown }).reflector).toBeInstanceOf(Reflector);
+      const ctx = {
+        switchToHttp: () => ({ getRequest: () => ({ headers: {}, user: undefined as AuthUser | undefined }) }),
+        getHandler: () => function handler() {},
+        getClass: () => class Controller {},
+      } as unknown as ExecutionContext;
+      await expect(guard.canActivate(ctx)).resolves.toBe(true);
+    } finally {
+      await app.close();
+    }
   });
 });
