@@ -372,6 +372,8 @@ export interface Seller {
   seller_type: SellerType | null;
   profile_type: SellerType | null;
   bio: string | null;
+  verified?: boolean;
+  business_name?: string | null;
   stall_number?: string;
   market_name?: string;
   member_since?: string;
@@ -431,6 +433,88 @@ export async function getMarketSellers(marketId: string, sellerType?: string): P
 
 export async function getSellerById(id: string): Promise<Seller> {
   return getJson<Seller>(`/catalog/sellers/${id}`);
+}
+
+export async function getStorefront(id: string): Promise<Seller> {
+  return getJson<Seller>(`/catalog/sellers/${id}/storefront`);
+}
+
+/* ── Seller catalogue management (Phase 2) ── */
+
+export interface MyOffer {
+  id: string;
+  status: OfferStatus;
+  channel: Channel;
+  available_qty: number;
+  reserved_qty: number;
+  soft_held_qty: number;
+  sellable_qty: number;
+  min_order_qty: number;
+  perishability: Perishability;
+  fulfilment_modes: FulfilmentMode[];
+  cluster_id: string;
+  unit: string | null;
+  created_at: string;
+  product_name: string;
+  physical_ref: string;
+  category_id: string | null;
+  price_cents: number | null;
+  primary_image: OfferImage | null;
+  sold_qty: number;
+  delivered_qty: number;
+}
+
+export interface MyOffersPage {
+  offers: MyOffer[];
+  total: number;
+}
+
+export interface UpdateOfferInput {
+  product_name?: string;
+  physical_ref?: string;
+  unit?: string;
+  available_qty?: number;
+  min_order_qty?: number;
+  channel?: Channel;
+  perishability?: Perishability;
+  fulfilment_modes?: FulfilmentMode[];
+  cluster_id?: string;
+  price_cents?: number;
+}
+
+export async function getMyOffers(
+  sellerId: string,
+  params?: { status?: OfferStatus; q?: string; limit?: number; offset?: number },
+): Promise<MyOffersPage> {
+  const qs = new URLSearchParams({ seller_id: sellerId });
+  if (params?.status) qs.set('status', params.status);
+  if (params?.q) qs.set('q', params.q);
+  if (params?.limit != null) qs.set('limit', String(params.limit));
+  if (params?.offset != null) qs.set('offset', String(params.offset));
+  return getJson<MyOffersPage>(`/catalog/offers/mine?${qs.toString()}`);
+}
+
+export async function updateOffer(offerId: string, input: UpdateOfferInput): Promise<{ offer_id: string; updated: string[] }> {
+  return patchJson<{ offer_id: string; updated: string[] }>(`/catalog/offers/${offerId}`, input);
+}
+
+export async function setOfferStatus(
+  offerId: string,
+  action: 'pause' | 'reactivate' | 'delist',
+): Promise<{ offer_id: string; status: OfferStatus }> {
+  return postJson<{ offer_id: string; status: OfferStatus }>(`/catalog/offers/${offerId}/${action}`, {});
+}
+
+export async function addOfferMedia(
+  offerId: string,
+  storageKey: string,
+  isPrimary?: boolean,
+): Promise<{ id: string; storage_key: string; is_primary: boolean }> {
+  return postJson(`/catalog/offers/${offerId}/media`, { storage_key: storageKey, is_primary: isPrimary });
+}
+
+export async function removeOfferMedia(offerId: string, mediaId: string): Promise<{ removed: boolean }> {
+  return deleteJson(`/catalog/offers/${offerId}/media/${mediaId}`);
 }
 
 export async function getSimilarOffers(offerId: string, limit = 8): Promise<Offer[]> {

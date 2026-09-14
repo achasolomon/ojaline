@@ -41,6 +41,7 @@ import OrderDetailPage from './pages/OrderDetailPage';
 import PayoutsPage from './pages/PayoutsPage';
 import WishlistPage from './pages/WishlistPage';
 import SellerOrdersPage from './pages/SellerOrdersPage';
+import SellerInventoryPage from './pages/SellerInventoryPage';
 
 const AUTH_PATHS = ['/login', '/register', '/otp', '/forgot', '/reset', '/oauth/callback'];
 
@@ -48,7 +49,7 @@ function AppShell() {
   const location = useLocation();
   const isDesktop = useMediaQuery(DESKTOP_BREAKPOINT);
   const isAuth = AUTH_PATHS.includes(location.pathname);
-const appScreen = location.pathname === '/cart' || location.pathname === '/checkout' || location.pathname === '/payouts' || location.pathname === '/seller/orders' || /^\/orders(?:\/|$)/.test(location.pathname) || /^\/offers\/[^/]+$/.test(location.pathname);
+const appScreen = location.pathname === '/cart' || location.pathname === '/checkout' || location.pathname === '/payouts' || location.pathname === '/seller/orders' || location.pathname === '/seller/products' || /^\/orders(?:\/|$)/.test(location.pathname) || /^\/offers\/[^/]+$/.test(location.pathname);
   const checkoutScreen = location.pathname === '/checkout';
   const transitionKey = location.pathname;
 
@@ -76,6 +77,7 @@ const appScreen = location.pathname === '/cart' || location.pathname === '/check
             <Route path="/account" element={<RequireAuth><Account /></RequireAuth>} />
 <Route path="/payouts" element={<RequireAuth><PayoutsPage /></RequireAuth>} />
             <Route path="/seller/orders" element={<RequireAuth><SellerOrdersPage /></RequireAuth>} />
+            <Route path="/seller/products" element={<RequireAuth><SellerInventoryPage /></RequireAuth>} />
             <Route path="/wishlist" element={<WishlistPage />} />
             <Route path="/ads" element={<RequireAuth><AdStudio /></RequireAuth>} />
             <Route path="/login" element={<Login />} />
@@ -119,6 +121,7 @@ const appScreen = location.pathname === '/cart' || location.pathname === '/check
             <Route path="/account" element={<RequireAuth><Account /></RequireAuth>} />
 <Route path="/payouts" element={<RequireAuth><PayoutsPage /></RequireAuth>} />
             <Route path="/seller/orders" element={<RequireAuth><SellerOrdersPage /></RequireAuth>} />
+            <Route path="/seller/products" element={<RequireAuth><SellerInventoryPage /></RequireAuth>} />
             <Route path="/wishlist" element={<WishlistPage />} />
             <Route path="/ads" element={<RequireAuth><AdStudio /></RequireAuth>} />
             <Route path="/login" element={<Login />} />

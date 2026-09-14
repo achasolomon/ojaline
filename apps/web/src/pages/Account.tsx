@@ -32,11 +32,15 @@ const SELLER_ORDERS_LINK: { label: string; sub: string; icon: IconName; to: stri
   label: 'Seller Orders', sub: 'Accept, dispatch & track sales', icon: 'box', to: '/seller/orders',
 };
 
+const SELLER_INVENTORY_LINK: { label: string; sub: string; icon: IconName; to: string } = {
+  label: 'My Products', sub: 'Manage listings & inventory', icon: 'tag', to: '/seller/products',
+};
+
 export default function Account() {
   const navigate = useNavigate();
   const user = getUser();
   const userId = getUserId();
-  const quickLinks = user?.seller_type ? [...QUICK_LINKS, SELLER_ORDERS_LINK, PAYOUTS_LINK, AD_STUDIO_LINK] : QUICK_LINKS;
+  const quickLinks = user?.seller_type ? [...QUICK_LINKS, SELLER_ORDERS_LINK, SELLER_INVENTORY_LINK, PAYOUTS_LINK, AD_STUDIO_LINK] : QUICK_LINKS;
   const [addresses, setAddresses] = useState<SavedAddress[]>([]);
   const [cartCount, setCartCount] = useState(() => getCartCount());
   const [unread, setUnread] = useState(() => getUnreadCount());

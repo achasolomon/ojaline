@@ -132,6 +132,11 @@ export default function SellerDetail() {
               <p className="text-xs font-semibold text-primary lg:text-sm">
                 {SELLER_TYPE_LABELS[type] || type || 'Seller'}
               </p>
+              {seller.verified && (
+                <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-[#D6F5E7] px-2.5 py-1 text-[10px] font-bold text-[#087A38]">
+                  <Icon name="shield" size={12} /> Verified
+                </span>
+              )}
               {seller.markets.length > 0 && (
                 <div className="mt-2 flex max-h-8 flex-wrap gap-1.5 overflow-hidden">
                   {seller.markets.map((m) => (

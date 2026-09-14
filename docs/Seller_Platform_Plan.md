@@ -1,6 +1,6 @@
 # OJALINE — Seller Platform Plan
 ### Derived from System Architecture v2.0, Data Model v1.0, and Buyer Platform implementation (Approved)
-**Status:** Phase 1 complete (verified) — Phase 2 next
+**Status:** Phase 2 complete (verified) — Phase 3 next
 **Date:** 14 Sep 2026
 
 ---
@@ -259,7 +259,7 @@ The escrow ledger has a `FEE` entry type and a `MANUAL_ADJUSTMENT` type, but the
 | `GET /catalog/offers/mine` (paginated) | `catalog.controller.ts`, `catalog.service.ts` |
 | `PATCH /catalog/offers/:id` (edit name, qty, channel, fulfilment, category) | Same |
 | `POST /catalog/offers/:id/pause`, `POST /catalog/offers/:id/reactivate`, `POST /catalog/offers/:id/delist` | Same |
-| MinIO presigned upload for offer media | `media.controller.ts` (extend), `media.service.ts` (new) |
+| Offer media attach/detach (reuses existing base64 `POST /media`; `addOfferMedia`/`removeOfferMedia` owner-guarded, primary handling) | `catalog.controller.ts`, `catalog.service.ts` |
 | `GET /catalog/sellers/:id/storefront` (profile + offers + aggregated rating) | `catalog.controller.ts`, `catalog.service.ts` |
 | Seller-level rating aggregate (avg product rating or explicit table) | `catalog.service.ts` (new method) |
 | Web: `/seller` hub page (Overview, Offers, Orders, Payouts tabs) | New `SellerDashboard.tsx` |
@@ -272,6 +272,14 @@ The escrow ledger has a `FEE` entry type and a `MANUAL_ADJUSTMENT` type, but the
 - Paused/delisted offers excluded from `discoverOffers` (or penalised)
 - Storefront returns aggregated rating, verified badge, product grid
 - Media upload via object storage works end-to-end
+
+**Phase 2 verified (all criteria met, 14 Sep 2026):**
+- New endpoints: `GET /catalog/offers/mine`, `PATCH /catalog/offers/:id` (name, unit, physical ref, qty, min order, channel, perishability, fulfilment modes, price → `offer_price_history` on change, `FOR UPDATE OF o` + row-lock owner check), `POST /catalog/offers/:id/{pause,reactivate,delist}` (ACTIVE→PAUSED→ACTIVE, DELIST terminal), `GET /catalog/sellers/:id/storefront`, `POST /catalog/offers/:id/media`, `DELETE /catalog/offers/:id/media/:media_id` (`storage_key` regex `/^[0-9a-zA-Z.-]{8,100}\.(jpg|jpeg|png|webp|gif)$/i`).
+- `discoverOffers` ORDER BY `sp.visibility_penalty ASC`; ACTIVE-only filter already excludes paused/delisted.
+- `getSellerById`/storefront return `business_name`, `kyc_tier`, `verified` (FULL).
+- Web: `SellerInventoryPage` (`/seller/products`) — status/search filters, price/stock/sold stats, edit modal, pause/reactivate/delist, media attach; store link in `Account.tsx`; verified badge on `SellerDetail.tsx`.
+- Integration spec `catalog-seller.spec.ts` (8 tests) green; full API suite 75 passed / 6 skipped. Media acceptance fulfilled via base64 `POST /media` → object storage + `addOfferMedia` attach (MinIO presign deferred).
+- Web: `tsc --noEmit`, vitest (14), eslint clean.
 
 ### Phase 3 — Payouts End-to-End
 

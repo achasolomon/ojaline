@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Post, Delete, Param, Query, Body, Inject, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Patch, Post, Delete, Param, Query, Body, Inject, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { CatalogService, DiscoverOffersQuery } from './catalog.service.js';
 import { CurrentUser, AuthRequired, type AuthUser, assertOwnedOrAnon } from '../auth/auth-guards.js';
 
@@ -88,11 +88,38 @@ export class CatalogController {
     return this.catalog.getSellerById(id);
   }
 
+  @Get('sellers/:id/storefront')
+  async getStorefront(@Param('id') id: string) {
+    return this.catalog.getStorefront(id);
+  }
+
   @Get('offers/batch')
   async getBatchOffers(@Query('ids') ids?: string) {
     if (!ids) return [];
     const idList = ids.split(',').filter(Boolean).slice(0, 20);
     return this.catalog.getBatchOffers(idList);
+  }
+
+  @Get('offers/mine')
+  @AuthRequired()
+  async listMyOffers(
+    @CurrentUser() user: AuthUser,
+    @Query('seller_id') sellerIdParam?: string,
+    @Query('status') status?: string,
+    @Query('q') q?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    const requested = sellerIdParam || user.id;
+    if (user.id !== requested && !user.roles.some((r) => r === 'OPS' || r === 'AGENT')) {
+      throw new ForbiddenException('This inventory belongs to another seller');
+    }
+    return this.catalog.listMyOffers(requested, {
+      status: status || undefined,
+      q: q || undefined,
+      limit: limit ? parseInt(limit, 10) : undefined,
+      offset: offset ? parseInt(offset, 10) : undefined,
+    });
   }
 
   @Get('offers/:id/similar')
@@ -134,6 +161,66 @@ export class CatalogController {
       throw new NotFoundException('Valid new_price_cents is required');
     }
     return this.catalog.updateOfferPrice(id, body.new_price_cents!, user);
+  }
+
+  @Patch('offers/:id')
+  @AuthRequired()
+  async updateOffer(
+    @Param('id') id: string,
+    @Body() body: {
+      product_name?: string;
+      physical_ref?: string;
+      unit?: string;
+      available_qty?: number;
+      min_order_qty?: number;
+      channel?: string;
+      perishability?: string;
+      fulfilment_modes?: string[];
+      cluster_id?: string;
+      price_cents?: number;
+    },
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.catalog.updateOffer(id, user, body);
+  }
+
+  @Post('offers/:id/pause')
+  @AuthRequired()
+  async pauseOffer(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.catalog.setOfferStatus(id, user, 'pause');
+  }
+
+  @Post('offers/:id/reactivate')
+  @AuthRequired()
+  async reactivateOffer(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.catalog.setOfferStatus(id, user, 'reactivate');
+  }
+
+  @Post('offers/:id/delist')
+  @AuthRequired()
+  async delistOffer(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.catalog.setOfferStatus(id, user, 'delist');
+  }
+
+  @Post('offers/:id/media')
+  @AuthRequired()
+  async addOfferMedia(
+    @Param('id') id: string,
+    @Body() body: { storage_key?: string; is_primary?: boolean },
+    @CurrentUser() user: AuthUser,
+  ) {
+    if (!body.storage_key) throw new BadRequestException('storage_key is required');
+    return this.catalog.addOfferMedia(id, user, { storage_key: body.storage_key, is_primary: body.is_primary });
+  }
+
+  @Delete('offers/:id/media/:media_id')
+  @AuthRequired()
+  async removeOfferMedia(
+    @Param('id') id: string,
+    @Param('media_id') mediaId: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.catalog.removeOfferMedia(id, user, mediaId);
   }
 
   @Post('offers')
