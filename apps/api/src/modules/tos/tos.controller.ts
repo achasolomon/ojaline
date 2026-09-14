@@ -1,17 +1,20 @@
 import { Controller, Get, Post, Body, Query, Inject } from '@nestjs/common';
 import { ToSEnforcementService } from './tos.service.js';
+import { CurrentUser, assertOwnedOrAnon, type AuthUser } from '../auth/auth-guards.js';
 
 @Controller('tos')
 export class ToSController {
   constructor(@Inject(ToSEnforcementService) private readonly tos: ToSEnforcementService) {}
 
   @Get('violations')
-  async getViolations(@Query('user_id') userId: string) {
+  async getViolations(@Query('user_id') userId: string, @CurrentUser() user?: AuthUser) {
+    assertOwnedOrAnon(user, userId, 'Violations identity');
     return this.tos.getViolations(userId);
   }
 
   @Get('status')
-  async getStatus(@Query('user_id') userId: string) {
+  async getStatus(@Query('user_id') userId: string, @CurrentUser() user?: AuthUser) {
+    assertOwnedOrAnon(user, userId, 'ToS status identity');
     return this.tos.getSellerStatus(userId);
   }
 

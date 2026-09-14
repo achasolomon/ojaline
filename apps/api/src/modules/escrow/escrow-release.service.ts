@@ -47,7 +47,6 @@ export class EscrowReleaseService {
           }
 
           const sellerId = orderResult.rows[0].seller_id;
-          const amountCents = Number(escrow.amount_held_cents);
 
           await client.query(
             `UPDATE escrow.escrow_orders
@@ -56,11 +55,27 @@ export class EscrowReleaseService {
             [escrow.id],
           );
 
-          await client.query(
-            `INSERT INTO escrow.ledger_entries (escrow_order_id, entry_type, amount_cents, counterparty_type, counterparty_id, idempotency_key)
-             VALUES ($1, 'SELLER_PAYOUT', $2, 'SELLER', $3, $4)`,
-            [escrow.id, amountCents, sellerId, `payout:${escrow.order_id}:${Date.now()}`],
+          // The seller's payout is the escrow's net running balance (gross held
+          // minus platform commission and any refunds already released). Paying
+          // the gross would break the closed-escrow-balance = 0 invariant once
+          // commission exists.
+          const balanceResult = await client.query<{ running_balance_cents: string }>(
+            `SELECT running_balance_cents
+             FROM escrow.ledger_entries
+             WHERE escrow_order_id = $1
+             ORDER BY sequence_no DESC
+             LIMIT 1`,
+            [escrow.id],
           );
+          const payableCents = Number(balanceResult.rows[0]?.running_balance_cents ?? escrow.amount_held_cents);
+
+          if (payableCents > 0) {
+            await client.query(
+              `INSERT INTO escrow.ledger_entries (escrow_order_id, entry_type, amount_cents, counterparty_type, counterparty_id, idempotency_key)
+               VALUES ($1, 'SELLER_PAYOUT', $2, 'SELLER', $3, $4)`,
+              [escrow.id, -payableCents, sellerId, `payout:${escrow.order_id}:${Date.now()}`],
+            );
+          }
 
           await client.query(
             `UPDATE catalog.seller_profiles

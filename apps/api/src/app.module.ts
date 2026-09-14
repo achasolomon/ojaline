@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { DatabaseModule } from './modules/database/database.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard.js';
+import { RolesGuard } from './modules/auth/guards/roles.guard.js';
 import { HealthController } from './modules/health/health.controller.js';
 import { ReservationGate } from './modules/reservation/reservation.gate.js';
 import { MetricsController } from './modules/metrics/metrics.controller.js';
@@ -53,6 +56,14 @@ import { FeedService } from './modules/notifications/feed.service.js';
   ],
   controllers: [HealthController, MetricsController, ReservationsController, OrdersController, WebhookController, CatalogController, FulfilmentController, MediaController, EscrowController, PushController, ToSController, ContentController, MarketController, NotificationsController],
   providers: [
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
+    },
     OutboxService,
     ReservationGate,
     MetricsService,

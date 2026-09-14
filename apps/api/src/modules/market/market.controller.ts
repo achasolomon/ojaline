@@ -11,6 +11,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { MarketService, type CreateThreadInput, type CreateWantInput } from './market.service.js';
+import { CurrentUser, assertOwnedOrAnon, type AuthUser } from '../auth/auth-guards.js';
 
 @Controller()
 export class MarketController {
@@ -21,7 +22,6 @@ export class MarketController {
     throw err;
   }
 
-  /** Negotiation endpoints accept the acting side as ?buyer_id= or ?seller_id=. */
   private actor(query: { buyer_id?: string; seller_id?: string }): { id: string; side: 'BUYER' | 'SELLER' } {
     if (query.buyer_id) return { id: query.buyer_id, side: 'BUYER' };
     if (query.seller_id) return { id: query.seller_id, side: 'SELLER' };
@@ -31,8 +31,9 @@ export class MarketController {
   /* ------------------------------ wants ------------------------------ */
 
   @Post('wants')
-  async createWant(@Query('buyer_id') buyerId: string, @Body() body: CreateWantInput) {
+  async createWant(@Query('buyer_id') buyerId: string, @Body() body: CreateWantInput, @CurrentUser() user?: AuthUser) {
     try {
+      assertOwnedOrAnon(user, buyerId, 'Want identity');
       return await this.market.createWant(buyerId, body);
     } catch (err) {
       this.map(err);
@@ -59,8 +60,9 @@ export class MarketController {
 
   @Post('wants/:id/settle')
   @HttpCode(HttpStatus.OK)
-  async settleWant(@Param('id') id: string, @Query('buyer_id') buyerId: string, @Body() body: { bid_id: string }) {
+  async settleWant(@Param('id') id: string, @Query('buyer_id') buyerId: string, @Body() body: { bid_id: string }, @CurrentUser() user?: AuthUser) {
     try {
+      assertOwnedOrAnon(user, buyerId, 'Want settlement identity');
       return await this.market.settleWant(id, body.bid_id, buyerId);
     } catch (err) {
       this.map(err);
@@ -70,8 +72,9 @@ export class MarketController {
   /* --------------------------- negotiations --------------------------- */
 
   @Post('negotiations')
-  async openThread(@Query('buyer_id') buyerId: string, @Body() body: CreateThreadInput) {
+  async openThread(@Query('buyer_id') buyerId: string, @Body() body: CreateThreadInput, @CurrentUser() user?: AuthUser) {
     try {
+      assertOwnedOrAnon(user, buyerId, 'Negotiation identity');
       return await this.market.openThread(body, buyerId);
     } catch (err) {
       this.map(err);
@@ -79,8 +82,9 @@ export class MarketController {
   }
 
   @Get('negotiations')
-  async listNegotiations(@Query('buyer_id') buyerId: string) {
+  async listNegotiations(@Query('buyer_id') buyerId: string, @CurrentUser() user?: AuthUser) {
     try {
+      assertOwnedOrAnon(user, buyerId, 'Negotiation identity');
       return await this.market.listNegotiations(buyerId);
     } catch (err) {
       this.map(err);
@@ -92,8 +96,10 @@ export class MarketController {
     @Param('id') id: string,
     @Query('buyer_id') buyerId: string,
     @Body() body: { qty: number; total_kobo: number; message?: string },
+    @CurrentUser() user?: AuthUser,
   ) {
     try {
+      assertOwnedOrAnon(user, buyerId, 'Bid identity');
       return await this.market.buyerBid(id, buyerId, body.qty, body.total_kobo, body.message ?? '');
     } catch (err) {
       this.map(err);
@@ -105,8 +111,10 @@ export class MarketController {
     @Param('id') id: string,
     @Query('buyer_id') buyerId: string,
     @Body() body: { per_unit_kobo: number },
+    @CurrentUser() user?: AuthUser,
   ) {
     try {
+      assertOwnedOrAnon(user, buyerId, 'Accept identity');
       return await this.market.accept(id, buyerId, body.per_unit_kobo);
     } catch (err) {
       this.map(err);
@@ -118,9 +126,12 @@ export class MarketController {
     @Param('id') id: string,
     @Query() query: { buyer_id?: string; seller_id?: string },
     @Body() body: { message?: string },
+    @CurrentUser() user?: AuthUser,
   ) {
     try {
       const { id: actorId, side } = this.actor(query);
+      const paramId = query.buyer_id ?? query.seller_id;
+      assertOwnedOrAnon(user, paramId, 'Bargain identity');
       return await this.market.endBargain(id, actorId, side, body?.message);
     } catch (err) {
       this.map(err);
@@ -129,9 +140,11 @@ export class MarketController {
 
   @Post('negotiations/:id/accept-frozen')
   @HttpCode(HttpStatus.OK)
-  async acceptFrozen(@Param('id') id: string, @Query() query: { buyer_id?: string; seller_id?: string }) {
+  async acceptFrozen(@Param('id') id: string, @Query() query: { buyer_id?: string; seller_id?: string }, @CurrentUser() user?: AuthUser) {
     try {
       const { id: actorId, side } = this.actor(query);
+      const paramId = query.buyer_id ?? query.seller_id;
+      assertOwnedOrAnon(user, paramId, 'Frozen accept identity');
       return await this.market.acceptFrozen(id, actorId, side);
     } catch (err) {
       this.map(err);
@@ -144,9 +157,12 @@ export class MarketController {
     @Param('id') id: string,
     @Query() query: { buyer_id?: string; seller_id?: string },
     @Body() body: { per_unit_kobo: number; qty?: number; message?: string },
+    @CurrentUser() user?: AuthUser,
   ) {
     try {
       const { id: actorId, side } = this.actor(query);
+      const paramId = query.buyer_id ?? query.seller_id;
+      assertOwnedOrAnon(user, paramId, 'Continue identity');
       return await this.market.continueBargain(id, actorId, side, body.per_unit_kobo, body.qty, body?.message);
     } catch (err) {
       this.map(err);
@@ -155,8 +171,9 @@ export class MarketController {
 
   @Post('negotiations/:id/revoke')
   @HttpCode(HttpStatus.OK)
-  async revoke(@Param('id') id: string, @Query('buyer_id') buyerId: string) {
+  async revoke(@Param('id') id: string, @Query('buyer_id') buyerId: string, @CurrentUser() user?: AuthUser) {
     try {
+      assertOwnedOrAnon(user, buyerId, 'Revoke identity');
       return await this.market.revokeDeal(id, buyerId);
     } catch (err) {
       this.map(err);

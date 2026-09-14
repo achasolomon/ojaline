@@ -1,10 +1,11 @@
-import { Body, Controller, Get, Post, Param, Inject, HttpCode } from '@nestjs/common';
+import { Body, Controller, Get, Post, Param, Inject, HttpCode, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Pool } from 'pg';
 import {
   FulfilmentStateMachine,
   BuyerDecision,
 } from './fulfilment-state-machine.js';
 import { FeedService } from '../notifications/feed.service.js';
+import { CurrentUser, type AuthUser } from '../auth/auth-guards.js';
 
 interface DecisionBody {
   order_id: string;
@@ -22,12 +23,20 @@ export class FulfilmentController {
 
   @Post(':id/decide')
   @HttpCode(200)
-  async buyerDecision(@Param('id') id: string, @Body() body: DecisionBody) {
+  async buyerDecision(@Param('id') id: string, @Body() body: DecisionBody, @CurrentUser() user?: AuthUser) {
     const decision: BuyerDecision = {
       order_id: id,
       action: body.action,
       line_ids: body.line_ids,
     };
+    const owner = await this.pool.query<{ buyer_id: string }>(
+      `SELECT buyer_id FROM orders.orders WHERE id = $1`,
+      [id],
+    );
+    if (owner.rowCount === 0) throw new BadRequestException(`order ${id} not found`);
+    if (user && user.id !== owner.rows[0].buyer_id) {
+      throw new ForbiddenException('This order belongs to another buyer');
+    }
     const result = await this.stateMachine.handleBuyerDecision(decision);
     await this.broadcastDecision(id, body.action);
     return result;
@@ -57,7 +66,16 @@ export class FulfilmentController {
   }
 
   @Get(':id/fulfilment')
-  async fulfilmentStatus(@Param('id') id: string) {
+  async fulfilmentStatus(@Param('id') id: string, @CurrentUser() user?: AuthUser) {
+    const owner = await this.pool.query<{ buyer_id: string }>(
+      `SELECT buyer_id FROM orders.orders WHERE id = $1`,
+      [id],
+    );
+    if (owner.rowCount === 0) throw new BadRequestException(`order ${id} not found`);
+    if (user && user.id !== owner.rows[0].buyer_id) {
+      const isOps = user.roles.some((r) => r === 'OPS' || r === 'AGENT');
+      if (!isOps) throw new ForbiddenException('This order belongs to another buyer');
+    }
     return this.stateMachine.getOrderFulfilmentStatus(id);
   }
 }

@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Param, Body, Query, Inject } from '@nestjs/common';
 import { ChatService } from './chat.service.js';
+import { CurrentUser, assertOwnedOrAnon, type AuthUser } from '../auth/auth-guards.js';
 
 @Controller('chat')
 export class ChatController {
@@ -8,12 +9,15 @@ export class ChatController {
   @Post('conversations')
   async createConversation(
     @Body() body: { buyer_id: string; seller_id: string; offer_id?: string; order_id?: string },
+    @CurrentUser() user?: AuthUser,
   ) {
+    assertOwnedOrAnon(user, body.buyer_id, 'Conversation identity');
     return this.chat.getOrCreateConversation(body);
   }
 
   @Get('conversations')
-  async getUserConversations(@Query('user_id') userId: string) {
+  async getUserConversations(@Query('user_id') userId: string, @CurrentUser() user?: AuthUser) {
+    assertOwnedOrAnon(user, userId, 'Conversations identity');
     return this.chat.getUserConversations(userId);
   }
 
@@ -21,7 +25,9 @@ export class ChatController {
   async sendMessage(
     @Param('id') conversationId: string,
     @Body() body: { sender_id: string; content: string },
+    @CurrentUser() user?: AuthUser,
   ) {
+    assertOwnedOrAnon(user, body.sender_id, 'Message identity');
     return this.chat.sendMessage(conversationId, body.sender_id, body.content);
   }
 
@@ -31,7 +37,9 @@ export class ChatController {
     @Query('user_id') userId: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
+    @CurrentUser() user?: AuthUser,
   ) {
+    assertOwnedOrAnon(user, userId, 'Messages identity');
     return this.chat.getMessages(
       conversationId,
       userId,

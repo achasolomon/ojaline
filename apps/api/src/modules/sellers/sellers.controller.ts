@@ -1,30 +1,22 @@
-import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Inject, Param, Post, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Inject, Param, Post } from '@nestjs/common';
 import { SellersService } from './sellers.service.js';
-import { AuthService, type AuthUser } from '../auth/auth.service.js';
+import { AuthRequired, CurrentUser, type AuthUser } from '../auth/auth-guards.js';
 
 @Controller('sellers')
 export class SellersController {
-  constructor(
-    @Inject(SellersService) private readonly sellers: SellersService,
-    @Inject(AuthService) private readonly auth: AuthService,
-  ) {}
-
-  private async requireUser(authorization?: string): Promise<AuthUser> {
-    const token = authorization?.startsWith('Bearer ') ? authorization.slice(7) : undefined;
-    if (!token) throw new UnauthorizedException('Missing bearer token');
-    return this.auth.verifyToken(token);
-  }
+  constructor(@Inject(SellersService) private readonly sellers: SellersService) {}
 
   @Get('me')
-  async me(@Headers('authorization') authorization?: string) {
-    const user = await this.requireUser(authorization);
+  @AuthRequired()
+  async me(@CurrentUser() user: AuthUser) {
     return this.sellers.status(user);
   }
 
   @Post('register')
+  @AuthRequired()
   @HttpCode(HttpStatus.CREATED)
   async register(
-    @Headers('authorization') authorization?: string,
+    @CurrentUser() user: AuthUser,
     @Body() body?: {
       seller_type?: string;
       business_name?: string;
@@ -35,14 +27,14 @@ export class SellersController {
       bio?: string;
     },
   ) {
-    const user = await this.requireUser(authorization);
     return this.sellers.register(user, body ?? {});
   }
 
   @Post('kyc')
+  @AuthRequired()
   @HttpCode(HttpStatus.OK)
   async submitKyc(
-    @Headers('authorization') authorization?: string,
+    @CurrentUser() user: AuthUser,
     @Body() body?: {
       id_type?: string;
       id_number?: string;
@@ -52,29 +44,20 @@ export class SellersController {
       state?: string;
     },
   ) {
-    const user = await this.requireUser(authorization);
     return this.sellers.submitKyc(user, body ?? {});
   }
 
   @Post(':id/approve')
+  @AuthRequired()
   @HttpCode(HttpStatus.OK)
-  async approve(
-    @Headers('authorization') authorization?: string,
-    @Param('id') id?: string,
-    @Body() body?: { note?: string },
-  ) {
-    const user = await this.requireUser(authorization);
+  async approve(@CurrentUser() user: AuthUser, @Param('id') id?: string, @Body() body?: { note?: string }) {
     return this.sellers.decide(user, String(id ?? ''), 'APPROVED', body?.note);
   }
 
   @Post(':id/reject')
+  @AuthRequired()
   @HttpCode(HttpStatus.OK)
-  async reject(
-    @Headers('authorization') authorization?: string,
-    @Param('id') id?: string,
-    @Body() body?: { note?: string },
-  ) {
-    const user = await this.requireUser(authorization);
+  async reject(@CurrentUser() user: AuthUser, @Param('id') id?: string, @Body() body?: { note?: string }) {
     return this.sellers.decide(user, String(id ?? ''), 'REJECTED', body?.note);
   }
 }

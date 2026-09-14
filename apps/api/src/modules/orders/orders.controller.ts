@@ -10,6 +10,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { OrdersService, CreateCheckoutInput, ConfirmPaymentInput } from './orders.service.js';
+import { CurrentUser, AuthRequired, type AuthUser } from '../auth/auth-guards.js';
 
 interface CheckoutBody {
   buyer_id: string;
@@ -34,14 +35,14 @@ export class OrdersController {
   constructor(@Inject(OrdersService) private readonly orders: OrdersService) {}
 
   @Get()
-  async list(@Query('buyer_id') buyerId: string) {
+  async list(@Query('buyer_id') buyerId: string, @CurrentUser() user?: AuthUser) {
     if (!buyerId) throw new BadRequestException('buyer_id required');
-    return this.orders.listOrders(buyerId);
+    return this.orders.listOrders(buyerId, user);
   }
 
   @Post('checkout')
   @HttpCode(201)
-  async checkout(@Body() body: CheckoutBody) {
+  async checkout(@Body() body: CheckoutBody, @CurrentUser() user?: AuthUser) {
     const input: CreateCheckoutInput = {
       buyer_id: body.buyer_id,
       items: body.items,
@@ -50,39 +51,40 @@ export class OrdersController {
       window_end: body.window_end,
       delivery_mode: body.delivery_mode,
     };
-    return this.orders.createCheckout(input);
+    return this.orders.createCheckout(input, user);
   }
 
   @Post(':id/pay')
   @HttpCode(200)
-  async pay(@Param('id') id: string, @Body() body: PayBody) {
-    return this.orders.initializePayment(id, body.callback_url);
+  async pay(@Param('id') id: string, @Body() body: PayBody, @CurrentUser() user?: AuthUser) {
+    return this.orders.initializePayment(id, body.callback_url, user);
   }
 
   @Post('confirm')
   @HttpCode(200)
-  async confirm(@Body() body: ConfirmBody) {
+  @AuthRequired()
+  async confirm(@Body() body: ConfirmBody, @CurrentUser() user: AuthUser) {
     const input: ConfirmPaymentInput = {
       order_id: body.order_id,
       paystack_reference: body.paystack_reference,
     };
-    return this.orders.confirmPayment(input);
+    return this.orders.confirmPayment(input, user);
   }
 
   @Post(':id/deliver')
   @HttpCode(200)
-  async deliver(@Param('id') id: string) {
-    return this.orders.confirmDelivery(id);
+  async deliver(@Param('id') id: string, @CurrentUser() user?: AuthUser) {
+    return this.orders.confirmDelivery(id, user);
   }
 
   @Post(':id/cancel')
   @HttpCode(200)
-  async cancel(@Param('id') id: string) {
-    return this.orders.cancelOrder(id);
+  async cancel(@Param('id') id: string, @CurrentUser() user?: AuthUser) {
+    return this.orders.cancelOrder(id, user);
   }
 
   @Get(':id')
-  async getOrder(@Param('id') id: string) {
-    return this.orders.getOrder(id);
+  async getOrder(@Param('id') id: string, @CurrentUser() user?: AuthUser) {
+    return this.orders.getOrder(id, user);
   }
 }

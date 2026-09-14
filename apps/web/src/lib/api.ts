@@ -1,5 +1,6 @@
 import { validateEnvelope } from '@ojaline/contracts';
 import type { EventType, EventPayload, OutboxEnvelope } from '@ojaline/contracts';
+import { getToken } from './session';
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api';
 
@@ -114,44 +115,38 @@ export class ApiError extends Error {
 }
 
 export async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { accept: 'application/json', ...init?.headers },
-    ...init,
-  });
+  const headers = { accept: 'application/json', ...authHeaders(), ...init?.headers };
+  const res = await fetch(`${BASE_URL}${path}`, { ...init, headers });
   if (!res.ok) throw new ApiError(res.status, await safeText(res));
   return (await res.json()) as T;
 }
 
 export async function postJson<T>(path: string, body: unknown, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method: 'POST',
-    headers: { accept: 'application/json', 'content-type': 'application/json', ...init?.headers },
-    body: JSON.stringify(body),
-    ...init,
-  });
+  const headers = { accept: 'application/json', 'content-type': 'application/json', ...authHeaders(), ...init?.headers };
+  const res = await fetch(`${BASE_URL}${path}`, { method: 'POST', headers, body: JSON.stringify(body), ...init });
   if (!res.ok) throw new ApiError(res.status, await safeText(res));
   return (await res.json()) as T;
 }
 
 async function deleteJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method: 'DELETE',
-    headers: { accept: 'application/json', ...init?.headers },
-    ...init,
-  });
+  const headers = { accept: 'application/json', ...authHeaders(), ...init?.headers };
+  const res = await fetch(`${BASE_URL}${path}`, { method: 'DELETE', ...init, headers });
   if (!res.ok) throw new ApiError(res.status, await safeText(res));
   return (await res.json()) as T;
 }
 
 async function patchJson<T>(path: string, body: unknown, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method: 'PATCH',
-    headers: { accept: 'application/json', 'content-type': 'application/json', ...init?.headers },
-    body: JSON.stringify(body),
-    ...init,
-  });
+  const headers = { accept: 'application/json', 'content-type': 'application/json', ...authHeaders(), ...init?.headers };
+  const res = await fetch(`${BASE_URL}${path}`, { method: 'PATCH', headers, body: JSON.stringify(body), ...init });
   if (!res.ok) throw new ApiError(res.status, await safeText(res));
   return (await res.json()) as T;
+}
+
+/** When a session is active, every request is automatically authenticated
+ *  (authority: JwtAuthGuard + assertOwnedOrAnon on the server). */
+function authHeaders(): Record<string, string> {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 async function safeText(res: Response): Promise<string> {

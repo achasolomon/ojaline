@@ -1,5 +1,6 @@
 import { Controller, Get, Patch, Post, Delete, Param, Query, Body, Inject, NotFoundException, BadRequestException } from '@nestjs/common';
 import { CatalogService, DiscoverOffersQuery } from './catalog.service.js';
+import { CurrentUser, AuthRequired, type AuthUser, assertOwnedOrAnon } from '../auth/auth-guards.js';
 
 @Controller('catalog')
 export class CatalogController {
@@ -111,7 +112,9 @@ export class CatalogController {
   async addReview(
     @Param('id') offerId: string,
     @Body() body: { reviewer_id: string; rating: number; review_text?: string },
+    @CurrentUser() user?: AuthUser,
   ) {
+    assertOwnedOrAnon(user, body.reviewer_id, 'Review identity');
     return this.catalog.addReview(offerId, body.reviewer_id, body.rating, body.review_text);
   }
 
@@ -121,17 +124,20 @@ export class CatalogController {
   }
 
   @Patch('offers/:id/price')
+  @AuthRequired()
   async updateOfferPrice(
     @Param('id') id: string,
     @Body() body: { new_price_cents?: number },
+    @CurrentUser() user: AuthUser,
   ) {
     if (!Number.isInteger(body.new_price_cents) || body.new_price_cents! < 0) {
       throw new NotFoundException('Valid new_price_cents is required');
     }
-    return this.catalog.updateOfferPrice(id, body.new_price_cents!);
+    return this.catalog.updateOfferPrice(id, body.new_price_cents!, user);
   }
 
   @Post('offers')
+  @AuthRequired()
   async createOffer(
     @Body() body: {
       seller_id: string;
@@ -147,18 +153,22 @@ export class CatalogController {
       category_id?: string;
       unit?: string;
     },
+    @CurrentUser() user: AuthUser,
   ) {
+    assertOwnedOrAnon(user, body.seller_id, 'Seller identity');
     return this.catalog.createOffer(body);
   }
 
   @Get('wishlist')
-  async getWishlist(@Query('user_id') userId?: string) {
+  async getWishlist(@Query('user_id') userId?: string, @CurrentUser() user?: AuthUser) {
     if (!userId) return [];
+    assertOwnedOrAnon(user, userId, 'Wishlist identity');
     return this.catalog.listWishlist(userId);
   }
 
   @Post('wishlist')
-  async addToWishlist(@Body() body: { user_id: string; offer_id: string }) {
+  async addToWishlist(@Body() body: { user_id: string; offer_id: string }, @CurrentUser() user?: AuthUser) {
+    assertOwnedOrAnon(user, body.user_id, 'Wishlist identity');
     return this.catalog.addWishlistItem(body.user_id, body.offer_id);
   }
 
@@ -166,10 +176,12 @@ export class CatalogController {
   async removeFromWishlist(
     @Query('user_id') userId?: string,
     @Query('offer_id') offerId?: string,
+    @CurrentUser() user?: AuthUser,
   ) {
     if (!userId || !offerId) {
       throw new BadRequestException('user_id and offer_id are required');
     }
+    assertOwnedOrAnon(user, userId, 'Wishlist identity');
     return this.catalog.removeWishlistItem(userId, offerId);
   }
 }

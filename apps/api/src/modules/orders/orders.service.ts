@@ -7,6 +7,7 @@ import { ReservationGate } from '../reservation/reservation.gate.js';
 import { MultiSellerGate } from '../fulfilment/multi-seller-gate.js';
 import { FulfilmentStateMachine } from '../fulfilment/fulfilment-state-machine.js';
 import { FeedService, type NotificationType } from '../notifications/feed.service.js';
+import type { AuthUser } from '../auth/auth.service.js';
 
 const SOFT_HOLD_TTL_SECONDS = 8 * 60;
 
@@ -28,6 +29,12 @@ export interface CreateCheckoutInput {
 export interface ConfirmPaymentInput {
   order_id: string;
   paystack_reference: string;
+}
+
+export interface CommissionRate {
+  category_id: string | null;
+  percent_bps: number;
+  flat_cents: number;
 }
 
 @Injectable()
@@ -53,7 +60,46 @@ export class OrdersService {
     return (rows[0].channel as 'RETAILER' | 'WHOLESALE' | 'DIRECT' | 'OPEN') ?? 'RETAILER';
   }
 
-  async createCheckout(input: CreateCheckoutInput): Promise<{
+  /**
+   * Commission is snapshotted at checkout: the rate effective on the offer's
+   * channel/category at order time is locked onto the line forever (rate changes
+   * later never rewrite history). Category-specific rates win over the generic
+   * channel rate; an absent rate means the platform takes 0 on that line.
+   */
+  private async resolveCommissionRates(client: import('pg').PoolClient): Promise<Map<string, CommissionRate[]>> {
+    const { rows } = await client.query<{ channel: string; category_id: string | null; percent_bps: number; flat_cents: string }>(
+      `SELECT channel, category_id, percent_bps, flat_cents
+       FROM finance.commission_rates
+       WHERE effective_from <= now()
+         AND (effective_to IS NULL OR effective_to > now())`,
+    );
+    const byChannel = new Map<string, CommissionRate[]>();
+    for (const row of rows) {
+      const list = byChannel.get(row.channel) ?? [];
+      // flat_cents is BIGINT — pg returns it as a string; coerce to number so
+      // "500 + '0'" never string-concatenates into "5000".
+      list.push({ category_id: row.category_id, percent_bps: row.percent_bps, flat_cents: Number(row.flat_cents) });
+      byChannel.set(row.channel, list);
+    }
+    return byChannel;
+  }
+
+  private resolveLineCommission(
+    ratesByChannel: Map<string, CommissionRate[]>,
+    channel: string,
+    categoryId: string | null,
+    lineTotalCents: number,
+  ): { commission_cents: number } {
+    const rates = ratesByChannel.get(channel);
+    if (!rates || rates.length === 0) return { commission_cents: 0 };
+    const categoryRate = categoryId ? rates.find((r) => r.category_id === categoryId) : undefined;
+    const rate = categoryRate ?? rates.find((r) => r.category_id === null);
+    if (!rate) return { commission_cents: 0 };
+    const commissionCents = Math.round(lineTotalCents * (rate.percent_bps / 10_000)) + rate.flat_cents;
+    return { commission_cents: commissionCents };
+  }
+
+  async createCheckout(input: CreateCheckoutInput, actor?: AuthUser): Promise<{
     order_id: string;
     checkout_session_id: string;
     channel: string;
@@ -66,6 +112,7 @@ export class OrdersService {
     soft_hold_expires_at: Date;
   }> {
     if (input.items.length === 0) throw new BadRequestException('items must not be empty');
+    this.assertBuyerOrAnon(actor, input.buyer_id);
 
     const holdKeys: Array<{ key: string; qty: number }> = [];
 
@@ -74,12 +121,13 @@ export class OrdersService {
       await client.query('BEGIN');
 
       const offerIds = input.items.map((i) => i.offer_id);
-      const offersResult = await client.query<{ id: string; channel: string; available_qty: number; seller_id: string; cluster_id: string; fulfilment_modes: string[] }>(
-        `SELECT id, channel, available_qty, seller_id, cluster_id, fulfilment_modes FROM catalog.offers WHERE id = ANY($1)`,
+      const offersResult = await client.query<{ id: string; channel: string; available_qty: number; seller_id: string; cluster_id: string; fulfilment_modes: string[]; category_id: string | null }>(
+        `SELECT id, channel, available_qty, seller_id, cluster_id, fulfilment_modes, category_id FROM catalog.offers WHERE id = ANY($1)`,
         [offerIds],
       );
 
       const offerMap = new Map(offersResult.rows.map((o) => [o.id, o]));
+      const commissionRates = await this.resolveCommissionRates(client);
 
       for (const item of input.items) {
         if (!offerMap.has(item.offer_id)) {
@@ -182,6 +230,8 @@ export class OrdersService {
       );
       const orderId = orderResult.rows[0].id;
 
+      const commissionByOffer = new Map<string, { commission_cents: number; seller_payable_cents: number }>();
+
       for (let i = 0; i < input.items.length; i++) {
         const item = input.items[i];
         const idempotencyKey = `hold:${orderId}:${i}`;
@@ -213,10 +263,23 @@ export class OrdersService {
           [item.qty, item.offer_id],
         );
 
+        const offer = offerMap.get(item.offer_id)!;
+        const lineTotalCents = item.unit_price_cents * item.qty;
+        const { commission_cents } = this.resolveLineCommission(
+          commissionRates,
+          offer.channel,
+          offer.category_id,
+          lineTotalCents,
+        );
+        commissionByOffer.set(item.offer_id, {
+          commission_cents,
+          seller_payable_cents: lineTotalCents - commission_cents,
+        });
+
         await client.query(
-          `INSERT INTO orders.order_lines (order_id, offer_id, seller_id, qty, unit_price_cents, status, stock_hold_id)
-           VALUES ($1, $2, (SELECT seller_id FROM catalog.offers WHERE id = $2), $3, $4, 'PENDING', $5)`,
-          [orderId, item.offer_id, item.qty, item.unit_price_cents, holdId],
+          `INSERT INTO orders.order_lines (order_id, offer_id, seller_id, qty, unit_price_cents, commission_cents, seller_payable_cents, status, stock_hold_id)
+           VALUES ($1, $2, (SELECT seller_id FROM catalog.offers WHERE id = $2), $3, $4, $5, $6, 'PENDING', $7)`,
+          [orderId, item.offer_id, item.qty, item.unit_price_cents, commission_cents, lineTotalCents - commission_cents, holdId],
         );
       }
 
@@ -244,12 +307,20 @@ export class OrdersService {
         landed_total_cents: Number(landedTotalCents),
         currency: 'NGN',
         soft_hold_expires_at: expiresAt,
-        items: input.items.map((item) => ({
-          offer_id: item.offer_id,
-          qty: item.qty,
-          unit_price_cents: item.unit_price_cents,
-          line_total_cents: item.unit_price_cents * item.qty,
-        })),
+        items: input.items.map((item) => {
+          const comm = commissionByOffer.get(item.offer_id) ?? {
+            commission_cents: 0,
+            seller_payable_cents: item.unit_price_cents * item.qty,
+          };
+          return {
+            offer_id: item.offer_id,
+            qty: item.qty,
+            unit_price_cents: item.unit_price_cents,
+            line_total_cents: item.unit_price_cents * item.qty,
+            commission_cents: comm.commission_cents,
+            seller_payable_cents: comm.seller_payable_cents,
+          };
+        }),
       };
     } catch (err) {
       await client.query('ROLLBACK');
@@ -259,7 +330,7 @@ export class OrdersService {
     }
   }
 
-  async initializePayment(orderId: string, callbackUrl?: string): Promise<{ authorization_url: string; reference: string }> {
+  async initializePayment(orderId: string, callbackUrl?: string, actor?: AuthUser): Promise<{ authorization_url: string; reference: string }> {
     const orderResult = await this.pool.query<{
       id: string;
       status: string;
@@ -274,6 +345,7 @@ export class OrdersService {
     if (orderResult.rowCount === 0) throw new NotFoundException(`order ${orderId} not found`);
 
     const order = orderResult.rows[0];
+    this.assertBuyerOrAnon(actor, order.buyer_id);
     if (order.status !== 'CHECKOUT' && order.status !== 'PENDING_PAYMENT') {
       throw new BadRequestException(`order ${order.id} is in status ${order.status}, expected CHECKOUT or PENDING_PAYMENT`);
     }
@@ -334,7 +406,7 @@ export class OrdersService {
     return { authorization_url: result.authorization_url, reference: result.reference };
   }
 
-  async confirmPayment(input: ConfirmPaymentInput): Promise<{ order_id: string; status: string }> {
+  async confirmPayment(input: ConfirmPaymentInput, actor?: AuthUser): Promise<{ order_id: string; status: string }> {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
@@ -353,6 +425,12 @@ export class OrdersService {
       if (orderResult.rowCount === 0) throw new NotFoundException(`order ${input.order_id} not found`);
 
       const order = orderResult.rows[0];
+      if (actor) {
+        const isOps = actor.roles.some((r) => r === 'OPS' || r === 'AGENT');
+        if (order.buyer_id !== actor.id && !isOps) {
+          throw new ForbiddenException('Only the buyer may confirm payment for this order');
+        }
+      }
       if (order.status !== 'CHECKOUT') {
         throw new BadRequestException(`order ${order.id} is in status ${order.status}, expected CHECKOUT`);
       }
@@ -385,6 +463,23 @@ export class OrdersService {
         ],
       );
 
+      const commission = await client.query<{ total: string | null }>(
+        `SELECT SUM(commission_cents) AS total FROM orders.order_lines WHERE order_id = $1`,
+        [input.order_id],
+      );
+      const commissionCents = Number(commission.rows[0]?.total ?? 0);
+      if (commissionCents > 0) {
+        await client.query(
+          `INSERT INTO escrow.ledger_entries (escrow_order_id, entry_type, amount_cents, counterparty_type, idempotency_key)
+           VALUES ($1, 'FEE', $2, 'PLATFORM', $3)`,
+          [
+            escrowResult.rows[0].id,
+            -commissionCents,
+            `fee:${input.order_id}:${input.paystack_reference}`,
+          ],
+        );
+      }
+
       await this.outbox.enqueue(client, 'order.paid', input.order_id, {
         order_id: input.order_id,
         buyer_id: order.buyer_id,
@@ -406,7 +501,7 @@ export class OrdersService {
     }
   }
 
-  async confirmDelivery(orderId: string): Promise<{ order_id: string; escrow_status: string; release_scheduled_at: Date }> {
+  async confirmDelivery(orderId: string, actor?: AuthUser): Promise<{ order_id: string; escrow_status: string; release_scheduled_at: Date }> {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
@@ -423,6 +518,7 @@ export class OrdersService {
       if (orderResult.rowCount === 0) throw new NotFoundException(`order ${orderId} not found`);
 
       const order = orderResult.rows[0];
+      this.assertBuyerOrAnon(actor, order.buyer_id);
       if (order.status !== 'PAID') {
         throw new BadRequestException(`order ${order.id} is in status ${order.status}, expected PAID`);
       }
@@ -478,7 +574,7 @@ export class OrdersService {
     }
   }
 
-  async cancelOrder(orderId: string): Promise<{
+  async cancelOrder(orderId: string, actor?: AuthUser): Promise<{
     order_id: string;
     order_status: string;
     refunded_cents: number;
@@ -495,6 +591,7 @@ export class OrdersService {
       if (orderResult.rowCount === 0) throw new NotFoundException(`order ${orderId} not found`);
 
       const order = orderResult.rows[0];
+      this.assertBuyerOrAnon(actor, order.buyer_id);
 
       if (['CANCELLED', 'REFUNDED', 'PARTIALLY_REFUNDED'].includes(order.status)) {
         throw new BadRequestException(`order ${order.id} is already ${order.status}`);
@@ -609,7 +706,8 @@ export class OrdersService {
     }
   }
 
-  async listOrders(buyerId: string): Promise<Array<Record<string, unknown>>> {
+  async listOrders(buyerId: string, actor?: AuthUser): Promise<Array<Record<string, unknown>>> {
+    this.assertBuyerOrAnon(actor, buyerId);
     const { rows } = await this.pool.query(
       `SELECT o.id, o.channel, o.status, o.multi_seller,
               o.item_total_cents, o.delivery_fee_cents, o.landed_total_cents,
@@ -621,6 +719,8 @@ export class OrdersService {
                   'unit', ofr.unit,
                   'qty', ol.qty,
                   'unit_price_cents', ol.unit_price_cents,
+                  'commission_cents', ol.commission_cents,
+                  'seller_payable_cents', ol.seller_payable_cents,
                   'status', ol.status
                 ) ORDER BY ol.created_at)
                  FROM orders.order_lines ol
@@ -642,7 +742,7 @@ export class OrdersService {
     }));
   }
 
-  async getOrder(orderId: string): Promise<Record<string, unknown>> {
+  async getOrder(orderId: string, actor?: AuthUser): Promise<Record<string, unknown>> {
     const orderResult = await this.pool.query<{
       id: string;
       buyer_id: string;
@@ -670,13 +770,15 @@ export class OrdersService {
       unit: string | null;
       qty: number;
       unit_price_cents: string;
+      commission_cents: string;
+      seller_payable_cents: string;
       status: string;
       stock_hold_id: string | null;
     }>(
       `SELECT ol.id, ol.offer_id, ol.seller_id,
               u.full_name AS seller_name,
               l.product_name, ofr.unit,
-              ol.qty, ol.unit_price_cents, ol.status, ol.stock_hold_id
+              ol.qty, ol.unit_price_cents, ol.commission_cents, ol.seller_payable_cents, ol.status, ol.stock_hold_id
        FROM orders.order_lines ol
        JOIN catalog.offers ofr ON ofr.id = ol.offer_id
        JOIN catalog.lots l ON l.id = ofr.lot_id
@@ -684,6 +786,15 @@ export class OrdersService {
        WHERE ol.order_id = $1`,
       [orderId],
     );
+
+    if (actor) {
+      const isBuyer = order.buyer_id === actor.id;
+      const isSeller = linesResult.rows.some((l) => l.seller_id === actor.id);
+      const isOps = actor.roles.some((r) => r === 'OPS' || r === 'AGENT');
+      if (!isBuyer && !isSeller && !isOps) {
+        throw new ForbiddenException('You do not have access to this order');
+      }
+    }
 
     const escrowResult = await this.pool.query<{
       id: string;
@@ -700,6 +811,8 @@ export class OrdersService {
       lines: linesResult.rows.map((l) => ({
         ...l,
         unit_price_cents: Number(l.unit_price_cents),
+        commission_cents: Number(l.commission_cents),
+        seller_payable_cents: Number(l.seller_payable_cents),
       })),
       escrow: escrowResult.rows[0]
         ? { ...escrowResult.rows[0], amount_held_cents: Number(escrowResult.rows[0].amount_held_cents) }
@@ -712,6 +825,13 @@ export class OrdersService {
       await this.feed.push(userId, input);
     } catch (err) {
       this.logger.warn({ err }, 'notification push skipped');
+    }
+  }
+
+  /** Buyers may only act on their own orders; anonymous demo callers are allowed through. */
+  private assertBuyerOrAnon(actor: AuthUser | undefined, buyerId: string): void {
+    if (actor && actor.id !== buyerId) {
+      throw new ForbiddenException('This order belongs to another buyer');
     }
   }
 }

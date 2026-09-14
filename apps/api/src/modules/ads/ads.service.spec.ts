@@ -8,7 +8,7 @@ import type { MarketFeedService } from '../realtime/market-feed.service.js';
 let admin: Pool;
 let app: Pool;
 let ads: AdsService;
-let allSellerIds: string[] = [];
+const allSellerIds: string[] = [];
 let clusterId: string;
 let offerId: string;
 

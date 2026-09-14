@@ -1,6 +1,7 @@
 import { Injectable, Inject, NotFoundException, ForbiddenException, BadRequestException, ConflictException } from '@nestjs/common';
 import { Pool } from 'pg';
 import { MarketFeedService } from '../realtime/market-feed.service.js';
+import type { AuthUser } from '../auth/auth.service.js';
 
 export interface DiscoverOffersQuery {
   channel?: string;
@@ -317,6 +318,7 @@ export class CatalogService {
   async updateOfferPrice(
     offerId: string,
     newPriceCents: number,
+    actor?: AuthUser,
   ): Promise<{ offer_id: string; old_price_cents: number; new_price_cents: number }> {
     if (!Number.isInteger(newPriceCents) || newPriceCents < 0) {
       throw new NotFoundException('Invalid price');
@@ -336,6 +338,10 @@ export class CatalogService {
       );
       if (rows.length === 0) {
         throw new NotFoundException(`Offer ${offerId} not found`);
+      }
+      const sellerId = String(rows[0].seller_id);
+      if (actor && actor.id !== sellerId && !actor.roles.some((r) => r === 'OPS' || r === 'AGENT')) {
+        throw new ForbiddenException('This offer belongs to another seller');
       }
       const productName = String(rows[0].product_name);
 
