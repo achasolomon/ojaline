@@ -26,7 +26,6 @@ import { EscrowReleaseService } from './modules/escrow/escrow-release.service.js
 import { EscrowController } from './modules/escrow/escrow.controller.js';
 import { AddressesModule } from './modules/addresses/addresses.module.js';
 import { GeoModule } from './modules/geo/geo.module.js';
-import { PushService } from './modules/push/push.service.js';
 import { PushController } from './modules/push/push.controller.js';
 import { ToSEnforcementService } from './modules/tos/tos.service.js';
 import { ToSController } from './modules/tos/tos.controller.js';
@@ -38,9 +37,7 @@ import { ContentController } from './modules/content/content.controller.js';
 import { ContentService } from './modules/content/content.service.js';
 import { MarketController } from './modules/market/market.controller.js';
 import { MarketService } from './modules/market/market.service.js';
-import { NotificationsController } from './modules/notifications/notifications.controller.js';
-import { FeedService } from './modules/notifications/feed.service.js';
-import { NotifyService } from './modules/notifications/notify.service.js';
+import { NotificationsModule } from './modules/notifications/notifications.module.js';
 
 @Module({
   imports: [
@@ -56,8 +53,9 @@ import { NotifyService } from './modules/notifications/notify.service.js';
     AdsModule,
     SellersModule,
     DisputesModule,
+    NotificationsModule,
   ],
-  controllers: [HealthController, MetricsController, ReservationsController, OrdersController, WebhookController, CatalogController, FulfilmentController, MediaController, EscrowController, PushController, ToSController, ContentController, MarketController, NotificationsController],
+  controllers: [HealthController, MetricsController, ReservationsController, OrdersController, WebhookController, CatalogController, FulfilmentController, MediaController, EscrowController, PushController, ToSController, ContentController, MarketController],
   providers: [
     {
       provide: APP_GUARD,
@@ -76,12 +74,9 @@ import { NotifyService } from './modules/notifications/notify.service.js';
     MultiSellerGate,
     FulfilmentStateMachine,
     EscrowReleaseService,
-    PushService,
     ToSEnforcementService,
     ContentService,
     MarketService,
-    FeedService,
-    NotifyService,
   ],
 })
 export class AppModule {}

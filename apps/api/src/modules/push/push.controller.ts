@@ -26,6 +26,11 @@ export class PushController {
     return this.push.unsubscribe(userId, body.endpoint);
   }
 
+  @Get('vapid-public-key')
+  getVapidPublicKey() {
+    return this.push.getVapidPublicKey();
+  }
+
   @Get('subscriptions')
   async getSubscriptions(@Query('user_id') userId: string, @CurrentUser() user?: AuthUser) {
     assertOwnedOrAnon(user, userId, 'Push subscription identity');

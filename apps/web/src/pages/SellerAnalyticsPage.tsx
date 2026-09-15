@@ -3,11 +3,28 @@ import { useNavigate } from 'react-router-dom';
 import { naira } from '@ojaline/design';
 import { getSellerStats, type SellerStats } from '../lib/api';
 import { getUser } from '../lib/session';
+import { toCSV, downloadCSV } from '../lib/csv';
 import { Icon } from '../components/icons';
 import { PageTopBar } from '../components/PageTopBar';
+import { NotificationBell } from '../components/NotificationBell';
 
 const fmt = (cents: number) => naira.format(cents / 100);
 const pct = (n: number) => `${(n * 100).toFixed(0)}%`;
+
+const TOP_PRODUCTS_COLS = [
+  { key: 'product_name', header: 'Product' },
+  { key: 'sold_qty', header: 'Units sold' },
+  { key: 'revenue', header: 'Revenue' },
+];
+
+function exportTopProducts(stats: SellerStats) {
+  const rows = stats.top_products.map((p) => ({
+    product_name: p.product_name,
+    sold_qty: p.sold_qty,
+    revenue: fmt(p.revenue_cents),
+  }));
+  downloadCSV(`seller-top-products-${new Date().toISOString().slice(0, 10)}.csv`, toCSV(rows, TOP_PRODUCTS_COLS));
+}
 
 export default function SellerAnalyticsPage() {
   const navigate = useNavigate();
@@ -66,7 +83,7 @@ export default function SellerAnalyticsPage() {
 
   return (
     <div className="min-h-full bg-surface/70">
-      <PageTopBar title="Seller analytics" />
+      <PageTopBar title="Seller analytics" action={<NotificationBell />} />
       <div className="mx-auto max-w-[960px] px-4 py-5 sm:px-6 sm:py-8">
         <div className="overflow-hidden rounded-2xl bg-gradient-to-br from-[#087a38] to-[#16a34a] p-5 text-white shadow-[0_12px_30px_rgba(8,122,56,0.2)] sm:p-7">
           <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-white/75">Store health</p>
@@ -91,7 +108,18 @@ export default function SellerAnalyticsPage() {
             </div>
 
             <section className="mt-4 rounded-2xl border border-border bg-white p-5 sm:p-6">
-              <h2 className="text-sm font-extrabold text-text">Top products</h2>
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-sm font-extrabold text-text">Top products</h2>
+                {stats.top_products.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => exportTopProducts(stats)}
+                    className="rounded-lg border border-border bg-white px-2.5 py-1.5 text-[10px] font-bold text-textSecondary transition hover:border-primary/40 hover:text-primary"
+                  >
+                    Export CSV
+                  </button>
+                )}
+              </div>
               {stats.top_products.length === 0 ? (
                 <div className="mt-3 flex items-center gap-3 rounded-xl bg-surface/60 p-3">
                   <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-surface text-textSecondary"><Icon name="tag" size={17} /></span>

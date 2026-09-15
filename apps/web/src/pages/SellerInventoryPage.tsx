@@ -14,8 +14,38 @@ import {
 import { getUserId, getUser } from '../lib/session';
 import { Icon } from '../components/icons';
 import { mediaUrl } from '../lib/api';
+import { toCSV, downloadCSV } from '../lib/csv';
+import { NotificationBell } from '../components/NotificationBell';
 
 const fmt = (kobo: number | null) => (kobo == null ? '—' : naira.format(kobo / 100));
+
+const EXPORT_COLS = [
+  { key: 'product_name', header: 'Product' },
+  { key: 'status', header: 'Status' },
+  { key: 'unit', header: 'Unit' },
+  { key: 'price', header: 'Price' },
+  { key: 'available_qty', header: 'Available qty' },
+  { key: 'sellable_qty', header: 'Sellable qty' },
+  { key: 'reserved_qty', header: 'Reserved qty' },
+  { key: 'sold_qty', header: 'Sold' },
+  { key: 'delivered_qty', header: 'Delivered' },
+  { key: 'created_at', header: 'Created' },
+];
+
+function flattenOffers(offers: MyOffer[]): Record<string, unknown>[] {
+  return offers.map((o) => ({
+    product_name: o.product_name,
+    status: o.status,
+    unit: o.unit ?? '',
+    price: fmt(o.price_cents),
+    available_qty: o.available_qty,
+    sellable_qty: o.sellable_qty,
+    reserved_qty: o.reserved_qty ?? '',
+    sold_qty: o.sold_qty,
+    delivered_qty: o.delivered_qty ?? '',
+    created_at: o.created_at,
+  }));
+}
 
 const STATUS_FILTERS: Array<{ id: 'ALL' | OfferStatus; label: string }> = [
   { id: 'ALL', label: 'All' },
@@ -164,6 +194,16 @@ export default function SellerInventoryPage() {
           </svg>
         </button>
         <h1 className="flex-1 text-lg font-semibold text-text">My Products</h1>
+        {offers && offers.length > 0 && (
+          <button
+            type="button"
+            onClick={() => downloadCSV(`seller-inventory-${new Date().toISOString().slice(0, 10)}.csv`, toCSV(flattenOffers(offers), EXPORT_COLS))}
+            className="rounded-lg border border-border bg-white px-2.5 py-1.5 text-[10px] font-bold text-textSecondary transition hover:border-primary/40 hover:text-primary"
+          >
+            Export CSV
+          </button>
+        )}
+        <NotificationBell />
         <button
           type="button"
           onClick={() => navigate('/offers/new')}

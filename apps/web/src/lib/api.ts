@@ -859,6 +859,21 @@ export async function subscribeToPush(userId: string, sub: { endpoint: string; p
   return postJson('/push/subscribe?user_id=' + userId, { ...sub });
 }
 
+export async function unsubscribeFromPush(userId: string, endpoint: string): Promise<{ ok: boolean }> {
+  return deleteJson<{ ok: boolean }>(`/push/unsubscribe?user_id=${encodeURIComponent(userId)}`, {
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ endpoint }),
+  });
+}
+
+export async function getPushSubscriptions(userId: string): Promise<Array<{ id: string; endpoint: string; device_type: string; created_at: string }>> {
+  return getJson(`/push/subscriptions?user_id=${encodeURIComponent(userId)}`);
+}
+
+export async function getVapidPublicKey(): Promise<{ public_key: string; enabled: boolean }> {
+  return getJson('/push/vapid-public-key');
+}
+
 /* ── ToS Enforcement ── */
 
 export interface SellerToSStatus {

@@ -44,6 +44,9 @@ const envSchema = z.object({
   GOOGLE_OAUTH_CLIENT_SECRET: z.string().default(''),
   FACEBOOK_APP_ID: z.string().default(''),
   FACEBOOK_APP_SECRET: z.string().default(''),
+  VAPID_PUBLIC_KEY: z.string().default(''),
+  VAPID_PRIVATE_KEY: z.string().default(''),
+  VAPID_SUBJECT: z.string().default('mailto:admin@ojaline.com'),
 });
 
 export type OjalineConfig = z.infer<typeof envSchema>;

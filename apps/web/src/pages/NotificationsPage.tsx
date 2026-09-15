@@ -1,10 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   getNotifications, markNotificationRead, markAllNotificationsRead, clearNotifications,
   NOTIFICATION_ICONS, subscribeNotifications,
   type AppNotification,
 } from '../lib/notifications';
+import {
+  isPushSupported,
+  getPermission,
+  enableBrowserPush,
+  disableBrowserPush,
+  hasServerPushSubscription,
+  type PushPermissionStatus,
+} from '../lib/push-client';
+import { getUser } from '../lib/session';
 import { useMediaQuery, DESKTOP_BREAKPOINT } from '../lib/useMediaQuery';
 import { Icon } from '../components/icons';
 
@@ -35,6 +44,62 @@ function fmtDate(iso: string): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function PushToggle() {
+  const user = getUser();
+  const [supported] = useState(isPushSupported);
+  const [permission, setPermission] = useState<PushPermissionStatus | 'unsupported'>(() => getPermission());
+  const [enabled, setEnabled] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    if (!user || !supported) { setEnabled(false); return; }
+    setPermission(getPermission());
+    try { setEnabled(await hasServerPushSubscription()); } catch { setEnabled(false); }
+  }, [supported, user?.id]);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  if (!user || !supported || permission === 'unsupported' || permission === 'denied') return null;
+
+  const handleToggle = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      if (enabled) await disableBrowserPush();
+      else await enableBrowserPush();
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update push settings');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-3 border-b border-border/60 bg-[#F6FBF8] px-4 py-2.5">
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#D6F5E7] text-[#087A38]">
+        <Icon name="bell" size={14} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-bold text-text">Push notifications</p>
+        <p className="text-[10px] text-textSecondary">
+          {enabled ? 'You\u2019ll get alerts even when you\u2019re not on Kika' : 'Get alerts even when you\u2019re not on Kika'}
+        </p>
+        {error && <p className="mt-0.5 text-[10px] text-danger">{error}</p>}
+      </div>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={handleToggle}
+        className={`shrink-0 rounded-lg px-3 py-1.5 text-[10px] font-bold transition ${enabled ? 'border border-border bg-white text-textSecondary hover:border-danger/40 hover:text-danger' : 'bg-[#087A38] text-white hover:bg-[#065e2c]'} ${busy ? 'opacity-60' : ''}`}
+      >
+        {busy ? 'Saving\u2026' : enabled ? 'Disable' : 'Enable'}
+      </button>
+    </div>
+  );
 }
 
 export default function NotificationsPage() {
@@ -107,6 +172,8 @@ export default function NotificationsPage() {
               </div>
             )}
           </header>
+
+          <PushToggle />
 
           <div className="min-h-0 flex-1 overflow-y-auto">
             {items.length === 0 ? (

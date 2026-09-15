@@ -1,13 +1,13 @@
 # OJALINE — Seller Platform Plan
 ### Derived from System Architecture v2.0, Data Model v1.0, and Buyer Platform implementation (Approved)
-**Status:** Phase 4 complete (verified) + notification wiring done — bulk CSV deferred
+**Status:** Phase 4 complete (verified) + notification wiring, bulk CSV, feed UI, and push delivery all done
 **Date:** 14 Sep 2026
 
 ---
 
 ## Purpose
 
-This document captures the gap analysis and phased build plan for the seller-side platform. The buyer journey (#1–#8: checkout hookup, delivery fees, order detail, cancellation/refunds, gated reviews, push notifications, wishlist, channel enforcement) is complete and committed (`a48475c`). Phase 3 (sellers payouts end-to-end) is complete and verified. Phase 4 (returns/disputes loop, OPS console, seller analytics) is complete and verified, and the deferred in-sprint item — inter-service notification wiring across webhook/disputes/payouts/escrow — is delivered (`notify.service.ts` + 8 integration tests). See git log for commits. The seller operating surface — enabling sellers to manage offers, fulfil orders, receive payouts, resolve disputes, and grow their business — is in place.
+This document captures the gap analysis and phased build plan for the seller-side platform. The buyer journey (#1–#8: checkout hookup, delivery fees, order detail, cancellation/refunds, gated reviews, push notifications, wishlist, channel enforcement) is complete and committed (`a48475c`). Phase 3 (sellers payouts end-to-end) is complete and verified. Phase 4 (returns/disputes loop, OPS console, seller analytics) is complete and verified, and the follow-on sprint — inter-service notification wiring plus bulk CSV export, the unread feed UI, and full push subscription UX (service worker + VAPID delivery) — is delivered. See git log for commits. The seller operating surface — enabling sellers to manage offers, fulfil orders, receive payouts, resolve disputes, and grow their business — is in place.
 
 The target parity level is Jumia / JiJi / Temu: a full seller center with onboarding, catalogue management, order operations, money/payouts, trust/safety, analytics, and an OPS admin console.
 
@@ -307,9 +307,12 @@ The escrow ledger has a `FEE` entry type and a `MANUAL_ADJUSTMENT` type, but the
 - **Seller analytics** (`GET /disputes/analytics/seller|platform`): revenue (released, after clawbacks), order counts, on-time rate, dispute rate 30d, `avg_rating`/`review_count`, top products (sold qty + revenue).
 - **Web UI**: `ReturnsPage` (role-aware actions + create form), `OpsConsolePage` (tabs: overview/KYC/disputes/risk, 20s auto-refresh), `SellerAnalyticsPage` (health cards + top products). Routes `/returns`, `/ops-console`, `/analytics` wired in `App.tsx`; links added to `Account.tsx`.
 
-- **Inter-service notifications** (`notifications/notify.service.ts`, registered in `app.module.ts`): `NotifyService.notify(userId,…)` writes feed + push entries (best effort); `notifyRoles(roles,…)` fans out to every user holding a role via `pii.user_roles`. Wired into: webhook (new paid order → every seller), disputes (return created → seller; accept/reject → buyer; escalate → OPS+AGENT; mediate → both; KYC decision → applicant), payouts (approve → seller), escrow release (→ seller). Covered by `notify.spec.ts` (8 integration tests). API suite now 97 tests green.
+- **Inter-service notifications** (`notifications/notify.service.ts`, `notifications.module.ts`): `NotifyService.notify(userId,…)` writes feed + push entries (best effort); `notifyRoles(roles,…)` fans out to every user holding a role via `pii.user_roles`. Wired into: webhook (new paid order → every seller), disputes (return created → seller; accept/reject → buyer; escalate → OPS+AGENT; mediate → both; KYC decision → applicant), payouts (approve → seller), escrow release (→ seller). Covered by `notify.spec.ts` (8 integration tests). API suite now 97 tests green.
+- **Bulk CSV export** (`web/src/lib/csv.ts`): `toCSV`/`downloadCSV` (BOM + quoting) with Export CSV buttons on seller orders, inventory, and analytics (top products).
+- **Unread feed UI**: the `/notifications` feed (SSE + polling, mark-all-read, desktop detail pane, unread bell badges in Mobile/Desktop headers) now surfaces the seller notifications; a `NotificationBell` with live unread badge was added to the seller page headers (orders, inventory, analytics).
+- **Push subscription UX (end-to-end)**: `web/public/sw.js` service worker (push + notificationclick deep-link), VAPID keys in env (`VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`), `GET /push/vapid-public-key`, `web-push` delivery in `PushService.sendNotification` (stale 404/410 endpoints pruned), and an Enable/Disable toggle on the notifications page via `lib/push-client.ts`.
 
-**Deferred from Phase 4 (next sprint):** bulk CSV export, unread feed UI on the seller app, push subscription UX.
+**Previously deferred items are now delivered** — the last open Phase 4 items are bulk CSV, unread feed UI, and push subscription UX (all above).
 
 **Acceptance Criteria:**
 
@@ -321,6 +324,9 @@ The escrow ledger has a `FEE` entry type and a `MANUAL_ADJUSTMENT` type, but the
 | Seller health dashboard (on-time, cancellation, dispute rates) | `disputes.service.ts` analytics | ✓ |
 | Seller analytics (revenue, orders, product performance) | `disputes.service.ts` analytics | ✓ |
 | Notification wiring: new order, dispute, payout, KYC | `notify.service.ts` + service integrations + `notify.spec.ts` | ✓ new order/decline/dispute/payout/KYC fed (`notify.spec.ts` 8 tests) |
+| Bulk CSV export (orders, inventory, analytics) | `web/src/lib/csv.ts` + seller pages | ✓ Export CSV buttons |
+| Unread feed UI on seller pages | `web/src/components/NotificationBell.tsx` + `NotificationsPage` | ✓ bell + badge on seller headers, feed surface |
+| Push subscription UX (opt-in, end-to-end delivery) | `web/public/sw.js`, `push.service.ts`, VAPID env, `NotificationsPage` toggle | ✓ SW + web-push + toggle |
 
 ---
 

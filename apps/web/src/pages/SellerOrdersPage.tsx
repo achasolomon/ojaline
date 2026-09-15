@@ -9,9 +9,47 @@ import {
   type SellerOrderItem,
 } from '../lib/api';
 import { getUserId, getUser } from '../lib/session';
+import { toCSV, downloadCSV } from '../lib/csv';
 import { Icon } from '../components/icons';
+import { NotificationBell } from '../components/NotificationBell';
 
 const fmt = (kobo: number) => naira.format(kobo / 100);
+
+const EXPORT_COLS = [
+  { key: 'order_id', header: 'Order ID' },
+  { key: 'created_at', header: 'Date' },
+  { key: 'order_status', header: 'Status' },
+  { key: 'buyer_name', header: 'Buyer' },
+  { key: 'product_name', header: 'Product' },
+  { key: 'unit', header: 'Unit' },
+  { key: 'qty', header: 'Qty' },
+  { key: 'unit_price', header: 'Unit price' },
+  { key: 'seller_payable', header: 'Seller payable' },
+  { key: 'line_status', header: 'Line status' },
+  { key: 'tracking_ref', header: 'Tracking ref' },
+];
+
+function flattenOrders(orders: SellerOrderItem[]): Record<string, unknown>[] {
+  const rows: Record<string, unknown>[] = [];
+  for (const o of orders) {
+    for (const l of o.lines) {
+      rows.push({
+        order_id: o.id,
+        created_at: o.created_at,
+        order_status: o.status,
+        buyer_name: o.buyer_name,
+        product_name: l.product_name,
+        unit: l.unit ?? '',
+        qty: l.qty,
+        unit_price: fmt(l.unit_price_cents),
+        seller_payable: fmt(l.seller_payable_cents),
+        line_status: l.status,
+        tracking_ref: l.tracking_ref ?? '',
+      });
+    }
+  }
+  return rows;
+}
 
 type LineFilter = 'ALL' | 'TO_ACCEPT' | 'IN_PROGRESS' | 'DELIVERED' | 'DECLINED';
 
@@ -159,6 +197,16 @@ export default function SellerOrdersPage() {
           </svg>
         </button>
         <h1 className="flex-1 text-lg font-semibold text-text">Seller Orders</h1>
+        {orders && orders.length > 0 && (
+          <button
+            type="button"
+            onClick={() => downloadCSV(`seller-orders-${new Date().toISOString().slice(0, 10)}.csv`, toCSV(flattenOrders(orders), EXPORT_COLS))}
+            className="rounded-lg border border-border bg-white px-2.5 py-1.5 text-[10px] font-bold text-textSecondary transition hover:border-primary/40 hover:text-primary"
+          >
+            Export CSV
+          </button>
+        )}
+        <NotificationBell />
         <span className="flex items-center gap-1.5 rounded-full bg-primary-light px-2.5 py-1 text-[10px] font-bold text-primary">
           <Icon name="orders" size={12} />
           {orders == null ? '…' : orders.length}
