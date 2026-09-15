@@ -33,6 +33,7 @@ import { ToSController } from './modules/tos/tos.controller.js';
 import { MarketRealtimeModule } from './modules/realtime/market-realtime.module.js';
 import { AdsModule } from './modules/ads/ads.module.js';
 import { SellersModule } from './modules/sellers/sellers.module.js';
+import { DisputesModule } from './modules/disputes/disputes.module.js';
 import { ContentController } from './modules/content/content.controller.js';
 import { ContentService } from './modules/content/content.service.js';
 import { MarketController } from './modules/market/market.controller.js';
@@ -53,6 +54,7 @@ import { FeedService } from './modules/notifications/feed.service.js';
     MarketRealtimeModule,
     AdsModule,
     SellersModule,
+    DisputesModule,
   ],
   controllers: [HealthController, MetricsController, ReservationsController, OrdersController, WebhookController, CatalogController, FulfilmentController, MediaController, EscrowController, PushController, ToSController, ContentController, MarketController, NotificationsController],
   providers: [

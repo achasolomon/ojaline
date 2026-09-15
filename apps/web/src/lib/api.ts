@@ -1486,6 +1486,181 @@ export async function reportAd(adId: string, userId: string | null, reason: stri
   return postJson<{ ok: boolean; removed: boolean }>(`/ads/${adId}/report${qs}`, { reason });
 }
 
+/* ── Phase 4: Returns & disputes ── */
+
+export interface ReturnRequest {
+  id: string;
+  order_id: string;
+  order_line_id: string;
+  buyer_id: string;
+  seller_id: string;
+  product_name: string;
+  qty: number;
+  unit_price_cents: number;
+  refund_cents: number;
+  reason: string;
+  reason_note: string | null;
+  status: string;
+  decision_note: string | null;
+  dispute_id: string | null;
+  decided_at: string | null;
+  created_at: string;
+}
+
+export interface ReturnPage {
+  returns: ReturnRequest[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface DisputeRow {
+  id: string;
+  order_id: string;
+  return_request_id: string | null;
+  opened_by: string;
+  type: string;
+  reason: string;
+  status: string;
+  decision_notes: string | null;
+  decided_at: string | null;
+  created_at: string;
+}
+
+export interface DisputePage {
+  disputes: DisputeRow[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface KycQueueRow {
+  user_id: string;
+  phone: string | null;
+  full_name: string;
+  id_type: string;
+  status: string;
+  submitted_at: string;
+}
+
+export interface KycPage {
+  kyc: KycQueueRow[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface SellerRiskRow {
+  user_id: string;
+  full_name: string;
+  tier: string;
+  on_time_rate_30d: number | null;
+  dispute_rate_30d: number | null;
+  qa_rate: number | null;
+  ops_override: boolean;
+  updated_at: string;
+}
+
+export interface SellerRiskPage {
+  sellers: SellerRiskRow[];
+  total: number;
+}
+
+export interface SellerStats {
+  seller_id: string;
+  revenue_cents: number;
+  orders_total: number;
+  orders_completed: number;
+  orders_cancelled: number;
+  on_time_rate: number;
+  dispute_rate_30d: number;
+  avg_rating: number | null;
+  review_count: number;
+  top_products: Array<{ offer_id: string; product_name: string; sold_qty: number; revenue_cents: number }>;
+}
+
+export interface PlatformStats {
+  sellers_total: number;
+  orders_total: number;
+  gmv_cents: number;
+  pending_kyc: number;
+  open_disputes: number;
+  pending_payouts: number;
+  returns_30d: number;
+}
+
+export async function createReturn(input: { order_id: string; order_line_id: string; reason: string; reason_note?: string; qty: number }): Promise<ReturnRequest> {
+  return postJson<ReturnRequest>('/disputes/returns', input);
+}
+
+export async function listReturns(opts: { all?: boolean; status?: string; limit?: number; offset?: number } = {}): Promise<ReturnPage> {
+  const qs = new URLSearchParams();
+  if (opts.all) qs.set('all', 'true');
+  if (opts.status) qs.set('status', opts.status);
+  if (opts.limit != null) qs.set('limit', String(opts.limit));
+  if (opts.offset != null) qs.set('offset', String(opts.offset));
+  return getJson<ReturnPage>(`/disputes/returns${qs.toString() ? `?${qs.toString()}` : ''}`);
+}
+
+export async function getReturn(returnId: string): Promise<ReturnRequest> {
+  return getJson<ReturnRequest>(`/disputes/returns/${returnId}`);
+}
+
+export async function respondToReturn(returnId: string, action: 'ACCEPT' | 'REJECT', note?: string): Promise<{ status: string; refund_cents?: number }> {
+  return postJson<{ status: string; refund_cents?: number }>(`/disputes/returns/${returnId}/${action.toLowerCase()}`, note ? { note } : {});
+}
+
+export async function escalateReturn(returnId: string): Promise<{ status: string; dispute_id: string }> {
+  return postJson<{ status: string; dispute_id: string }>(`/disputes/returns/${returnId}/escalate`, {});
+}
+
+export async function mediateReturn(returnId: string, decision: 'REFUND' | 'DISMISS', note?: string): Promise<{ status: string; refund_cents?: number }> {
+  return postJson<{ status: string; refund_cents?: number }>(`/disputes/returns/${returnId}/mediate`, { decision, note });
+}
+
+export async function listDisputes(opts: { status?: string; limit?: number; offset?: number } = {}): Promise<DisputePage> {
+  const qs = new URLSearchParams();
+  if (opts.status) qs.set('status', opts.status);
+  if (opts.limit != null) qs.set('limit', String(opts.limit));
+  if (opts.offset != null) qs.set('offset', String(opts.offset));
+  return getJson<DisputePage>(`/disputes${qs.toString() ? `?${qs.toString()}` : ''}`);
+}
+
+export async function listKycQueue(opts: { status?: string; limit?: number; offset?: number } = {}): Promise<KycPage> {
+  const qs = new URLSearchParams();
+  if (opts.status) qs.set('status', opts.status);
+  if (opts.limit != null) qs.set('limit', String(opts.limit));
+  if (opts.offset != null) qs.set('offset', String(opts.offset));
+  return getJson<KycPage>(`/disputes/ops/kyc${qs.toString() ? `?${qs.toString()}` : ''}`);
+}
+
+export async function decideKyc(userId: string, action: 'APPROVED' | 'REJECTED', note?: string): Promise<{ user_id: string; status: string }> {
+  return postJson<{ user_id: string; status: string }>(`/disputes/ops/kyc/${userId}/${action.toLowerCase()}`, note ? { note } : {});
+}
+
+export async function listSellerRisk(opts: { limit?: number; offset?: number } = {}): Promise<SellerRiskPage> {
+  const qs = new URLSearchParams();
+  if (opts.limit != null) qs.set('limit', String(opts.limit));
+  if (opts.offset != null) qs.set('offset', String(opts.offset));
+  return getJson<SellerRiskPage>(`/disputes/ops/risk${qs.toString() ? `?${qs.toString()}` : ''}`);
+}
+
+export async function setSellerRisk(input: { seller_id: string; tier?: string; ops_override?: boolean }): Promise<SellerRiskRow> {
+  return postJson<SellerRiskRow>('/disputes/ops/risk', input);
+}
+
+export async function recomputeRiskTiers(): Promise<{ updated: number }> {
+  return postJson<{ updated: number }>('/disputes/ops/risk/recompute', {});
+}
+
+export async function getSellerStats(): Promise<SellerStats> {
+  return getJson<SellerStats>('/disputes/analytics/seller');
+}
+
+export async function getPlatformStats(): Promise<PlatformStats> {
+  return getJson<PlatformStats>('/disputes/analytics/platform');
+}
+
 /**
  * Convert a picked File into the base64 + mime body the media endpoint expects.
  */

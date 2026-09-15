@@ -301,12 +301,18 @@ export class SellersService {
     }
   }
 
-  /** Available = Σ(SELLER_PAYOUT released) − Σ(approved withdrawals). */
+  /** Available = Σ(SELLER_PAYOUT released) − Σ(clawbacks) − Σ(approved withdrawals). */
   async getPayoutBalance(user: AuthUser): Promise<PayoutBalance> {
     const released = await this.pool.query<{ released: string }>(
       `SELECT COALESCE(SUM(-amount_cents), 0)::int AS released
        FROM escrow.ledger_entries
        WHERE entry_type = 'SELLER_PAYOUT' AND counterparty_type = 'SELLER' AND counterparty_id = $1`,
+      [user.id],
+    );
+    const clawbacks = await this.pool.query<{ n: string }>(
+      `SELECT COALESCE(SUM(amount_cents), 0)::int AS n
+       FROM escrow.ledger_entries
+       WHERE entry_type = 'MANUAL_ADJUSTMENT' AND counterparty_type = 'SELLER' AND counterparty_id = $1`,
       [user.id],
     );
     const withdrawn = await this.pool.query<{ n: string }>(
@@ -331,14 +337,15 @@ export class SellersService {
     );
 
     const releasedTotal = Number(released.rows[0].released);
+    const clawbackCents = Number(clawbacks.rows[0].n);
     const withdrawnCents = Number(withdrawn.rows[0].n);
     const pendingCents = Number(pending.rows[0].n);
     return {
-      available_cents: Math.max(releasedTotal - withdrawnCents, 0),
+      available_cents: Math.max(releasedTotal - clawbackCents - withdrawnCents, 0),
       on_hold_cents: Number(onHold.rows[0].n),
       pending_cents: pendingCents,
       withdrawn_cents: withdrawnCents,
-      released_total_cents: releasedTotal,
+      released_total_cents: releasedTotal - clawbackCents,
     };
   }
 

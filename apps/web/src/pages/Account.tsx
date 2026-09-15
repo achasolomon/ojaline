@@ -28,6 +28,18 @@ const PAYOUTS_LINK: { label: string; sub: string; icon: IconName; to: string } =
   label: 'Payouts', sub: 'Earnings & withdrawals', icon: 'bank', to: '/payouts',
 };
 
+const RETURNS_LINK: { label: string; sub: string; icon: IconName; to: string } = {
+  label: 'Returns & disputes', sub: 'Refunds, disputes & escalation', icon: 'refresh', to: '/returns',
+};
+
+const ANALYTICS_LINK: { label: string; sub: string; icon: IconName; to: string } = {
+  label: 'My Analytics', sub: 'Orders, ratings & top products', icon: 'star', to: '/analytics',
+};
+
+const OPS_CONSOLE_LINK: { label: string; sub: string; icon: IconName; to: string } = {
+  label: 'OPS Console', sub: 'KYC queue, disputes & risk', icon: 'shield', to: '/ops-console',
+};
+
 const SELLER_ORDERS_LINK: { label: string; sub: string; icon: IconName; to: string } = {
   label: 'Seller Orders', sub: 'Accept, dispatch & track sales', icon: 'box', to: '/seller/orders',
 };
@@ -40,7 +52,7 @@ export default function Account() {
   const navigate = useNavigate();
   const user = getUser();
   const userId = getUserId();
-  const quickLinks = user?.seller_type ? [...QUICK_LINKS, SELLER_ORDERS_LINK, SELLER_INVENTORY_LINK, PAYOUTS_LINK, AD_STUDIO_LINK] : QUICK_LINKS;
+  const quickLinks = user?.seller_type ? [...QUICK_LINKS, SELLER_ORDERS_LINK, SELLER_INVENTORY_LINK, PAYOUTS_LINK, RETURNS_LINK, ANALYTICS_LINK, AD_STUDIO_LINK] : user?.roles?.some((r) => r === 'OPS' || r === 'AGENT') ? [...QUICK_LINKS, RETURNS_LINK, OPS_CONSOLE_LINK] : QUICK_LINKS;
   const [addresses, setAddresses] = useState<SavedAddress[]>([]);
   const [cartCount, setCartCount] = useState(() => getCartCount());
   const [unread, setUnread] = useState(() => getUnreadCount());

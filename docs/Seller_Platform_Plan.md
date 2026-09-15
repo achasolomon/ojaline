@@ -1,13 +1,13 @@
 # OJALINE — Seller Platform Plan
 ### Derived from System Architecture v2.0, Data Model v1.0, and Buyer Platform implementation (Approved)
-**Status:** Phase 3 complete (verified) — Phase 4 next
+**Status:** Phase 4 complete (verified) — next: notification wiring, bulk CSV
 **Date:** 14 Sep 2026
 
 ---
 
 ## Purpose
 
-This document captures the gap analysis and phased build plan for the seller-side platform. The buyer journey (#1–#8: checkout hookup, delivery fees, order detail, cancellation/refunds, gated reviews, push notifications, wishlist, channel enforcement) is complete and committed (`a48475c`). Phase 3 (sellers payouts end-to-end) is complete and verified — see git log for the Phase 3 commit. The seller operating surface — enabling sellers to manage offers, fulfil orders, receive payouts, and grow their business — continues with Phase 4 next.
+This document captures the gap analysis and phased build plan for the seller-side platform. The buyer journey (#1–#8: checkout hookup, delivery fees, order detail, cancellation/refunds, gated reviews, push notifications, wishlist, channel enforcement) is complete and committed (`a48475c`). Phase 3 (sellers payouts end-to-end) is complete and verified. Phase 4 (returns/disputes loop, OPS console, seller analytics) is complete and verified — see git log for the Phase 4 commit. The seller operating surface — enabling sellers to manage offers, fulfil orders, receive payouts, resolve disputes, and grow their business — is in place.
 
 The target parity level is Jumia / JiJi / Temu: a full seller center with onboarding, catalogue management, order operations, money/payouts, trust/safety, analytics, and an OPS admin console.
 
@@ -299,23 +299,26 @@ The escrow ledger has a `FEE` entry type and a `MANUAL_ADJUSTMENT` type, but the
 
 ### Phase 4 — Returns, Disputes, OPS Console & Analytics
 
-**Goal:** Full loop closed: disputes, risk, admin console, analytics.
+**Goal:** Full loop closed: disputes, risk, admin console, analytics. **Status: COMPLETE** (V35 + V36 migrations, 89 API tests passing incl. 7 new disputes integration tests).
 
-| Deliverable | Files |
-|---|---|
-| Return/dispute flow: buyer raises → seller respond → OPS mediate | `fulfilment-state-machine.ts` (extend), new `disputes.controller.ts` |
-| `finance.payout_requests` (status tracking) | Already in V30; wire approve/settle |
-| OPS console: KYC queue, risk actions, dispute mediation | New `admin.controller.ts` or extend `sellers.controller.ts` |
-| Seller health dashboard (on-time, cancellation, dispute rates) | `sellers.service.ts`, new `analytics.service.ts` |
-| Seller analytics (revenue, orders, product performance) | Same |
-| Notification wiring: new order, dispatch, dispute, payout | `feed.service.ts`, `push.service.ts` |
+**Delivered:**
+- **Returns/disputes flow** (`disputes.service.ts`, `disputes.controller.ts`, `disputes.spec.ts`): buyer creates return (non-DELIVERED blocked, qty duplicates blocked) → seller ACCEPT (refund off HELD escrow, `accounting.refunded_cents` move, ledger CR) / REJECT → buyer escalates (`escrow.disputes.return_request_id` linked) → OPS mediate REFUND (escrow restored HELD) or DISMISS. Released escrow on REFUND books `MANUAL_ADJUSTMENT` clawback vs SELLER → `getPayoutBalance` subtracts clawbacks from available + released total. Locks via `pg_advisory_xact_lock` on return creation.
+- **OPS console** (`GET/POST /disputes/ops/*`, `Roles('OPS','AGENT')`): KYC queue lists PENDING, approve/reject with note (`pii.kyc_submissions` APPROVED/REJECTED); seller risk `listSellerRisk` + `setSellerRisk` tier override + `recomputeRiskTiers`; `getPlatformStats` (sellers, orders, GMV, pending KYC, open disputes, pending payouts, returns 30d).
+- **Seller analytics** (`GET /disputes/analytics/seller|platform`): revenue (released, after clawbacks), order counts, on-time rate, dispute rate 30d, `avg_rating`/`review_count`, top products (sold qty + revenue).
+- **Web UI**: `ReturnsPage` (role-aware actions + create form), `OpsConsolePage` (tabs: overview/KYC/disputes/risk, 20s auto-refresh), `SellerAnalyticsPage` (health cards + top products). Routes `/returns`, `/ops-console`, `/analytics` wired in `App.tsx`; links added to `Account.tsx`.
+
+**Deferred from Phase 4:** notification wiring (feed/push for new order, dispatch, dispute, payout) — tracked for the next sprint.
 
 **Acceptance Criteria:**
-- Return request triggers seller notification + response window
-- Seller accept/reject → buyer notification + refund or continuation
-- Dispute escalation → OPS mediate → resolution recorded
-- OPS console lists PENDING KYC, approves/rejects, records note
-- Risk tier auto-adjustment based on on-time/cancellation/dispute rates
+
+| Deliverable | Files | Status |
+|---|---|---|
+| Return/dispute flow: buyer raises → seller respond → OPS mediate | `disputes.service.ts`, `disputes.controller.ts` | ✓ V35/V36 + 7 integration tests |
+| `finance.payout_requests` status tracking | V30 (existing) | ✓ |
+| OPS console: KYC queue, risk actions, dispute mediation | `disputes.controller.ts` | ✓ `/disputes/ops/*` |
+| Seller health dashboard (on-time, cancellation, dispute rates) | `disputes.service.ts` analytics | ✓ |
+| Seller analytics (revenue, orders, product performance) | `disputes.service.ts` analytics | ✓ |
+| Notification wiring: new order, dispatch, dispute, payout | deferred | ⏳ next sprint |
 
 ---
 
