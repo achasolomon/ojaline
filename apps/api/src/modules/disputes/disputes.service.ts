@@ -1,6 +1,7 @@
 import { Injectable, Inject, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Pool } from 'pg';
 import { OutboxService } from '../outbox/outbox.service.js';
+import { NotifyService } from '../notifications/notify.service.js';
 import type { AuthUser } from '../auth/auth.service.js';
 
 const REASONS = ['WRONG_ITEM', 'QUALITY', 'MISSING', 'DAMAGED', 'OTHER'] as const;
@@ -96,6 +97,7 @@ export class DisputesService {
   constructor(
     @Inject(Pool) private readonly pool: Pool,
     @Inject(OutboxService) private readonly outbox: OutboxService,
+    @Inject(NotifyService) private readonly notify: NotifyService,
   ) {}
 
   async createReturn(
@@ -158,6 +160,12 @@ export class DisputesService {
       );
 
       await client.query('COMMIT');
+      await this.notify.notify(line.seller_id, {
+        type: 'order',
+        title: 'New return request',
+        body: 'A buyer opened a return on one of your items — respond before it escalates.',
+        deep_link: '/returns',
+      });
       return this.toReturnRequest(rows[0], { unit_price_cents: Number(line.unit_price_cents), product_name: undefined });
     } catch (err) {
       await client.query('ROLLBACK');
@@ -203,6 +211,12 @@ export class DisputesService {
           [input.return_id, refundCents, input.note?.trim() || null, seller.id],
         );
         await client.query('COMMIT');
+        await this.notify.notify(String(rr.buyer_id), {
+          type: 'order',
+          title: 'Refund approved',
+          body: 'The seller accepted your return — the value is being returned to you.',
+          deep_link: '/returns',
+        });
         return { status: 'RESOLVED_REFUND', refund_cents: refundCents };
       }
 
@@ -214,6 +228,12 @@ export class DisputesService {
         [input.return_id, input.note?.trim() || null, seller.id],
       );
       await client.query('COMMIT');
+      await this.notify.notify(String(rr.buyer_id), {
+        type: 'order',
+        title: 'Return declined',
+        body: 'The seller declined your return — you can escalate it for mediation.',
+        deep_link: '/returns',
+      });
       return { status: 'REJECTED' };
     } catch (err) {
       await client.query('ROLLBACK');
@@ -279,6 +299,12 @@ const { rows: disputeRows } = await client.query<{ id: string }>(
       } as never);
 
       await client.query('COMMIT');
+      await this.notify.notifyRoles(['OPS', 'AGENT'], {
+        type: 'order',
+        title: 'Return dispute escalated',
+        body: 'A buyer escalated a return for mediation — review the dispute.',
+        deep_link: '/ops-console',
+      });
       return { status: 'ESCALATED', dispute_id: disputeId };
     } catch (err) {
       await client.query('ROLLBACK');
@@ -330,6 +356,18 @@ const { rows: disputeRows } = await client.query<{ id: string }>(
         }
         await this.restoreEscrow(client, String(rr.order_id));
         await client.query('COMMIT');
+        await this.notify.notify(String(rr.buyer_id), {
+          type: 'order',
+          title: 'Dispute resolved — refund issued',
+          body: 'Mediation ended in your favour — the refund has been processed.',
+          deep_link: '/returns',
+        });
+        await this.notify.notify(String(rr.seller_id), {
+          type: 'order',
+          title: 'Refund issued on your order',
+          body: 'Mediation ordered a refund on one of your items.',
+          deep_link: '/returns',
+        });
         return { status: 'RESOLVED_REFUND', refund_cents: refundCents };
       }
 
@@ -350,6 +388,18 @@ const { rows: disputeRows } = await client.query<{ id: string }>(
       }
       await this.restoreEscrow(client, String(rr.order_id));
       await client.query('COMMIT');
+      await this.notify.notify(String(rr.buyer_id), {
+        type: 'order',
+        title: 'Dispute dismissed',
+        body: 'Mediation dismissed your return request — the order stands as delivered.',
+        deep_link: '/returns',
+      });
+      await this.notify.notify(String(rr.seller_id), {
+        type: 'order',
+        title: 'Dispute dismissed',
+        body: 'Mediation dismissed a return request on one of your items — no refund issued.',
+        deep_link: '/returns',
+      });
       return { status: 'DISMISSED' };
     } catch (err) {
       await client.query('ROLLBACK');
@@ -519,6 +569,14 @@ const { rows: disputeRows } = await client.query<{ id: string }>(
       [userId, action, note?.trim() || null, actor.id],
     );
     if (rowCount === 0) throw new NotFoundException('No pending KYC found for this user');
+    await this.notify.notify(userId, {
+        type: 'system',
+        title: `KYC ${action === 'APPROVED' ? 'approved' : 'rejected'}`,
+        body: action === 'APPROVED'
+          ? 'Your seller identity documents were approved — you are now a FULL seller.'
+          : `Your seller identity documents were rejected${note ? `: ${note.trim()}` : ''}.`,
+        deep_link: '/seller/products',
+      });
     return { user_id: userId, status: action };
   }
 

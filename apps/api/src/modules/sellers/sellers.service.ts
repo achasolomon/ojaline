@@ -1,6 +1,7 @@
 import { Injectable, Inject, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Pool } from 'pg';
 import type { AuthUser } from '../auth/auth.service.js';
+import { NotifyService } from '../notifications/notify.service.js';
 
 export type SellerType = 'FARMER' | 'MARKET_WOMAN' | 'STORE' | 'PROCESSOR';
 export type KycStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -71,6 +72,7 @@ export interface PayoutRequestRecord {
 export class SellersService {
   constructor(
     @Inject(Pool) private readonly pool: Pool,
+    @Inject(NotifyService) private readonly notify: NotifyService,
   ) {}
 
   async status(user: AuthUser): Promise<SellerStatus> {
@@ -594,6 +596,12 @@ export class SellersService {
       }
 
       await client.query('COMMIT');
+      await this.notify.notify(sellerId, {
+        type: 'order',
+        title: 'Withdrawal approved',
+        body: 'Your payout request was approved — the settlement batch will be processed.',
+        deep_link: '/payouts',
+      });
       return { ok: true, request_id: requestId, batch_id: batchId, status: 'APPROVED' };
     } catch (err) {
       await client.query('ROLLBACK');

@@ -11,6 +11,7 @@ import { Pool } from 'pg';
 import { PaystackService, PaystackEvent } from './paystack.service.js';
 import { OutboxService } from '../outbox/outbox.service.js';
 import { FeedService } from '../notifications/feed.service.js';
+import { NotifyService } from '../notifications/notify.service.js';
 
 const PARTIAL_PAY_THRESHOLD = 0.01;
 
@@ -23,6 +24,7 @@ export class WebhookController {
     @Inject(Pool) private readonly pool: Pool,
     @Inject(OutboxService) private readonly outbox: OutboxService,
     @Inject(FeedService) private readonly feed: FeedService,
+    @Inject(NotifyService) private readonly notify: NotifyService,
   ) {}
 
   @Post('paystack')
@@ -248,6 +250,23 @@ export class WebhookController {
         });
       } catch (err) {
         this.logger.warn({ err, orderId: order.id }, 'payment notification push skipped');
+      }
+
+      try {
+        const { rows: sellers } = await this.pool.query<{ seller_id: string }>(
+          `SELECT DISTINCT seller_id FROM orders.order_lines WHERE order_id = $1`,
+          [order.id],
+        );
+        for (const s of sellers) {
+          await this.notify.notify(s.seller_id, {
+            type: 'order',
+            title: 'New paid order',
+            body: 'A buyer has paid for your item — confirm and dispatch it.',
+            deep_link: `/orders/${order.id}`,
+          });
+        }
+      } catch (err) {
+        this.logger.warn({ err, orderId: order.id }, 'seller order notifications skipped');
       }
     } catch (err) {
       await client.query('ROLLBACK');

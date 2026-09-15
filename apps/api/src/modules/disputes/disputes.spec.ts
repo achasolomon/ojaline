@@ -4,7 +4,13 @@ import { Pool } from 'pg';
 import { loadConfig } from '@ojaline/config';
 import { OutboxService } from '../outbox/outbox.service.js';
 import { DisputesService } from './disputes.service.js';
+import type { NotifyService } from '../notifications/notify.service.js';
 import type { AuthUser } from '../auth/auth.service.js';
+
+const notifyStub = {
+  notify: async () => {},
+  notifyRoles: async () => {},
+} as unknown as NotifyService;
 
 /**
  * Phase 4 — returns & disputes end-to-end against the live DB:
@@ -83,7 +89,7 @@ beforeAll(async () => {
     user: c.DB_USER,
     password: c.DB_PASSWORD,
   });
-  disputes = new DisputesService(app, new OutboxService());
+  disputes = new DisputesService(app, new OutboxService(), notifyStub);
 });
 
 afterAll(async () => {

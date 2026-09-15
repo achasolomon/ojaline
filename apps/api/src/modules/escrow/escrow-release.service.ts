@@ -1,6 +1,7 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
 import { Pool } from 'pg';
 import { OutboxService } from '../outbox/outbox.service.js';
+import { NotifyService } from '../notifications/notify.service.js';
 
 @Injectable()
 export class EscrowReleaseService {
@@ -9,6 +10,7 @@ export class EscrowReleaseService {
   constructor(
     @Inject(Pool) private readonly pool: Pool,
     @Inject(OutboxService) private readonly outbox: OutboxService,
+    @Inject(NotifyService) private readonly notify: NotifyService,
   ) {}
 
   async releaseDueEscrows(): Promise<{ released: number; errors: string[] }> {
@@ -93,6 +95,26 @@ export class EscrowReleaseService {
 
           await client.query('COMMIT');
           released++;
+
+          try {
+            const { rows: paid } = await this.pool.query<{ seller_id: string }>(
+              `SELECT DISTINCT counterparty_id AS seller_id
+               FROM escrow.ledger_entries
+               WHERE escrow_order_id = $1 AND entry_type = 'SELLER_PAYOUT'
+                 AND counterparty_type = 'SELLER'`,
+              [escrow.id],
+            );
+            for (const row of paid) {
+              await this.notify.notify(row.seller_id, {
+                type: 'order',
+                title: 'Payout released',
+                body: 'Escrow funds were released — your payout balance has been topped up.',
+                deep_link: '/payouts',
+              });
+            }
+          } catch (err) {
+            this.logger.warn({ escrowId: escrow.id, err }, 'payout release notifications skipped');
+          }
         } catch (err) {
           await client.query('ROLLBACK');
           const msg = err instanceof Error ? err.message : String(err);

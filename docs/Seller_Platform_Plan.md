@@ -1,13 +1,13 @@
 # OJALINE — Seller Platform Plan
 ### Derived from System Architecture v2.0, Data Model v1.0, and Buyer Platform implementation (Approved)
-**Status:** Phase 4 complete (verified) — next: notification wiring, bulk CSV
+**Status:** Phase 4 complete (verified) + notification wiring done — bulk CSV deferred
 **Date:** 14 Sep 2026
 
 ---
 
 ## Purpose
 
-This document captures the gap analysis and phased build plan for the seller-side platform. The buyer journey (#1–#8: checkout hookup, delivery fees, order detail, cancellation/refunds, gated reviews, push notifications, wishlist, channel enforcement) is complete and committed (`a48475c`). Phase 3 (sellers payouts end-to-end) is complete and verified. Phase 4 (returns/disputes loop, OPS console, seller analytics) is complete and verified — see git log for the Phase 4 commit. The seller operating surface — enabling sellers to manage offers, fulfil orders, receive payouts, resolve disputes, and grow their business — is in place.
+This document captures the gap analysis and phased build plan for the seller-side platform. The buyer journey (#1–#8: checkout hookup, delivery fees, order detail, cancellation/refunds, gated reviews, push notifications, wishlist, channel enforcement) is complete and committed (`a48475c`). Phase 3 (sellers payouts end-to-end) is complete and verified. Phase 4 (returns/disputes loop, OPS console, seller analytics) is complete and verified, and the deferred in-sprint item — inter-service notification wiring across webhook/disputes/payouts/escrow — is delivered (`notify.service.ts` + 8 integration tests). See git log for commits. The seller operating surface — enabling sellers to manage offers, fulfil orders, receive payouts, resolve disputes, and grow their business — is in place.
 
 The target parity level is Jumia / JiJi / Temu: a full seller center with onboarding, catalogue management, order operations, money/payouts, trust/safety, analytics, and an OPS admin console.
 
@@ -299,7 +299,7 @@ The escrow ledger has a `FEE` entry type and a `MANUAL_ADJUSTMENT` type, but the
 
 ### Phase 4 — Returns, Disputes, OPS Console & Analytics
 
-**Goal:** Full loop closed: disputes, risk, admin console, analytics. **Status: COMPLETE** (V35 + V36 migrations, 89 API tests passing incl. 7 new disputes integration tests).
+**Goal:** Full loop closed: disputes, risk, admin console, analytics. **Status: COMPLETE** (V35 + V36 migrations, 97 API tests passing incl. 7 disputes + 8 notification integration tests).
 
 **Delivered:**
 - **Returns/disputes flow** (`disputes.service.ts`, `disputes.controller.ts`, `disputes.spec.ts`): buyer creates return (non-DELIVERED blocked, qty duplicates blocked) → seller ACCEPT (refund off HELD escrow, `accounting.refunded_cents` move, ledger CR) / REJECT → buyer escalates (`escrow.disputes.return_request_id` linked) → OPS mediate REFUND (escrow restored HELD) or DISMISS. Released escrow on REFUND books `MANUAL_ADJUSTMENT` clawback vs SELLER → `getPayoutBalance` subtracts clawbacks from available + released total. Locks via `pg_advisory_xact_lock` on return creation.
@@ -307,7 +307,9 @@ The escrow ledger has a `FEE` entry type and a `MANUAL_ADJUSTMENT` type, but the
 - **Seller analytics** (`GET /disputes/analytics/seller|platform`): revenue (released, after clawbacks), order counts, on-time rate, dispute rate 30d, `avg_rating`/`review_count`, top products (sold qty + revenue).
 - **Web UI**: `ReturnsPage` (role-aware actions + create form), `OpsConsolePage` (tabs: overview/KYC/disputes/risk, 20s auto-refresh), `SellerAnalyticsPage` (health cards + top products). Routes `/returns`, `/ops-console`, `/analytics` wired in `App.tsx`; links added to `Account.tsx`.
 
-**Deferred from Phase 4:** notification wiring (feed/push for new order, dispatch, dispute, payout) — tracked for the next sprint.
+- **Inter-service notifications** (`notifications/notify.service.ts`, registered in `app.module.ts`): `NotifyService.notify(userId,…)` writes feed + push entries (best effort); `notifyRoles(roles,…)` fans out to every user holding a role via `pii.user_roles`. Wired into: webhook (new paid order → every seller), disputes (return created → seller; accept/reject → buyer; escalate → OPS+AGENT; mediate → both; KYC decision → applicant), payouts (approve → seller), escrow release (→ seller). Covered by `notify.spec.ts` (8 integration tests). API suite now 97 tests green.
+
+**Deferred from Phase 4 (next sprint):** bulk CSV export, unread feed UI on the seller app, push subscription UX.
 
 **Acceptance Criteria:**
 
@@ -318,7 +320,7 @@ The escrow ledger has a `FEE` entry type and a `MANUAL_ADJUSTMENT` type, but the
 | OPS console: KYC queue, risk actions, dispute mediation | `disputes.controller.ts` | ✓ `/disputes/ops/*` |
 | Seller health dashboard (on-time, cancellation, dispute rates) | `disputes.service.ts` analytics | ✓ |
 | Seller analytics (revenue, orders, product performance) | `disputes.service.ts` analytics | ✓ |
-| Notification wiring: new order, dispatch, dispute, payout | deferred | ⏳ next sprint |
+| Notification wiring: new order, dispute, payout, KYC | `notify.service.ts` + service integrations + `notify.spec.ts` | ✓ new order/decline/dispute/payout/KYC fed (`notify.spec.ts` 8 tests) |
 
 ---
 

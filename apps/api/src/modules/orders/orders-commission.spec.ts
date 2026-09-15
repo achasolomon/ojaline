@@ -10,6 +10,12 @@ import type { ReservationGate } from '../reservation/reservation.gate.js';
 import type { MultiSellerGate } from '../fulfilment/multi-seller-gate.js';
 import type { FulfilmentStateMachine } from '../fulfilment/fulfilment-state-machine.js';
 import type { FeedService } from '../notifications/feed.service.js';
+import type { NotifyService } from '../notifications/notify.service.js';
+
+const notifyStub = {
+  notify: async () => {},
+  notifyRoles: async () => {},
+} as unknown as NotifyService;
 
 /**
  * Phase 0 money invariants — full money path exercised against the live DB:
@@ -65,7 +71,7 @@ beforeAll(async () => {
     {} as unknown as FulfilmentStateMachine,
     {} as unknown as FeedService,
   );
-  release = new EscrowReleaseService(app, outboxStub);
+  release = new EscrowReleaseService(app, outboxStub, notifyStub);
 });
 
 afterAll(async () => {

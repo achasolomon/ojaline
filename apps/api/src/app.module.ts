@@ -40,6 +40,7 @@ import { MarketController } from './modules/market/market.controller.js';
 import { MarketService } from './modules/market/market.service.js';
 import { NotificationsController } from './modules/notifications/notifications.controller.js';
 import { FeedService } from './modules/notifications/feed.service.js';
+import { NotifyService } from './modules/notifications/notify.service.js';
 
 @Module({
   imports: [
@@ -80,6 +81,7 @@ import { FeedService } from './modules/notifications/feed.service.js';
     ContentService,
     MarketService,
     FeedService,
+    NotifyService,
   ],
 })
 export class AppModule {}

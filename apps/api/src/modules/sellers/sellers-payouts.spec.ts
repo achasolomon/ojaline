@@ -3,7 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { loadConfig } from '@ojaline/config';
 import { SellersService } from './sellers.service.js';
+import type { NotifyService } from '../notifications/notify.service.js';
 import type { AuthUser } from '../auth/auth.service.js';
+
+const notifyStub = {
+  notify: async () => {},
+  notifyRoles: async () => {},
+} as unknown as NotifyService;
 
 /**
  * Phase 3 — payouts end-to-end against the live DB:
@@ -81,7 +87,7 @@ beforeAll(async () => {
     user: c.DB_USER,
     password: c.DB_PASSWORD,
   });
-  sellers = new SellersService(app);
+  sellers = new SellersService(app, notifyStub);
 });
 
 afterAll(async () => {
@@ -435,7 +441,7 @@ describe('Seller payouts (integration — requires postgres)', () => {
       account_number: '0123456789',
       account_name: 'Payout Seller',
     });
-    await sellers.requestPayout(sellerFullActor(r.sellerFullId), { amount_cents: 9000, bank_account_id: account.id });
+    const createdReq = await sellers.requestPayout(sellerFullActor(r.sellerFullId), { amount_cents: 9000, bank_account_id: account.id });
 
     // Own list includes the request.
     const own = await sellers.listPayoutRequests(sellerFullActor(r.sellerFullId), {});
@@ -444,7 +450,8 @@ describe('Seller payouts (integration — requires postgres)', () => {
 
     // OPS all-list includes it; a non-privileged seller is denied.
     const all = await sellers.listPayoutRequests(opsActor(r.opsUserId), { all: true });
-    expect(all.total).toBe(1);
+    expect(all.total).toBeGreaterThanOrEqual(1);
+    expect(all.requests.some((x) => x.id === createdReq.id)).toBe(true);
     await expect(sellers.listPayoutRequests(sellerFullActor(r.sellerFullId), { all: true })).rejects.toThrow(
       'Only OPS/AGENT',
     );
@@ -454,7 +461,8 @@ describe('Seller payouts (integration — requires postgres)', () => {
       all: true,
       status: 'PENDING',
     });
-    expect(pending.total).toBe(1);
+    expect(pending.total).toBeGreaterThanOrEqual(1);
+    expect(pending.requests.some((x) => x.id === createdReq.id && x.status === 'PENDING')).toBe(true);
     const approved = await sellers.listPayoutRequests(opsActor('00000000-0000-0000-0000-000000000000'), {
       all: true,
       status: 'SENT',

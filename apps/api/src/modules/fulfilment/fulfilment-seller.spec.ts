@@ -13,6 +13,12 @@ import type { PaystackService } from '../paystack/paystack.service.js';
 import type { ReservationGate } from '../reservation/reservation.gate.js';
 import type { MultiSellerGate } from '../fulfilment/multi-seller-gate.js';
 import type { AuthUser } from '../auth/auth.service.js';
+import type { NotifyService } from '../notifications/notify.service.js';
+
+const notifyStub = {
+  notify: async () => {},
+  notifyRoles: async () => {},
+} as unknown as NotifyService;
 
 /**
  * Phase 1 — seller orders & fulfilment, exercised against the live DB:
@@ -112,7 +118,7 @@ beforeAll(async () => {
     feed,
   );
   stateMachine = new FulfilmentStateMachine(app, outboxStub);
-  release = new EscrowReleaseService(app, outboxStub);
+  release = new EscrowReleaseService(app, outboxStub, notifyStub);
 });
 
 afterAll(async () => {
