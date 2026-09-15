@@ -1,13 +1,13 @@
 # OJALINE — Seller Platform Plan
 ### Derived from System Architecture v2.0, Data Model v1.0, and Buyer Platform implementation (Approved)
-**Status:** Phase 2 complete (verified) — Phase 3 next
+**Status:** Phase 3 complete (verified) — Phase 4 next
 **Date:** 14 Sep 2026
 
 ---
 
 ## Purpose
 
-This document captures the gap analysis and phased build plan for the seller-side platform. The buyer journey (#1–#8: checkout hookup, delivery fees, order detail, cancellation/refunds, gated reviews, push notifications, wishlist, channel enforcement) is complete and committed (`a48475c`). The seller operating surface — enabling sellers to manage offers, fulfil orders, receive payouts, and grow their business — is the next build.
+This document captures the gap analysis and phased build plan for the seller-side platform. The buyer journey (#1–#8: checkout hookup, delivery fees, order detail, cancellation/refunds, gated reviews, push notifications, wishlist, channel enforcement) is complete and committed (`a48475c`). Phase 3 (sellers payouts end-to-end) is complete and verified — see git log for the Phase 3 commit. The seller operating surface — enabling sellers to manage offers, fulfil orders, receive payouts, and grow their business — continues with Phase 4 next.
 
 The target parity level is Jumia / JiJi / Temu: a full seller center with onboarding, catalogue management, order operations, money/payouts, trust/safety, analytics, and an OPS admin console.
 
@@ -281,26 +281,21 @@ The escrow ledger has a `FEE` entry type and a `MANUAL_ADJUSTMENT` type, but the
 - Integration spec `catalog-seller.spec.ts` (8 tests) green; full API suite 75 passed / 6 skipped. Media acceptance fulfilled via base64 `POST /media` → object storage + `addOfferMedia` attach (MinIO presign deferred).
 - Web: `tsc --noEmit`, vitest (14), eslint clean.
 
-### Phase 3 — Payouts End-to-End
+### Phase 3 — Payouts End-to-End ✅ (complete, verified)
 
 **Goal:** Seller sees balance, requests withdrawal, OPS approves, settlement batch is created.
 
-| Deliverable | Files |
-|---|---|
-| `GET /sellers/payouts/balance` | `sellers.controller.ts`, `sellers.service.ts` |
-| `GET /sellers/payouts` (ledger history, paginated) | Same |
-| `POST /sellers/payouts/request` (FULL-tier gate) | Same |
-| `POST /sellers/payouts/:id/approve` (OPS) | Same |
-| Bank account CRUD during onboarding | `sellers.service.ts` (extend) |
-| `settlement_batches` wired (INSERT on approve, `reference` set on bank transfer) | `sellers.service.ts` |
-| Web: wire `PayoutsPage.tsx` (balance card, history table, withdraw, bank account) | `apps/web/src/pages/PayoutsPage.tsx` |
-| Integration spec: payout request → approve → batch created, balance reflects | `sellers.service.spec.ts` (new) |
+**Delivered:**
+- `GET /sellers/payouts/balance`, `GET /sellers/payouts/ledger`, `GET /sellers/payouts/requests`, `POST /sellers/payouts/request`, `POST /sellers/payouts/requests/:id/approve` (OPS), bank account CRUD (`GET/POST /sellers/payouts/bank-accounts`, `PATCH .../:id/primary`, `DELETE .../:id`) — all in `sellers.controller.ts` / `sellers.service.ts`.
+- Approve creates `escrow.settlement_batches` (SUBMITTED) + links un-settled `SELLER_PAYOUT` ledger entries via `escrow.settlement_lines` — **not** by writing `reference` on the ledger, since `escrow.ledger_entries` is append-only (REVOKE UPDATE/DELETE in V1 + V16).
+- Web: `PayoutsPage.tsx` wired (balance card, withdraw form, bank-account manager, request history, release ledger). Client fns in `apps/web/src/lib/api.ts`.
+- Integration spec `sellers-payouts.spec.ts`: balance/on-hold, FULL-tier gate, pending reservation, balance ceiling, OPS approve → batch + settlement_lines, ownership-filtered request list.
 
-**Acceptance Criteria:**
-- Balance = Σ(SELLER_PAYOUT) − Σ(approved withdrawals)
-- Payout request blocked if tier ≠ FULL
-- Settlement batch row created on OPS approve
-- Ledger `reference` populated on settlement
+**Acceptance Criteria (all met):**
+- Balance = Σ(SELLER_PAYOUT) − Σ(approved withdrawals) ✓
+- Payout request blocked if tier ≠ FULL ✓
+- Settlement batch row created on OPS approve ✓
+- Released entries linked to batch via `settlement_lines` (append-only ledger respected) ✓
 
 ### Phase 4 — Returns, Disputes, OPS Console & Analytics
 

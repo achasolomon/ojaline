@@ -295,8 +295,8 @@ export interface SellerRegistrationInput {
   bio?: string;
 }
 
-export async function getSellerStatus(token: string): Promise<SellerStatus> {
-  return getJson<SellerStatus>('/sellers/me', { headers: { authorization: `Bearer ${token}` } });
+export async function getSellerStatus(token?: string): Promise<SellerStatus> {
+  return getJson<SellerStatus>('/sellers/me', { headers: token ? { authorization: `Bearer ${token}` } : {} });
 }
 
 export async function registerSeller(token: string, input: SellerRegistrationInput): Promise<SellerStatus> {
@@ -1171,6 +1171,103 @@ export async function decideOrder(
     action,
     line_ids: lineIds,
   });
+}
+
+/* ── Seller payouts (Phase 3) ── */
+
+export type PayoutRequestStatus = 'PENDING' | 'APPROVED' | 'PROCESSING' | 'SENT' | 'FAILED';
+
+export interface SellerBankAccount {
+  id: string;
+  bank_code: string;
+  bank_name: string;
+  account_number: string;
+  account_name: string;
+  is_primary: boolean;
+}
+
+export interface PayoutBalance {
+  available_cents: number;
+  on_hold_cents: number;
+  pending_cents: number;
+  withdrawn_cents: number;
+  released_total_cents: number;
+}
+
+export interface PayoutLedgerEntry {
+  id: string;
+  entry_type: string;
+  amount_cents: number;
+  order_id: string;
+  reference: string | null;
+  created_at: string;
+}
+
+export interface PayoutLedgerPage {
+  entries: PayoutLedgerEntry[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface PayoutRequestRecord {
+  id: string;
+  amount_cents: number;
+  status: PayoutRequestStatus;
+  bank_account: SellerBankAccount | null;
+  transfer_reference: string | null;
+  review_note: string | null;
+  requested_at: string;
+  processed_at: string | null;
+}
+
+export interface PayoutRequestsPage {
+  requests: PayoutRequestRecord[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export async function getPayoutBalance(): Promise<PayoutBalance> {
+  return getJson<PayoutBalance>('/sellers/payouts/balance');
+}
+
+export async function getPayoutLedger(opts: { limit?: number; offset?: number } = {}): Promise<PayoutLedgerPage> {
+  return getJson<PayoutLedgerPage>(`/sellers/payouts/ledger?limit=${opts.limit ?? 20}&offset=${opts.offset ?? 0}`);
+}
+
+export async function getPayoutRequests(opts: { status?: string; limit?: number; offset?: number } = {}): Promise<PayoutRequestsPage> {
+  const qs = new URLSearchParams();
+  if (opts.status) qs.set('status', opts.status);
+  qs.set('limit', String(opts.limit ?? 20));
+  qs.set('offset', String(opts.offset ?? 0));
+  return getJson<PayoutRequestsPage>(`/sellers/payouts/requests?${qs.toString()}`);
+}
+
+export async function requestPayout(input: { amount_cents: number; bank_account_id: string }): Promise<PayoutRequestRecord> {
+  return postJson<PayoutRequestRecord>('/sellers/payouts/request', input);
+}
+
+export async function getBankAccounts(): Promise<SellerBankAccount[]> {
+  return getJson<SellerBankAccount[]>('/sellers/payouts/bank-accounts');
+}
+
+export async function addBankAccount(input: {
+  bank_code: string;
+  bank_name: string;
+  account_number: string;
+  account_name: string;
+  is_primary?: boolean;
+}): Promise<SellerBankAccount> {
+  return postJson<SellerBankAccount>('/sellers/payouts/bank-accounts', input);
+}
+
+export async function setPrimaryBankAccount(accountId: string): Promise<{ ok: true }> {
+  return patchJson(`/sellers/payouts/bank-accounts/${accountId}/primary`, {});
+}
+
+export async function deleteBankAccount(accountId: string): Promise<{ ok: boolean; removed: boolean }> {
+  return deleteJson(`/sellers/payouts/bank-accounts/${accountId}`);
 }
 
 /* ── Negotiations ── */
