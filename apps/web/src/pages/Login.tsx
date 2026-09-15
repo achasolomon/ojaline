@@ -8,12 +8,15 @@ import { Icon } from '../components/icons';
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as { from?: string } | null)?.from ?? '/';
+  const qs = new URLSearchParams(window.location.search);
+  const from = (location.state as { from?: string } | null)?.from ?? qs.get('from') ?? '/';
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(
+    qs.get('reason') === 'session-expired' ? 'Your session expired — please log in again.' : '',
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

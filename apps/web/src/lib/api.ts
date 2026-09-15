@@ -1,6 +1,6 @@
 import { validateEnvelope } from '@ojaline/contracts';
 import type { EventType, EventPayload, OutboxEnvelope } from '@ojaline/contracts';
-import { getToken } from './session';
+import { getToken, handleUnauthorized } from './session';
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api';
 
@@ -115,30 +115,36 @@ export class ApiError extends Error {
 }
 
 export async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const headers = { accept: 'application/json', ...authHeaders(), ...init?.headers };
-  const res = await fetch(`${BASE_URL}${path}`, { ...init, headers });
-  if (!res.ok) throw new ApiError(res.status, await safeText(res));
+  const res = await fetch(`${BASE_URL}${path}`, { ...init, headers: mergedHeaders(init) });
+  if (!res.ok) return reject(res, path);
   return (await res.json()) as T;
 }
 
 export async function postJson<T>(path: string, body: unknown, init?: RequestInit): Promise<T> {
-  const headers = { accept: 'application/json', 'content-type': 'application/json', ...authHeaders(), ...init?.headers };
-  const res = await fetch(`${BASE_URL}${path}`, { method: 'POST', headers, body: JSON.stringify(body), ...init });
-  if (!res.ok) throw new ApiError(res.status, await safeText(res));
+  const res = await fetch(`${BASE_URL}${path}`, {
+    ...init,
+    method: 'POST',
+    headers: mergedHeaders(init, { 'content-type': 'application/json' }),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) return reject(res, path);
   return (await res.json()) as T;
 }
 
 async function deleteJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const headers = { accept: 'application/json', ...authHeaders(), ...init?.headers };
-  const res = await fetch(`${BASE_URL}${path}`, { method: 'DELETE', ...init, headers });
-  if (!res.ok) throw new ApiError(res.status, await safeText(res));
+  const res = await fetch(`${BASE_URL}${path}`, { ...init, method: 'DELETE', headers: mergedHeaders(init) });
+  if (!res.ok) return reject(res, path);
   return (await res.json()) as T;
 }
 
 async function patchJson<T>(path: string, body: unknown, init?: RequestInit): Promise<T> {
-  const headers = { accept: 'application/json', 'content-type': 'application/json', ...authHeaders(), ...init?.headers };
-  const res = await fetch(`${BASE_URL}${path}`, { method: 'PATCH', headers, body: JSON.stringify(body), ...init });
-  if (!res.ok) throw new ApiError(res.status, await safeText(res));
+  const res = await fetch(`${BASE_URL}${path}`, {
+    ...init,
+    method: 'PATCH',
+    headers: mergedHeaders(init, { 'content-type': 'application/json' }),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) return reject(res, path);
   return (await res.json()) as T;
 }
 
@@ -147,6 +153,51 @@ async function patchJson<T>(path: string, body: unknown, init?: RequestInit): Pr
 function authHeaders(): Record<string, string> {
   const token = getToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+/**
+ * Merge request headers so the Authorization header is emitted exactly once.
+ * HTTP header names are case-insensitive, but plain-object spreads keep
+ * `Authorization` and `authorization` as two keys, which produces
+ * `Bearer <token>, Bearer <token>` on the wire and breaks the JWT guard.
+ * An explicit `authorization`/`Authorization` in `init.headers` overrides
+ * the session auto-header.
+ */
+function mergedHeaders(init?: RequestInit, extra?: Record<string, string>): Record<string, string> {
+  const headers: Record<string, string> = { accept: 'application/json' };
+  if (extra) {
+    for (const [key, value] of Object.entries(extra)) {
+      if (key.toLowerCase() !== 'authorization') headers[key] = value;
+    }
+  }
+  let authOverride: string | undefined;
+  if (init?.headers) {
+    for (const [key, value] of Object.entries(init.headers as Record<string, string>)) {
+      if (!value) continue;
+      if (key.toLowerCase() === 'authorization') authOverride = String(value);
+      else headers[key] = value;
+    }
+  }
+  const auth = authOverride ?? authHeaders().Authorization;
+  if (auth) headers.Authorization = auth;
+  return headers;
+}
+
+/**
+ * A 401 from a protected endpoint while a session is active means the stored
+ * token is no longer accepted (expired or revoked). Restore the app to a
+ * logged-out state and send the user to login. A 401 from the login endpoint
+ * is excluded — that one belongs to the credentials form.
+ */
+function handleRejectedAuth(path: string): void {
+  if (path === '/auth/login') return;
+  if (!getToken()) return;
+  handleUnauthorized();
+}
+
+async function reject(res: Response, path: string): Promise<never> {
+  if (res.status === 401) handleRejectedAuth(path);
+  throw new ApiError(res.status, await safeText(res));
 }
 
 async function safeText(res: Response): Promise<string> {
