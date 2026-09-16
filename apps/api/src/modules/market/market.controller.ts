@@ -10,7 +10,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { MarketService, type CreateThreadInput, type CreateWantInput } from './market.service.js';
+import { MarketService, type CreateThreadInput, type CreateWantInput, type CreateCrowdSaleInput } from './market.service.js';
 import { CurrentUser, assertOwnedOrAnon, type AuthUser } from '../auth/auth-guards.js';
 
 @Controller()
@@ -41,8 +41,16 @@ export class MarketController {
   }
 
   @Get('wants')
-  async listWants(@Query('buyer_id') buyerId?: string) {
+  async listWants(
+    @Query('buyer_id') buyerId?: string,
+    @Query('seller_id') sellerId?: string,
+    @CurrentUser() user?: AuthUser,
+  ) {
     try {
+      if (sellerId) {
+        assertOwnedOrAnon(user, sellerId, 'Seller wants identity');
+        return await this.market.listWantsForSeller(sellerId);
+      }
       return await this.market.listWants(buyerId);
     } catch (err) {
       this.map(err);
@@ -69,6 +77,49 @@ export class MarketController {
     }
   }
 
+  /* --------------------------- crowd sales --------------------------- */
+
+  @Post('crowd-sales')
+  async createCrowdSale(
+    @Query('seller_id') sellerId: string,
+    @Body() body: CreateCrowdSaleInput,
+    @CurrentUser() user?: AuthUser,
+  ) {
+    try {
+      assertOwnedOrAnon(user, sellerId, 'Crowd sale identity');
+      return await this.market.createCrowdSale(sellerId, body);
+    } catch (err) {
+      this.map(err);
+    }
+  }
+
+  @Get('crowd-sales')
+  async listCrowdSales(@Query('seller_id') sellerId?: string, @Query('status') status?: string) {
+    try {
+      return await this.market.listCrowdSales({
+        ...(sellerId ? { seller_id: sellerId } : {}),
+        ...(status === 'OPEN' || status === 'CLOSED' ? { status } : {}),
+      });
+    } catch (err) {
+      this.map(err);
+    }
+  }
+
+  @Post('crowd-sales/:id/close')
+  @HttpCode(HttpStatus.OK)
+  async closeCrowdSale(
+    @Param('id') id: string,
+    @Query('seller_id') sellerId: string,
+    @CurrentUser() user?: AuthUser,
+  ) {
+    try {
+      assertOwnedOrAnon(user, sellerId, 'Close crowd sale identity');
+      return await this.market.closeCrowdSale(id, sellerId);
+    } catch (err) {
+      this.map(err);
+    }
+  }
+
   /* --------------------------- negotiations --------------------------- */
 
   @Post('negotiations')
@@ -82,8 +133,13 @@ export class MarketController {
   }
 
   @Get('negotiations')
-  async listNegotiations(@Query('buyer_id') buyerId: string, @CurrentUser() user?: AuthUser) {
+  async listNegotiations(@Query() query: { buyer_id?: string; seller_id?: string }, @CurrentUser() user?: AuthUser) {
     try {
+      if (query.seller_id) {
+        assertOwnedOrAnon(user, query.seller_id, 'Seller negotiation identity');
+        return await this.market.listSellerNegotiations(query.seller_id);
+      }
+      const buyerId = query.buyer_id ?? '';
       assertOwnedOrAnon(user, buyerId, 'Negotiation identity');
       return await this.market.listNegotiations(buyerId);
     } catch (err) {
@@ -116,6 +172,36 @@ export class MarketController {
     try {
       assertOwnedOrAnon(user, buyerId, 'Accept identity');
       return await this.market.accept(id, buyerId, body.per_unit_kobo);
+    } catch (err) {
+      this.map(err);
+    }
+  }
+
+  @Post('negotiations/:id/seller-offer')
+  async sellerOffer(
+    @Param('id') id: string,
+    @Query('seller_id') sellerId: string,
+    @Body() body: { per_unit_kobo: number; qty?: number; message?: string },
+    @CurrentUser() user?: AuthUser,
+  ) {
+    try {
+      assertOwnedOrAnon(user, sellerId, 'Seller offer identity');
+      return await this.market.sellerOffer(id, sellerId, body.per_unit_kobo, body.qty, body?.message);
+    } catch (err) {
+      this.map(err);
+    }
+  }
+
+  @Post('negotiations/:id/seller-accept')
+  async sellerAccept(
+    @Param('id') id: string,
+    @Query('seller_id') sellerId: string,
+    @Body() body: { per_unit_kobo: number },
+    @CurrentUser() user?: AuthUser,
+  ) {
+    try {
+      assertOwnedOrAnon(user, sellerId, 'Seller accept identity');
+      return await this.market.sellerAccept(id, sellerId, body.per_unit_kobo);
     } catch (err) {
       this.map(err);
     }

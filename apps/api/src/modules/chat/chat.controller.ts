@@ -21,6 +21,12 @@ export class ChatController {
     return this.chat.getUserConversations(userId);
   }
 
+  @Post('conversations/:id/read')
+  async markConversationRead(@Param('id') conversationId: string, @Body() body: { user_id: string }, @CurrentUser() user?: AuthUser) {
+    assertOwnedOrAnon(user, body.user_id, 'Mark read identity');
+    return this.chat.markConversationRead(conversationId, body.user_id);
+  }
+
   @Post('conversations/:id/messages')
   async sendMessage(
     @Param('id') conversationId: string,

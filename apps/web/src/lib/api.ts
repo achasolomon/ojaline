@@ -974,6 +974,120 @@ export async function getWant(wantId: string): Promise<CrowdWant> {
   return getJson<CrowdWant>(`/wants/${wantId}`);
 }
 
+// ---------- crowd sales (seller-side) ----------
+
+export interface CrowdSale {
+  id: string;
+  seller_id: string;
+  seller_name: string;
+  offer_id: string;
+  product_name: string;
+  unit: string | null;
+  unit_price_kobo: number;
+  qty_available: number;
+  min_qty: number;
+  note: string;
+  status: 'OPEN' | 'CLOSED';
+  ends_at: string | null;
+  created_at: string;
+  join_count: number;
+}
+
+export interface CreateCrowdSaleRequest {
+  offer_id: string;
+  unit_price_kobo: number;
+  qty_available: number;
+  min_qty?: number;
+  note?: string;
+  ends_at?: string | null;
+}
+
+export interface CrowdSale {
+  id: string;
+  seller_id: string;
+  seller_name: string;
+  offer_id: string;
+  product_name: string;
+  unit: string | null;
+  unit_price_kobo: number;
+  qty_available: number;
+  min_qty: number;
+  note: string;
+  status: 'OPEN' | 'CLOSED';
+  ends_at: string | null;
+  created_at: string;
+  join_count: number;
+}
+
+export interface CreateCrowdSaleInput {
+  offer_id: string;
+  unit_price_kobo: number;
+  qty_available: number;
+  min_qty?: number;
+  note?: string;
+  ends_at?: string | null;
+}
+
+/**
+ * Create a new crowd sale.
+ */
+export async function createCrowdSale(
+  sellerId: string,
+  input: CreateCrowdSaleInput
+): Promise<CrowdSale> {
+  const params = new URLSearchParams({
+    seller_id: sellerId,
+  });
+
+  return postJson<CrowdSale>(
+    `/crowd-sales?${params.toString()}`,
+    input
+  );
+}
+
+/**
+ * List crowd sales with optional filters.
+ */
+export async function listCrowdSales(
+  opts: {
+    seller_id?: string;
+    status?: 'OPEN' | 'CLOSED';
+  } = {}
+): Promise<CrowdSale[]> {
+  const params = new URLSearchParams();
+
+  if (opts.seller_id) {
+    params.set('seller_id', opts.seller_id);
+  }
+
+  if (opts.status) {
+    params.set('status', opts.status);
+  }
+
+  const qs = params.toString();
+
+  return getJson<CrowdSale[]>(
+    `/crowd-sales${qs ? `?${qs}` : ''}`
+  );
+}
+
+/**
+ * Close an existing crowd sale.
+ */
+export async function closeCrowdSale(
+  saleId: string,
+  sellerId: string
+): Promise<{ ok: boolean }> {
+  const params = new URLSearchParams({
+    seller_id: sellerId,
+  });
+
+  return postJson<{ ok: boolean }>(
+    `/crowd-sales/${saleId}/close?${params.toString()}`,
+    {}
+  );
+}
+
 /* ── Orders ── */
 
 export interface OrderLine {

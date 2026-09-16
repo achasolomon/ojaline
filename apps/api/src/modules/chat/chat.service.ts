@@ -1,5 +1,7 @@
 import { Injectable, Inject, BadRequestException, NotFoundException } from '@nestjs/common';
 import { Pool } from 'pg';
+import { MarketFeedService } from '../realtime/market-feed.service.js';
+import { NotifyService } from '../notifications/notify.service.js';
 
 const CIRCUMVENTION_PATTERNS: Array<{ name: string; regex: RegExp }> = [
   { name: 'phone_ng', regex: /(?:\+?234|0)[789][01]\d{7,8}/g },
@@ -27,7 +29,11 @@ function detectCircumvention(content: string): Array<{ name: string; match: stri
 
 @Injectable()
 export class ChatService {
-  constructor(@Inject(Pool) private readonly pool: Pool) {}
+  constructor(
+    @Inject(Pool) private readonly pool: Pool,
+    @Inject(NotifyService) private readonly notify: NotifyService,
+    @Inject(MarketFeedService) private readonly feed: MarketFeedService,
+  ) {}
 
   async getOrCreateConversation(input: {
     buyer_id: string;
@@ -120,6 +126,9 @@ export class ChatService {
       [conversationId],
     );
 
+    const recipientId = conversation.buyer_id === senderId ? conversation.seller_id : conversation.buyer_id;
+    void this.publishMessage(rows[0], recipientId);
+
     return { message: rows[0], warnings: [], blocked: false };
   }
 
@@ -147,16 +156,74 @@ export class ChatService {
 
   async getUserConversations(userId: string): Promise<Array<Record<string, unknown>>> {
     const { rows } = await this.pool.query(
-      `SELECT c.*,
+      `SELECT c.id, c.buyer_id, c.seller_id, c.offer_id, c.order_id, c.status, c.created_at, c.updated_at,
+        c.buyer_last_read_at, c.seller_last_read_at,
         (SELECT content FROM chat.messages cm WHERE cm.conversation_id = c.id ORDER BY cm.created_at DESC LIMIT 1) AS last_message,
         (SELECT created_at FROM chat.messages cm WHERE cm.conversation_id = c.id ORDER BY cm.created_at DESC LIMIT 1) AS last_message_at,
-        (SELECT full_name FROM pii.users u WHERE u.id = CASE WHEN c.buyer_id = $1 THEN c.seller_id ELSE c.buyer_id END) AS other_party_name
+        (SELECT sender_id FROM chat.messages cm WHERE cm.conversation_id = c.id ORDER BY cm.created_at DESC LIMIT 1) AS last_message_sender_id,
+        (SELECT full_name FROM pii.users u WHERE u.id = CASE WHEN c.buyer_id = $1 THEN c.seller_id ELSE c.buyer_id END) AS other_party_name,
+        (SELECT id FROM pii.users u WHERE u.id = CASE WHEN c.buyer_id = $1 THEN c.seller_id ELSE c.buyer_id END) AS other_party_id
        FROM chat.conversations c
        WHERE c.buyer_id = $1 OR c.seller_id = $1
        ORDER BY c.updated_at DESC`,
       [userId],
     );
-    return rows;
+    return rows.map((r) => {
+      const isBuyer = String(r.buyer_id) === userId;
+      const readAt = isBuyer ? r.buyer_last_read_at : r.seller_last_read_at;
+      const lastMessageSenderId = r.last_message_sender_id ? String(r.last_message_sender_id) : null;
+      const unread = lastMessageSenderId && lastMessageSenderId !== userId
+        ? (readAt == null || (r.last_message_at && new Date(String(r.last_message_at)) > new Date(String(readAt))))
+        : false;
+      return {
+        id: String(r.id),
+        buyer_id: String(r.buyer_id),
+        seller_id: String(r.seller_id),
+        offer_id: r.offer_id ? String(r.offer_id) : null,
+        order_id: r.order_id ? String(r.order_id) : null,
+        status: String(r.status),
+        last_message: r.last_message ? String(r.last_message) : null,
+        last_message_at: r.last_message_at,
+        other_party_name: r.other_party_name ? String(r.other_party_name) : null,
+        other_party_id: r.other_party_id ? String(r.other_party_id) : null,
+        unread: Boolean(unread),
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+      };
+    });
+  }
+
+  async markConversationRead(conversationId: string, userId: string): Promise<{ ok: boolean }> {
+    const conv = await this.pool.query(`SELECT buyer_id, seller_id FROM chat.conversations WHERE id = $1`, [conversationId]);
+    if (conv.rows.length === 0) throw new NotFoundException('Conversation not found');
+    const row = conv.rows[0];
+    if (row.buyer_id !== userId && row.seller_id !== userId) throw new BadRequestException('You are not part of this conversation');
+    const col = row.buyer_id === userId ? 'buyer_last_read_at' : 'seller_last_read_at';
+    await this.pool.query(`UPDATE chat.conversations SET ${col} = now() WHERE id = $1`, [conversationId]);
+    return { ok: true };
+  }
+
+  private async publishMessage(msg: Record<string, unknown>, recipientId: string): Promise<void> {
+    const senderName = await this.pool.query(`SELECT full_name FROM pii.users WHERE id = $1`, [String(msg.sender_id)]).then((r) => r.rows[0]?.full_name ?? 'Buyer');
+    const conversationId = String(msg.conversation_id);
+    void this.feed.publishMarket('chat.message', String(msg.id), {
+      conversation_id: conversationId,
+      message_id: String(msg.id),
+      sender_id: String(msg.sender_id),
+      sender_name: String(senderName),
+      content: String(msg.content),
+      created_at: String(msg.created_at),
+    });
+    try {
+      await this.notify.notify(recipientId, {
+        type: 'chat',
+        title: String(senderName),
+        body: String(msg.content).slice(0, 120),
+        deep_link: `/chat/${conversationId}`,
+      });
+    } catch {
+      /* best-effort */
+    }
   }
 
   async createProxyNumber(conversationId: string): Promise<string> {

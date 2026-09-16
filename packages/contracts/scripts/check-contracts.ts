@@ -75,6 +75,18 @@ const samples: Record<EventType, EventPayload<EventType>> = {
   'marketing.ad_removed': {
     ad_id: uuid(), seller_id: uuid(), reason: 'REPORTED',
   },
+  'chat.message': {
+    conversation_id: uuid(), message_id: uuid(), sender_id: uuid(), sender_name: 'Bisi Olatunji',
+    content: 'Oya, I get fresh crayfish for you', created_at: new Date().toISOString(),
+  },
+  'market.crowd_sale_created': {
+    sale_id: uuid(), seller_id: uuid(), seller_name: 'Bisi Olatunji', offer_id: uuid(),
+    product_name: 'Crayfish', unit: 'kg', unit_price_kobo: 150000,
+    qty_available: 40, min_qty: 2,
+  },
+  'market.crowd_sale_closed': {
+    sale_id: uuid(), seller_id: uuid(),
+  },
 };
 
 for (const [eventType, payload] of Object.entries(samples) as [EventType, EventPayload<EventType>][]) {
