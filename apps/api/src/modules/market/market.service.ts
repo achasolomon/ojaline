@@ -2,6 +2,7 @@ import { Injectable, Inject, Logger, OnModuleDestroy, OnModuleInit } from '@nest
 import { Pool } from 'pg';
 import { MarketFeedService } from '../realtime/market-feed.service.js';
 import { FeedService } from '../notifications/feed.service.js';
+import { NotifyService } from '../notifications/notify.service.js';
 
 /* ================================================================
  * Server-side Crowd Market + Negotiation engine.
@@ -25,6 +26,15 @@ export interface CreateThreadInput {
   want_id?: string;
   bid_id?: string;
   qty?: number;
+}
+
+export interface CreateCrowdSaleInput {
+  offer_id: string;
+  unit_price_kobo: number;
+  qty_available: number;
+  min_qty?: number;
+  note?: string;
+  ends_at?: string | null;
 }
 
 /* ---------- deterministic helpers (ported 1:1 from the client) ---------- */
@@ -181,6 +191,7 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
     @Inject(Pool) private readonly pool: Pool,
     @Inject(MarketFeedService) private readonly feed: MarketFeedService,
     @Inject(FeedService) private readonly feedService: FeedService,
+    @Inject(NotifyService) private readonly notify: NotifyService,
   ) {}
 
   onModuleInit(): void {
@@ -357,7 +368,11 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
     }));
   }
 
-  async listWants(buyerId: string | undefined, singleId?: string): Promise<Array<Record<string, unknown>>> {
+  async listWants(
+    buyerId: string | undefined,
+    singleId?: string,
+    forSellerId?: string,
+  ): Promise<Array<Record<string, unknown>>> {
     const conn = this.pool;
     const conds: string[] = [];
     const params: unknown[] = [];
@@ -369,6 +384,10 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
     if (singleId) {
       conds.push(`w.id = $${idx++}`);
       params.push(singleId);
+    }
+    if (forSellerId) {
+      conds.push(`EXISTS (SELECT 1 FROM market.bids ob WHERE ob.want_id = w.id AND ob.seller_id = $${idx++})`);
+      params.push(forSellerId);
     }
     const where = conds.length > 0 ? `WHERE ${conds.join(' AND ')}` : '';
     const { rows } = await conn.query(
@@ -403,9 +422,15 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
         created_at: r.created_at,
         bid_count: Number(r.bid_count),
         bidders,
+        my_bid: forSellerId ? bidders.find((b) => String(b.seller_id) === forSellerId) ?? null : null,
       });
     }
     return wants;
+  }
+
+  async listWantsForSeller(sellerId: string): Promise<Array<Record<string, unknown>>> {
+    await this.assertUser(sellerId);
+    return this.listWants(undefined, undefined, sellerId);
   }
 
   private async attachBids(wantId: string, qty: number): Promise<void> {
@@ -507,6 +532,122 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
     return { ok: true };
   }
 
+  /* ---------------------------- crowd sales ---------------------------- */
+
+  async createCrowdSale(sellerId: string, input: CreateCrowdSaleInput): Promise<Record<string, unknown>> {
+    const seller = await this.assertUser(sellerId);
+    if (!input.offer_id?.trim()) throw new Error('offer_id is required');
+    const { rows: offers } = await this.pool.query(
+      `SELECT o.id, o.product_name, o.unit
+         FROM catalog.offers o
+        WHERE o.id = $1 AND o.seller_id = $2 AND o.status = 'ACTIVE'`,
+      [input.offer_id, sellerId],
+    );
+    if (offers.length === 0) throw new Error('Active offer not found for this seller');
+    const offer = offers[0];
+    const unitPriceKobo = Math.floor(Number(input.unit_price_kobo));
+    if (!Number.isFinite(unitPriceKobo) || unitPriceKobo <= 0) throw new Error('unit_price_kobo must be a positive integer');
+    const qtyAvailable = Math.floor(Number(input.qty_available));
+    if (!Number.isFinite(qtyAvailable) || qtyAvailable <= 0) throw new Error('qty_available must be a positive integer');
+    const minQty = Math.floor(Number(input.min_qty ?? 1));
+    if (!Number.isFinite(minQty) || minQty <= 0) throw new Error('min_qty must be a positive integer');
+    const endsAt = input.ends_at ? new Date(input.ends_at) : null;
+    if (endsAt && Number.isNaN(endsAt.getTime())) throw new Error('ends_at must be a valid date');
+
+    const { rows } = await this.pool.query(
+      `INSERT INTO market.crowd_sales
+         (seller_id, offer_id, product_name, unit, unit_price_kobo, qty_available, min_qty, note, ends_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING *`,
+      [
+        sellerId,
+        offer.id,
+        String(offer.product_name),
+        offer.unit ? String(offer.unit) : null,
+        unitPriceKobo,
+        qtyAvailable,
+        minQty,
+        input.note?.trim() ?? '',
+        endsAt,
+      ],
+    );
+    const sale = rows[0];
+    void this.feed.publishMarket('market.crowd_sale_created', String(sale.id), {
+      sale_id: String(sale.id),
+      seller_id: sellerId,
+      seller_name: seller.full_name,
+      offer_id: String(offer.id),
+      product_name: String(sale.product_name),
+      unit: sale.unit ? String(sale.unit) : null,
+      unit_price_kobo: unitPriceKobo,
+      qty_available: qtyAvailable,
+      min_qty: minQty,
+    });
+    return this.rowCrowdSale(sale, 0, seller.full_name);
+  }
+
+  async listCrowdSales(opts: { seller_id?: string; status?: 'OPEN' | 'CLOSED'; limit?: string } = {}) {
+    const conds: string[] = [];
+    const params: unknown[] = [];
+    let idx = 1;
+    if (opts.seller_id) {
+      conds.push(`cs.seller_id = $${idx++}`);
+      params.push(opts.seller_id);
+    }
+    if (opts.status) {
+      conds.push(`cs.status = $${idx++}`);
+      params.push(opts.status);
+    }
+    const where = conds.length > 0 ? `WHERE ${conds.join(' AND ')}` : '';
+    const limit = Math.max(1, Math.min(100, Math.floor(Number(opts.limit ?? 50))));
+    const { rows } = await this.pool.query(
+      `SELECT cs.*, u.full_name AS seller_name,
+              (SELECT COUNT(DISTINCT n.buyer_id)::int
+                 FROM market.negotiations n
+                WHERE n.offer_id = cs.offer_id AND n.basis_type = 'OFFER'
+                  AND n.seller_id = cs.seller_id AND n.created_at >= cs.created_at) AS join_count
+         FROM market.crowd_sales cs
+         JOIN pii.users u ON u.id = cs.seller_id
+        ${where}
+        ORDER BY cs.created_at DESC
+        LIMIT ${limit}`,
+      params,
+    );
+    return rows.map((r) => this.rowCrowdSale(r, Number(r.join_count ?? 0), String(r.seller_name)));
+  }
+
+  private rowCrowdSale(r: Record<string, unknown>, joinCount: number, sellerName: string): Record<string, unknown> {
+    return {
+      id: String(r.id),
+      seller_id: String(r.seller_id),
+      seller_name: sellerName,
+      offer_id: String(r.offer_id),
+      product_name: String(r.product_name),
+      unit: r.unit ? String(r.unit) : null,
+      unit_price_kobo: Number(r.unit_price_kobo),
+      qty_available: Number(r.qty_available),
+      min_qty: Number(r.min_qty),
+      note: String(r.note ?? ''),
+      status: String(r.status),
+      ends_at: r.ends_at,
+      created_at: r.created_at,
+      join_count: joinCount,
+    };
+  }
+
+  async closeCrowdSale(saleId: string, sellerId: string): Promise<{ ok: boolean }> {
+    await this.assertUser(sellerId);
+    const { rows } = await this.pool.query(
+      `UPDATE market.crowd_sales SET status = 'CLOSED', closed_at = now()
+        WHERE id = $1 AND seller_id = $2 AND status = 'OPEN'
+        RETURNING id`,
+      [saleId, sellerId],
+    );
+    if (rows.length === 0) throw new Error('Open crowd sale not found for this seller');
+    void this.feed.publishMarket('market.crowd_sale_closed', saleId, { seller_id: sellerId, sale_id: saleId });
+    return { ok: true };
+  }
+
   /* ---------------------------- negotiations ---------------------------- */
 
   private async assertThread(id: string): Promise<Record<string, unknown>> {
@@ -523,6 +664,42 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
     );
     if (rows.length === 0) throw new Error(`Negotiation ${id} not found`);
     return rows[0];
+  }
+
+  /**
+   * A "real" seller is one who owns a seller profile on the platform, i.e.
+   * someone with a portal account who can actually reply in the seller
+   * centre. Seeded/demo sellers (the crowd-market personas) have no profile
+   * row, so their replies stay simulated.
+   */
+  private async isRealSeller(sellerId: string): Promise<boolean> {
+    const { rows } = await this.pool.query(
+      `SELECT 1 FROM catalog.seller_profiles WHERE user_id = $1`,
+      [sellerId],
+    );
+    return rows.length > 0;
+  }
+
+  /**
+   * Ping a real seller the instant a buyer opens a haggle on their listing
+   * (or on a request they bid for), so they can jump into the seller centre
+   * and answer in person. Seeded sellers have no profile → skipped.
+   */
+  private async notifySellerOfOpen(
+    negotiationId: string,
+    sellerId: string,
+    buyerId: string,
+    basisLabel: string,
+  ): Promise<void> {
+    if (!(await this.isRealSeller(sellerId))) return;
+    const { rows } = await this.pool.query(`SELECT full_name FROM pii.users WHERE id = $1`, [buyerId]);
+    const buyerName = rows[0] ? firstName(String(rows[0].full_name)) : 'A buyer';
+    await this.notify.notify(sellerId, {
+      type: 'chat',
+      title: `${buyerName} wan bargain your ${basisLabel}`,
+      body: 'Oya run come answer — make we settle price.',
+      deep_link: `/seller/negotiations/${negotiationId}`,
+    });
   }
 
   private async threadPayload(id: string): Promise<Record<string, unknown>> {
@@ -588,6 +765,22 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
     return out;
   }
 
+  /**
+   * Seller-side thread list: every negotiation where this user is the
+   * seller, newest activity first. Runs the reply sweep so parked replies
+   * (seeded sellers) flush before the mirror is computed.
+   */
+  async listSellerNegotiations(sellerId: string): Promise<Array<Record<string, unknown>>> {
+    await this.replySweep();
+    const { rows } = await this.pool.query(
+      `SELECT id FROM market.negotiations WHERE seller_id = $1 ORDER BY updated_at DESC`,
+      [sellerId],
+    );
+    const out: Array<Record<string, unknown>> = [];
+    for (const r of rows) out.push(await this.threadPayload(String(r.id)));
+    return out;
+  }
+
   async openThread(input: CreateThreadInput, buyerId: string): Promise<Record<string, unknown>> {
     if (input.basis_type === 'OFFER') {
       if (!input.offer_id) throw new Error('offer_id required');
@@ -628,19 +821,24 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
       `SELECT id FROM market.negotiations WHERE offer_id = $1 AND buyer_id = $2`,
       [offerId, buyerId],
     );
-    const id = existing.rows[0] ? String(existing.rows[0].id) : await this.insertThread({
-      buyerId,
-      sellerId: String(o.seller_id),
-      basisType: 'OFFER',
-      offerId,
-      wantId: null,
-      ask,
-      floor,
-      qty,
-      demeanorSeed: `${String(o.seller_id)}:${offerId}`,
-    });
-    if (existing.rows[0]) {
+    const isNew = existing.rows.length === 0;
+    const id = isNew
+      ? await this.insertThread({
+          buyerId,
+          sellerId: String(o.seller_id),
+          basisType: 'OFFER',
+          offerId,
+          wantId: null,
+          ask,
+          floor,
+          qty,
+          demeanorSeed: `${String(o.seller_id)}:${offerId}`,
+        })
+      : String(existing.rows[0].id);
+    if (!isNew) {
       await this.pool.query(`UPDATE market.negotiations SET qty = $1, updated_at = now() WHERE id = $2`, [qty, id]);
+    } else {
+      await this.notifySellerOfOpen(id, String(o.seller_id), buyerId, String(o.product_name));
     }
     return this.threadPayload(id);
   }
@@ -664,9 +862,9 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
       `SELECT id FROM market.negotiations WHERE want_id = $1 AND seller_id = $2`,
       [wantId, String(b.seller_id)],
     );
-    const id = existing.rows[0]
-      ? String(existing.rows[0].id)
-      : await this.insertThread({
+    const isNew = existing.rows.length === 0;
+    const id = isNew
+      ? await this.insertThread({
           buyerId,
           sellerId: String(b.seller_id),
           basisType: 'REQUEST',
@@ -676,7 +874,9 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
           floor,
           qty,
           demeanorSeed: `${String(b.seller_id)}:${wantId}`,
-        });
+        })
+      : String(existing.rows[0].id);
+    if (isNew) await this.notifySellerOfOpen(id, String(b.seller_id), buyerId, String(b.product_name));
     return this.threadPayload(id);
   }
 
@@ -755,6 +955,18 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
     bidPerUnitKobo: number,
     qty: number,
   ): Promise<void> {
+    if (await this.isRealSeller(String(n.seller_id))) {
+      // The seller actually exists on the portal: no deterministic reply.
+      // Ping them so they can answer from the seller centre, and let the
+      // buyer wait on a human instead of a scripted counter.
+      await this.notify.notify(String(n.seller_id), {
+        type: 'chat',
+        title: `${firstName(String(n.buyer_name))} dey bargain your product`,
+        body: `E propose ${label(bidPerUnitKobo)} each for ${qty} — reply make we close.`,
+        deep_link: `/seller/negotiations/${negotiationId}`,
+      });
+      return;
+    }
     const { rows: msgs } = await this.pool.query(
       `SELECT kind FROM market.negotiation_messages WHERE negotiation_id = $1 AND kind = 'BUYER_BID' ORDER BY created_at`,
       [negotiationId],
@@ -804,6 +1016,95 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
         WHERE id = $1`,
       [negotiationId],
     );
+    return this.threadPayload(negotiationId);
+  }
+
+  /**
+   * Seller drops a counter-offer onto an OPEN thread (the buyer made a bid
+   * and the seller answers). Real sellers reply from the seller centre; the
+   * buyer is notified right away — no simulated delay.
+   */
+  async sellerOffer(
+    negotiationId: string,
+    sellerId: string,
+    perUnitKobo: number,
+    qty?: number,
+    message?: string,
+  ): Promise<Record<string, unknown>> {
+    const n = await this.assertThread(negotiationId);
+    if (String(n.seller_id) !== sellerId) throw new Error('Not your negotiation');
+    if (String(n.observable) !== 'OPEN') throw new Error('Negotiation is not open');
+
+    const perUnit = Math.max(50, Math.round(perUnitKobo / 50) * 50);
+    const newQty = qty != null ? Math.max(1, Math.floor(qty)) : Number(n.qty);
+    const unit = n.basis_type === 'OFFER' ? (n.offer_unit ? String(n.offer_unit) : null) : null;
+    const msgText =
+      message?.trim() ||
+      `Make we settle — I fit do ${label(perUnit)} each for the ${newQty} ${pluralUnit(unit, newQty)}.`;
+    const msgId = await this.insertMessage(negotiationId, {
+      kind: 'SELLER_OFFER', side: 'SELLER', qty: newQty, perUnitKobo: perUnit, message: msgText,
+    });
+    await this.pool.query(
+      `UPDATE market.negotiations SET qty = $1, updated_at = now() WHERE id = $2`,
+      [newQty, negotiationId],
+    );
+    await this.pool.query(
+      `UPDATE market.negotiations
+          SET reply_at = NULL, reply_kind = NULL, reply_per_unit_kobo = NULL, reply_qty = NULL, reply_text = NULL
+        WHERE id = $1`,
+      [negotiationId],
+    );
+    void this.feed.publishMarket('market.negotiation_message', negotiationId, {
+      negotiation_id: negotiationId,
+      buyer_id: String(n.buyer_id),
+      seller_id: sellerId,
+      message_id: msgId,
+      kind: 'SELLER_OFFER', side: 'SELLER', qty: newQty, per_unit_kobo: perUnit,
+    });
+    await this.notify.notify(String(n.buyer_id), {
+      type: 'chat',
+      title: `${firstName(String(n.seller_name))} don reply your haggling`,
+      body: `E drop ${label(perUnit)} each — make we settle.`,
+      deep_link: `/negotiations/${negotiationId}`,
+    });
+    return this.threadPayload(negotiationId);
+  }
+
+  /**
+   * Seller accepts the buyer's current offer on an OPEN thread and settles
+   * the deal, mirroring the buyer's `accept` from the other side.
+   */
+  async sellerAccept(negotiationId: string, sellerId: string, perUnitKobo: number): Promise<Record<string, unknown>> {
+    const n = await this.assertThread(negotiationId);
+    if (String(n.seller_id) !== sellerId) throw new Error('Not your negotiation');
+    if (String(n.observable) === 'SETTLED') return this.threadPayload(negotiationId);
+    if (String(n.observable) !== 'OPEN') throw new Error('Negotiation is not open');
+
+    const msgId = await this.insertMessage(negotiationId, {
+      kind: 'SELLER_ACCEPT', side: 'SELLER', qty: Number(n.qty), perUnitKobo,
+      message: `Na you win today o! ${label(perUnitKobo)} each. Don send am to your cart.`,
+    });
+    await this.pool.query(
+      `UPDATE market.negotiations
+          SET observable = 'SETTLED', freeze_expires_at = NULL,
+              reply_at = NULL, reply_kind = NULL, reply_per_unit_kobo = NULL, reply_qty = NULL, reply_text = NULL,
+              updated_at = now()
+        WHERE id = $1`,
+      [negotiationId],
+    );
+    void this.feed.publishMarket('market.negotiation_message', negotiationId, {
+      negotiation_id: negotiationId,
+      buyer_id: String(n.buyer_id),
+      seller_id: sellerId,
+      message_id: msgId,
+      kind: 'SELLER_ACCEPT', side: 'SELLER', qty: Number(n.qty), per_unit_kobo: perUnitKobo,
+    });
+    await this.notify.notify(String(n.buyer_id), {
+      type: 'deal',
+      title: `${firstName(String(n.seller_name))} don agree with your price`,
+      body: `${label(perUnitKobo)} each ${Number(n.qty)} — head to your cart.`,
+      deep_link: `/negotiations/${negotiationId}`,
+    });
     return this.threadPayload(negotiationId);
   }
 
