@@ -148,7 +148,7 @@ export default function Offers() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      let cancelled = false;
+      const cancelled = false;
       setLoading(true);
       setError(null);
 
@@ -366,7 +366,7 @@ export default function Offers() {
                 className="rounded-[9px] px-3 py-2.5 text-[11px]"
                 iconClass="right-2.5"
               />
-              <Button size="sm" onClick={() => navigate('/offers/new')}>
+              <Button size="sm" onClick={() => navigate('/seller/products/new')}>
                 + New Offer
               </Button>
             </div>

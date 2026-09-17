@@ -6,7 +6,7 @@ import { AddressSwitcher, roleLabel } from './AddressSwitcher';
 import { getUnreadCount, subscribeNotifications } from '../lib/notifications';
 import { getCartCount, subscribeCart } from '../lib/cart';
 import { useNegotiationCount } from '../lib/negotiation';
-import { isLoggedIn, AUTH_EVENT } from '../lib/session';
+import { isLoggedIn, AUTH_EVENT, getUser } from '../lib/session';
 import { subscribeAddresses, activeAddress, addressShortLabel } from '../lib/addresses';
 
 export function MobileHeader({ minimal = false }: { minimal?: boolean }) {
@@ -16,6 +16,7 @@ export function MobileHeader({ minimal = false }: { minimal?: boolean }) {
   const [notifCount, setNotifCount] = useState(() => getUnreadCount());
   const [cartCount, setCartCount] = useState(() => getCartCount());
   const [authed, setAuthed] = useState(() => isLoggedIn());
+  const [isSeller, setIsSeller] = useState(() => Boolean(getUser()?.seller_type));
   const [addr, setAddr] = useState(() => activeAddress());
   const [addrOpen, setAddrOpen] = useState(false);
   const haggleCount = useNegotiationCount();
@@ -27,6 +28,7 @@ export function MobileHeader({ minimal = false }: { minimal?: boolean }) {
     const unsubAddr = subscribeAddresses(() => setAddr(activeAddress()));
     const onAuth = () => {
       setAuthed(isLoggedIn());
+      setIsSeller(Boolean(getUser()?.seller_type));
       setNotifCount(getUnreadCount());
       setAddr(activeAddress());
     };
@@ -60,6 +62,9 @@ export function MobileHeader({ minimal = false }: { minimal?: boolean }) {
         <div className="flex-1" />
         <button type="button" onClick={() => navigate('/crowd-market')} className="w-9 h-9 flex items-center justify-center rounded-full bg-transparent border-none cursor-pointer" aria-label="Crowd market">
           <Icon name="megaphone" size={20} className="text-primary" />
+        </button>
+        <button type="button" onClick={() => navigate(isSeller ? '/seller/dashboard' : '/seller/products/new')} className="w-9 h-9 flex items-center justify-center rounded-full bg-transparent border-none cursor-pointer" aria-label="Sell">
+          <Icon name="store" size={20} className="text-primary" />
         </button>
         {authed && (
           <button type="button" onClick={() => navigate('/negotiations')} className="relative w-9 h-9 flex items-center justify-center rounded-full bg-transparent border-none cursor-pointer" aria-label="Your negotiations">

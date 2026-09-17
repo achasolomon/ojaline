@@ -8,7 +8,7 @@ import { Icon, type IconName } from '../components/icons';
 import { AddressForm } from '../components/AddressForm';
 
 const QUICK_LINKS: { label: string; sub: string; icon: IconName; to: string }[] = [
-  { label: 'Sell on Kika', sub: 'List a product', icon: 'store', to: '/offers/new' },
+  { label: 'Sell on Kika', sub: 'List a product', icon: 'store', to: '/seller/products/new' },
   { label: 'My Messages', sub: 'Chat with sellers', icon: 'message', to: '/chat' },
   { label: 'My Orders', sub: 'Track purchases', icon: 'box', to: '/orders' },
   { label: 'Notifications', sub: 'Alerts & updates', icon: 'bell', to: '/notifications' },
@@ -21,19 +21,27 @@ const AD_STUDIO_LINK: { label: string; sub: string; icon: IconName; to: string }
   label: 'Ad Studio',
   sub: 'Popup ads & banners',
   icon: 'megaphone',
-  to: '/ads',
+  to: '/seller/ads',
 };
 
 const PAYOUTS_LINK: { label: string; sub: string; icon: IconName; to: string } = {
-  label: 'Payouts', sub: 'Earnings & withdrawals', icon: 'bank', to: '/payouts',
+  label: 'Payouts', sub: 'Earnings & withdrawals', icon: 'bank', to: '/seller/payouts',
+};
+
+const SELLER_CENTRE_LINK: { label: string; sub: string; icon: IconName; to: string } = {
+  label: 'Seller Centre', sub: 'Dashboard, orders & payouts', icon: 'store', to: '/seller/dashboard',
 };
 
 const RETURNS_LINK: { label: string; sub: string; icon: IconName; to: string } = {
   label: 'Returns & disputes', sub: 'Refunds, disputes & escalation', icon: 'refresh', to: '/returns',
 };
 
+const SELLER_RETURNS_LINK: { label: string; sub: string; icon: IconName; to: string } = {
+  label: 'Returns & disputes', sub: 'Refund & escalate buyer claims', icon: 'refresh', to: '/seller/returns',
+};
+
 const ANALYTICS_LINK: { label: string; sub: string; icon: IconName; to: string } = {
-  label: 'My Analytics', sub: 'Orders, ratings & top products', icon: 'star', to: '/analytics',
+  label: 'My Analytics', sub: 'Orders, ratings & top products', icon: 'star', to: '/seller/analytics',
 };
 
 const OPS_CONSOLE_LINK: { label: string; sub: string; icon: IconName; to: string } = {
@@ -52,7 +60,7 @@ export default function Account() {
   const navigate = useNavigate();
   const user = getUser();
   const userId = getUserId();
-  const quickLinks = user?.seller_type ? [...QUICK_LINKS, SELLER_ORDERS_LINK, SELLER_INVENTORY_LINK, PAYOUTS_LINK, RETURNS_LINK, ANALYTICS_LINK, AD_STUDIO_LINK] : user?.roles?.some((r) => r === 'OPS' || r === 'AGENT') ? [...QUICK_LINKS, RETURNS_LINK, OPS_CONSOLE_LINK] : QUICK_LINKS;
+  const quickLinks = user?.seller_type ? [SELLER_CENTRE_LINK, ...QUICK_LINKS, SELLER_ORDERS_LINK, SELLER_INVENTORY_LINK, PAYOUTS_LINK, SELLER_RETURNS_LINK, ANALYTICS_LINK, AD_STUDIO_LINK] : user?.roles?.some((r) => r === 'OPS' || r === 'AGENT') ? [...QUICK_LINKS, RETURNS_LINK, OPS_CONSOLE_LINK] : QUICK_LINKS;
   const [addresses, setAddresses] = useState<SavedAddress[]>([]);
   const [cartCount, setCartCount] = useState(() => getCartCount());
   const [unread, setUnread] = useState(() => getUnreadCount());

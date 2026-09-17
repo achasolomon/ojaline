@@ -29,7 +29,7 @@ export default function Login() {
     try {
       const session = await login(identifier.trim(), password);
       saveSession(session);
-      navigate(from, { replace: true });
+      navigate(session.user?.seller_type ? '/home' : from, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed. Please try again.');
       setSubmitting(false);

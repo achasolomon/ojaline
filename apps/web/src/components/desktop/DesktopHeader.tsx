@@ -15,6 +15,7 @@ export function DesktopHeader() {
   const [unreadCount, setUnreadCount] = useState(() => getUnreadCount());
   const haggleCount = useNegotiationCount();
   const [authed, setAuthed] = useState(() => isLoggedIn());
+  const [isSeller, setIsSeller] = useState(() => Boolean(getUser()?.seller_type));
   const [userName, setUserName] = useState(() => getUser()?.full_name?.split(' ')[0] ?? '');
   const [addr, setAddr] = useState(() => activeAddress());
   const [addrOpen, setAddrOpen] = useState(false);
@@ -25,6 +26,7 @@ export function DesktopHeader() {
     const unsubAddr = subscribeAddresses(() => setAddr(activeAddress()));
     const onAuth = () => {
       setAuthed(isLoggedIn());
+      setIsSeller(Boolean(getUser()?.seller_type));
       setUserName(getUser()?.full_name?.split(' ')[0] ?? '');
       setAddr(activeAddress());
     };
@@ -78,7 +80,7 @@ export function DesktopHeader() {
               <Icon name="megaphone" size={16} className="text-primary shrink-0" />
               <span className="hidden xl:inline text-[11px] font-semibold">Crowd market</span>
             </button>
-            <button type="button" onClick={() => navigate('/offers/new')} title="Sell on Kika" className="flex h-9 items-center gap-1.5 rounded-full px-2 whitespace-nowrap bg-transparent border-none cursor-pointer text-text hover:text-primary hover:bg-surface transition">
+            <button type="button" onClick={() => navigate(isSeller ? '/seller/dashboard' : '/seller/products/new')} title="Sell on Kika" className="flex h-9 items-center gap-1.5 rounded-full px-2 whitespace-nowrap bg-transparent border-none cursor-pointer text-text hover:text-primary hover:bg-surface transition">
               <Icon name="store" size={16} className="shrink-0" />
               <span className="hidden xl:inline text-[11px] font-semibold">Sell</span>
             </button>

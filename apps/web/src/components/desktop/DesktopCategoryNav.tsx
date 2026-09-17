@@ -298,7 +298,7 @@ export function DesktopCategoryNav() {
           <NavDropdown
             label="More"
             options={[
-              { label: 'Sell on Kika', href: '/offers/new', icon: 'plus' },
+              { label: 'Sell on Kika', href: '/seller/products/new', icon: 'plus' },
               { label: 'My Cart', href: '/cart', icon: 'cart' },
               { label: 'Notifications', href: '/notifications', icon: 'bell' },
               { label: 'Account', href: '/account', icon: 'user' },

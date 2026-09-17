@@ -182,6 +182,64 @@ export class SellersService {
   }
 
   /**
+   * Storefront appearance — a seller sets their profile photo and storefront
+   * banner from uploaded media keys (GET /media/:key serves them). Passing an
+   * explicit null clears a field; omitting a field leaves it untouched.
+   */
+  async updateAppearance(
+    user: AuthUser,
+    input: { profile_photo_url?: string | null; banner_url?: string | null },
+  ): Promise<{ profile_photo_url: string | null; banner_url: string | null }> {
+    if (!user.seller_type) {
+      throw new ForbiddenException('Register as a seller before customising your storefront');
+    }
+    const sanitize = (value: unknown): string | null => {
+      if (value == null) return null;
+      const key = String(value).trim();
+      if (!/^[0-9a-zA-Z.-]{8,100}$/.test(key)) {
+        throw new BadRequestException('Media key must reference an uploaded image (jpg, jpeg, png, webp or gif)');
+      }
+      return key;
+    };
+
+    const updates: string[] = [];
+    const params: unknown[] = [user.id];
+    let idx = 2;
+    if (input.profile_photo_url !== undefined) {
+      updates.push(`profile_photo_url = $${idx++}`);
+      params.push(sanitize(input.profile_photo_url));
+    }
+    if (input.banner_url !== undefined) {
+      updates.push(`banner_url = $${idx++}`);
+      params.push(sanitize(input.banner_url));
+    }
+    if (updates.length === 0) {
+      const { rows } = await this.pool.query(
+        `SELECT profile_photo_url, banner_url FROM catalog.seller_profiles WHERE user_id = $1`,
+        [user.id],
+      );
+      return {
+        profile_photo_url: rows[0] ? (rows[0].profile_photo_url ?? null) : null,
+        banner_url: rows[0] ? (rows[0].banner_url ?? null) : null,
+      };
+    }
+
+    updates.push(`updated_at = now()`);
+    const { rows } = await this.pool.query(
+      `UPDATE catalog.seller_profiles
+          SET ${updates.join(', ')}
+        WHERE user_id = $1
+        RETURNING profile_photo_url, banner_url`,
+      params,
+    );
+    if (!rows[0]) throw new NotFoundException('Seller profile not found');
+    return {
+      profile_photo_url: rows[0].profile_photo_url ?? null,
+      banner_url: rows[0].banner_url ?? null,
+    };
+  }
+
+  /**
    * FULL-tier identity submission. The seller first exists at BASIC tier;
    * this collects a government-issued ID and address for the review step.
    * Approved identity unlocks payouts, the verified badge and Ad Studio.

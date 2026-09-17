@@ -4,7 +4,6 @@ import { naira } from '@ojaline/design';
 import {
   getNegotiations,
   subscribeNegotiations,
-  negotiationDeepLink,
   type Negotiation,
 } from '../lib/negotiation';
 import { useMediaQuery, DESKTOP_BREAKPOINT } from '../lib/useMediaQuery';
@@ -70,7 +69,7 @@ function StatusChip({ n }: { n: Negotiation }) {
   );
 }
 
-export default function NegotiationsPage() {
+export default function NegotiationsPage({ base = '/negotiations' }: { base?: string }) {
   const navigate = useNavigate();
   const isDesktop = useMediaQuery(DESKTOP_BREAKPOINT);
   const [items, setItems] = useState<Negotiation[]>(() => getNegotiations());
@@ -94,7 +93,7 @@ export default function NegotiationsPage() {
 
   const openThread = (n: Negotiation) => {
     if (isDesktop) setSelectedId(n.id);
-    else navigate(negotiationDeepLink(n));
+    else navigate(`${base}/${n.id}`);
   };
 
   const emptyState = (

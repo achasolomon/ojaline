@@ -47,6 +47,16 @@ export class SellersController {
     return this.sellers.submitKyc(user, body ?? {});
   }
 
+  @Patch('appearance')
+  @AuthRequired()
+  @HttpCode(HttpStatus.OK)
+  async updateAppearance(
+    @CurrentUser() user: AuthUser,
+    @Body() body?: { profile_photo_url?: string | null; banner_url?: string | null },
+  ) {
+    return this.sellers.updateAppearance(user, body ?? {});
+  }
+
   @Post(':id/approve')
   @AuthRequired()
   @HttpCode(HttpStatus.OK)

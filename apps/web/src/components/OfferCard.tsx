@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { MouseEvent } from 'react';
 import type { Offer } from '../lib/api';
+import { mediaUrl } from '../lib/api';
 import { naira } from '@ojaline/design';
 import { addToCart } from '../lib/cart';
 import { prefetchOffer } from '../lib/api';
@@ -152,6 +153,15 @@ export function OfferCard({ offer, onClick, wished, onWishlistToggle }: OfferCar
         </div>
 
         <p className="flex items-center gap-1 text-[11px] text-textSecondary lg:text-[10px]">
+          {offer.profile_photo_url ? (
+            <img
+              src={mediaUrl(offer.profile_photo_url) ?? ''}
+              alt=""
+              className="h-3.5 w-3.5 shrink-0 rounded-full object-cover"
+            />
+          ) : (
+            <Icon name="user" size={12} className="shrink-0 text-gray-300" />
+          )}
           <span className="truncate">{offer.seller_name || 'Verified seller'}</span>
           <Icon name="check" size={12} className="shrink-0 text-primary" />
         </p>

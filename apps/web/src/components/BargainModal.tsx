@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Offer } from '../lib/api';
+import { mediaUrl } from '../lib/api';
 import { naira } from '@ojaline/design';
 import { addToCart } from '../lib/cart';
 import { volumePerUnitKobo, sellerTitle } from '../lib/bargain';
+import { Icon } from './icons';
 import {
   createOfferNegotiation,
   ensureLoaded,
@@ -73,7 +75,6 @@ export function BargainModal({
       cancelled = true;
       off();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [offer.id]);
 
   const fresh = getNegotiations().find((n) => n.id === negId);
@@ -92,17 +93,30 @@ export function BargainModal({
         {/* Header */}
         <div className="bg-gradient-to-r from-secondary to-[#F5A623] px-5 py-4 text-[#6B4A00]">
           <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <div className="text-[10px] font-extrabold uppercase tracking-widest text-[#8A5F00]">
-                Negotiate · {sellerTitle(offer)}
+            <div className="flex min-w-0 items-center gap-2">
+              {offer.profile_photo_url ? (
+                <img
+                  src={mediaUrl(offer.profile_photo_url) ?? ''}
+                  alt=""
+                  className="h-9 w-9 shrink-0 rounded-full border-2 border-[#F5A623]/40 object-cover"
+                />
+              ) : (
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#F5A623]/20 text-[#8A5F00]">
+                  <Icon name="user" size={16} />
+                </span>
+              )}
+              <div className="min-w-0">
+                <div className="text-[10px] font-extrabold uppercase tracking-widest text-[#8A5F00]">
+                  Negotiate · {sellerTitle(offer)}
+                </div>
+                <div className="mt-1 flex items-baseline gap-2">
+                  <span className="text-xl font-black tracking-tight text-[#5B4300]">{fmt(singleAsk)}</span>
+                  <span className="text-[12px] font-semibold text-[#8A5F00]/70 line-through">{fmt(offer.price_cents)}</span>
+                </div>
+                <p className="mt-0.5 truncate text-[11px] font-medium text-[#6B4A00]">
+                  per {offer.unit?.trim() || 'unit'} · {offer.product_name}
+                </p>
               </div>
-              <div className="mt-1.5 flex items-baseline gap-2">
-                <span className="text-xl font-black tracking-tight text-[#5B4300]">{fmt(singleAsk)}</span>
-                <span className="text-[12px] font-semibold text-[#8A5F00]/70 line-through">{fmt(offer.price_cents)}</span>
-              </div>
-              <p className="mt-0.5 truncate text-[11px] font-medium text-[#6B4A00]">
-                per {offer.unit?.trim() || 'unit'} · {offer.product_name}
-              </p>
             </div>
           </div>
         </div>

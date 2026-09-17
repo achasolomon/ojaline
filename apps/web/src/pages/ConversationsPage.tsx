@@ -18,7 +18,7 @@ function timeAgo(dateStr: string | null): string {
   return `${days}d`;
 }
 
-export default function ConversationsPage() {
+export default function ConversationsPage({ base = '/chat' }: { base?: string }) {
   const navigate = useNavigate();
   const isDesktop = useMediaQuery(DESKTOP_BREAKPOINT);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -41,7 +41,7 @@ export default function ConversationsPage() {
 
   const openConvo = (conv: Conversation) => {
     if (isDesktop) setSelectedId(conv.id);
-    else navigate(`/chat/${conv.id}`);
+    else navigate(`${base}/${conv.id}`);
   };
 
   const emptyState = (

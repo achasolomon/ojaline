@@ -79,6 +79,15 @@ export interface SellerStats {
   top_products: Array<{ offer_id: string; product_name: string; sold_qty: number; revenue_cents: number }>;
 }
 
+export interface SellerTrend {
+  days: number;
+  total_orders: number;
+  total_sales_cents: number;
+  total_released_cents: number;
+  best_day: { date: string; sales_cents: number } | null;
+  trend: Array<{ date: string; orders: number; sales_cents: number; released_cents: number }>;
+}
+
 export interface PlatformStats {
   sellers_total: number;
   orders_total: number;
@@ -767,6 +776,70 @@ const { rows: disputeRows } = await client.query<{ id: string }>(
         sold_qty: Number(p.sold_qty),
         revenue_cents: Number(p.revenue_cents),
       })),
+    };
+  }
+
+  /**
+   * Daily sales + released-payout trend for a seller over the last `days`.
+   * Sales = value of active order lines placed that day; released = escrow
+   * payouts credited that day. Zero-filled so the chart always has a full axis.
+   */
+  async getSellerTrend(actor: AuthUser, days = 14): Promise<SellerTrend> {
+    const n = Math.min(Math.max(days, 3), 60);
+    const { rows } = await this.pool.query(
+      `WITH days AS (
+         SELECT (now()::date - (($2::int - 1 - gs)::int))::date AS day
+         FROM generate_series(0, $2::int - 1) gs
+       ),
+       orders AS (
+         SELECT o.created_at::date AS day,
+                count(DISTINCT o.id)::int AS orders,
+                COALESCE(SUM(ol.unit_price_cents * ol.qty), 0)::int AS sales_cents
+         FROM orders.order_lines ol
+         JOIN orders.orders o ON o.id = ol.order_id
+         WHERE ol.seller_id = $1
+           AND ol.status IN ('PAID','DISPATCHED','DELIVERED','PENDING')
+           AND o.created_at >= now()::date - ($2::int - 1)
+         GROUP BY o.created_at::date
+       ),
+       released AS (
+         SELECT created_at::date AS day,
+                COALESCE(SUM(-amount_cents), 0)::int AS released_cents
+         FROM escrow.ledger_entries
+         WHERE entry_type = 'SELLER_PAYOUT' AND counterparty_type = 'SELLER' AND counterparty_id = $1
+           AND created_at >= now()::date - ($2::int - 1)
+         GROUP BY created_at::date
+       )
+       SELECT d.day::text AS date,
+              COALESCE(o.orders, 0)::int AS orders,
+              COALESCE(o.sales_cents, 0)::int AS sales_cents,
+              COALESCE(r.released_cents, 0)::int AS released_cents
+       FROM days d
+       LEFT JOIN orders o ON o.day = d.day
+       LEFT JOIN released r ON r.day = d.day
+       ORDER BY d.day`,
+      [actor.id, n],
+    );
+
+    const trend = rows.map((r) => ({
+      date: new Date(`${r.date}T00:00:00`).toISOString(),
+      orders: Number(r.orders),
+      sales_cents: Number(r.sales_cents),
+      released_cents: Number(r.released_cents),
+    }));
+
+    let best: { date: string; sales_cents: number } | null = null;
+    for (const p of trend) {
+      if (!best || p.sales_cents > best.sales_cents) best = { date: p.date, sales_cents: p.sales_cents };
+    }
+
+    return {
+      days: n,
+      total_orders: trend.reduce((s, p) => s + p.orders, 0),
+      total_sales_cents: trend.reduce((s, p) => s + p.sales_cents, 0),
+      total_released_cents: trend.reduce((s, p) => s + p.released_cents, 0),
+      best_day: best && best.sales_cents > 0 ? best : null,
+      trend,
     };
   }
 

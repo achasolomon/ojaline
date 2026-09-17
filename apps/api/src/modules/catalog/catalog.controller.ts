@@ -122,6 +122,16 @@ export class CatalogController {
     });
   }
 
+  @Get('offers/mine/analytics')
+  @AuthRequired()
+  async getSellerAnalytics(
+    @CurrentUser() user: AuthUser,
+    @Query('seller_id') sellerIdParam?: string,
+  ) {
+    const requested = sellerIdParam || user.id;
+    return this.catalog.getSellerAnalytics(requested, user);
+  }
+
   @Get('offers/:id/similar')
   async getSimilarOffers(
     @Param('id') id: string,
@@ -145,9 +155,15 @@ export class CatalogController {
     return this.catalog.addReview(offerId, body.reviewer_id, body.rating, body.review_text);
   }
 
+  @Get('offers/:id/analytics')
+  @AuthRequired()
+  async getOfferAnalytics(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.catalog.getOfferAnalytics(id, user);
+  }
+
   @Get('offers/:id')
-  async findOffer(@Param('id') id: string) {
-    return this.catalog.findOfferById(id);
+  async findOffer(@Param('id') id: string, @CurrentUser() user?: AuthUser) {
+    return this.catalog.findOfferById(id, user);
   }
 
   @Patch('offers/:id/price')
@@ -170,6 +186,7 @@ export class CatalogController {
     @Body() body: {
       product_name?: string;
       physical_ref?: string;
+      description?: string;
       unit?: string;
       available_qty?: number;
       min_order_qty?: number;
@@ -177,6 +194,8 @@ export class CatalogController {
       perishability?: string;
       fulfilment_modes?: string[];
       cluster_id?: string;
+      market_id?: string | null;
+      category_id?: string;
       price_cents?: number;
     },
     @CurrentUser() user: AuthUser,
@@ -223,6 +242,16 @@ export class CatalogController {
     return this.catalog.removeOfferMedia(id, user, mediaId);
   }
 
+  @Patch('offers/:id/media/:media_id/primary')
+  @AuthRequired()
+  async setOfferPrimary(
+    @Param('id') id: string,
+    @Param('media_id') mediaId: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.catalog.setOfferPrimary(id, user, mediaId);
+  }
+
   @Post('offers')
   @AuthRequired()
   async createOffer(
@@ -239,6 +268,9 @@ export class CatalogController {
       price_cents: number;
       category_id?: string;
       unit?: string;
+      market_id?: string;
+      description?: string;
+      media_keys?: string[];
     },
     @CurrentUser() user: AuthUser,
   ) {

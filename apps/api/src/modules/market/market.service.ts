@@ -538,8 +538,9 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
     const seller = await this.assertUser(sellerId);
     if (!input.offer_id?.trim()) throw new Error('offer_id is required');
     const { rows: offers } = await this.pool.query(
-      `SELECT o.id, o.product_name, o.unit
+      `SELECT o.id, l.product_name, o.unit
          FROM catalog.offers o
+         JOIN catalog.lots l ON l.id = o.lot_id
         WHERE o.id = $1 AND o.seller_id = $2 AND o.status = 'ACTIVE'`,
       [input.offer_id, sellerId],
     );
@@ -638,7 +639,7 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
   async closeCrowdSale(saleId: string, sellerId: string): Promise<{ ok: boolean }> {
     await this.assertUser(sellerId);
     const { rows } = await this.pool.query(
-      `UPDATE market.crowd_sales SET status = 'CLOSED', closed_at = now()
+      `UPDATE market.crowd_sales SET status = 'CLOSED', ends_at = coalesce(ends_at, now())
         WHERE id = $1 AND seller_id = $2 AND status = 'OPEN'
         RETURNING id`,
       [saleId, sellerId],

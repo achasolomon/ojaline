@@ -112,7 +112,7 @@ async function refresh(): Promise<void> {
   return inFlight;
 }
 
-function mapWant(w: ApiWant): CrowdRequest {
+export function mapWant(w: ApiWant): CrowdRequest {
   return {
     id: w.id,
     buyer_id: w.buyer_id,
@@ -132,7 +132,7 @@ function mapWant(w: ApiWant): CrowdRequest {
   };
 }
 
-function mapBidder(b: ApiBidder): CrowdBidder {
+export function mapBidder(b: ApiBidder): CrowdBidder {
   return { ...b, channel: 'OPEN' };
 }
 

@@ -184,6 +184,12 @@ export class DisputesController {
     return this.disputes.getSellerStats(user);
   }
 
+  @Get('analytics/seller/trend')
+  @AuthRequired()
+  async getSellerTrend(@CurrentUser() user: AuthUser, @Query('days') days?: string) {
+    return this.disputes.getSellerTrend(user, days ? Number(days) : 14);
+  }
+
   @Get('analytics/platform')
   @AuthRequired()
   @Roles('OPS', 'AGENT')

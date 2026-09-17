@@ -12,7 +12,7 @@ const HELP_TOPICS: { icon: IconName; title: string; body: string; to?: string }[
     icon: 'store',
     title: 'Selling on Kika',
     body: 'Create a listing in minutes from the Sell option. Set your price, units, quantity and how you want to fulfil orders.',
-    to: '/offers/new',
+    to: '/seller/products/new',
   },
   {
     icon: 'truck',

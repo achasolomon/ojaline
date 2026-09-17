@@ -459,10 +459,13 @@ export default function OfferDetail() {
           </div>
 
           {/* Description */}
-          {offer.physical_ref && (
+          {(offer.description || offer.physical_ref) && (
             <div className="rounded-2xl border border-border bg-white p-5 lg:p-6">
               <h2 className="mb-2 text-base font-black text-text">Description</h2>
-              <p className="text-sm leading-relaxed text-textSecondary">{offer.physical_ref}</p>
+              {offer.description && <p className="text-sm leading-relaxed text-textSecondary">{offer.description}</p>}
+              {offer.physical_ref && (
+                <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-primary">{offer.physical_ref}</p>
+              )}
             </div>
           )}
 

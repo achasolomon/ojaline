@@ -41,14 +41,21 @@ export interface Offer {
   created_at: string;
   product_name: string;
   physical_ref: string;
+  description?: string | null;
   price_cents: number | null;
   category_id: string | null;
   primary_image: OfferImage | null;
   images?: OfferImage[];
   negotiable?: boolean;
   unit?: string | null;
-  stall_number?: string;
+  marketplace?: 'market' | 'delivery';
+  cluster_name?: string;
+  lga?: string;
+  state?: string;
+  category_name?: string;
+  market_id?: string | null;
   market_name?: string;
+  stall_number?: string;
   member_since?: string;
   profile_photo_url?: string;
   years_in_market?: number;
@@ -96,6 +103,9 @@ export interface CreateOfferRequest {
   price_cents: number;
   category_id?: string;
   unit?: string;
+  market_id?: string;
+  description?: string;
+  media_keys: string[];
 }
 
 export interface CreateOfferResponse {
@@ -429,6 +439,7 @@ export interface Seller {
   market_name?: string;
   member_since?: string;
   profile_photo_url?: string;
+  banner_url?: string | null;
   years_in_market?: number;
   avg_rating?: number;
   review_count?: number;
@@ -504,13 +515,16 @@ export interface MyOffer {
   perishability: Perishability;
   fulfilment_modes: FulfilmentMode[];
   cluster_id: string;
+  market_id: string | null;
   unit: string | null;
   created_at: string;
   product_name: string;
   physical_ref: string;
+  description: string | null;
   category_id: string | null;
   price_cents: number | null;
   primary_image: OfferImage | null;
+  images?: OfferImage[];
   sold_qty: number;
   delivered_qty: number;
 }
@@ -523,6 +537,7 @@ export interface MyOffersPage {
 export interface UpdateOfferInput {
   product_name?: string;
   physical_ref?: string;
+  description?: string;
   unit?: string;
   available_qty?: number;
   min_order_qty?: number;
@@ -530,6 +545,8 @@ export interface UpdateOfferInput {
   perishability?: Perishability;
   fulfilment_modes?: FulfilmentMode[];
   cluster_id?: string;
+  market_id?: string | null;
+  category_id?: string;
   price_cents?: number;
 }
 
@@ -543,6 +560,59 @@ export async function getMyOffers(
   if (params?.limit != null) qs.set('limit', String(params.limit));
   if (params?.offset != null) qs.set('offset', String(params.offset));
   return getJson<MyOffersPage>(`/catalog/offers/mine?${qs.toString()}`);
+}
+
+export interface OfferDailyViews {
+  date: string;
+  views: number;
+}
+
+/** Per-offer performance for the seller's product detail page. */
+export interface OfferAnalytics {
+  offer_id: string;
+  total_views: number;
+  views_7d: number;
+  views_14d: number;
+  sold_qty: number;
+  delivered_qty: number;
+  revenue_cents: number;
+  /** sold / total views × 100 (null when there are no views yet). */
+  conversion_rate_7d: number | null;
+  views: OfferDailyViews[];
+}
+
+export async function getOfferAnalytics(offerId: string): Promise<OfferAnalytics> {
+  return getJson<OfferAnalytics>(`/catalog/offers/${encodeURIComponent(offerId)}/analytics`);
+}
+
+export interface SellerOfferAnalytics {
+  offer_id: string;
+  total_views: number;
+  views_7d: number;
+  views_14d: number;
+  sold_qty: number;
+  revenue_cents: number;
+  views: OfferDailyViews[];
+}
+
+export interface SellerAnalyticsTotals {
+  total_views: number;
+  views_7d: number;
+  views_14d: number;
+  sold_qty: number;
+  delivered_qty: number;
+  revenue_cents: number;
+  conversion_rate_7d: number | null;
+}
+
+export interface SellerAnalytics {
+  totals: SellerAnalyticsTotals;
+  offers: SellerOfferAnalytics[];
+}
+
+export async function getSellerAnalytics(sellerId?: string): Promise<SellerAnalytics> {
+  const qs = sellerId ? `?seller_id=${encodeURIComponent(sellerId)}` : '';
+  return getJson<SellerAnalytics>(`/catalog/offers/mine/analytics${qs}`);
 }
 
 export async function updateOffer(offerId: string, input: UpdateOfferInput): Promise<{ offer_id: string; updated: string[] }> {
@@ -566,6 +636,10 @@ export async function addOfferMedia(
 
 export async function removeOfferMedia(offerId: string, mediaId: string): Promise<{ removed: boolean }> {
   return deleteJson(`/catalog/offers/${offerId}/media/${mediaId}`);
+}
+
+export async function setOfferPrimary(offerId: string, mediaId: string): Promise<{ media_id: string; is_primary: boolean }> {
+  return patchJson(`/catalog/offers/${offerId}/media/${mediaId}/primary`, {});
 }
 
 export async function getSimilarOffers(offerId: string, limit = 8): Promise<Offer[]> {
@@ -954,6 +1028,7 @@ export interface CrowdWant {
   created_at: string;
   bid_count: number;
   bidders: CrowdBidder[];
+  my_bid?: CrowdBidder | null;
 }
 
 export async function createWant(buyerId: string, input: {
@@ -972,6 +1047,13 @@ export async function getWants(buyerId: string): Promise<CrowdWant[]> {
 
 export async function getWant(wantId: string): Promise<CrowdWant> {
   return getJson<CrowdWant>(`/wants/${wantId}`);
+}
+
+/** Buyer crowd wants where the seller has already bid — the "serve" feed. The
+ *  server only returns wants whose market.bids contain this seller_id, so each
+ *  row is a want the seller can already take care of (open the bargain chat). */
+export async function getWantsForSeller(sellerId: string): Promise<CrowdWant[]> {
+  return getJson<CrowdWant[]>(`/wants?seller_id=${encodeURIComponent(sellerId)}`);
 }
 
 // ---------- crowd sales (seller-side) ----------
@@ -1460,6 +1542,11 @@ export async function listNegotiations(buyerId: string): Promise<NegotiationThre
   return getJson<NegotiationThread[]>(`/negotiations?buyer_id=${encodeURIComponent(buyerId)}`);
 }
 
+/** Seller-side thread list — every negotiation where this user is the seller. */
+export async function listSellerNegotiations(sellerId: string): Promise<NegotiationThread[]> {
+  return getJson<NegotiationThread[]>(`/negotiations?seller_id=${encodeURIComponent(sellerId)}`);
+}
+
 export async function submitNegotiationBid(negotiationId: string, buyerId: string, input: {
   qty: number;
   total_kobo: number;
@@ -1708,6 +1795,22 @@ export interface SellerStats {
   top_products: Array<{ offer_id: string; product_name: string; sold_qty: number; revenue_cents: number }>;
 }
 
+export interface SellerTrendPoint {
+  date: string;
+  orders: number;
+  sales_cents: number;
+  released_cents: number;
+}
+
+export interface SellerTrend {
+  days: number;
+  total_orders: number;
+  total_sales_cents: number;
+  total_released_cents: number;
+  best_day: { date: string; sales_cents: number } | null;
+  trend: SellerTrendPoint[];
+}
+
 export interface PlatformStats {
   sellers_total: number;
   orders_total: number;
@@ -1786,6 +1889,10 @@ export async function getSellerStats(): Promise<SellerStats> {
   return getJson<SellerStats>('/disputes/analytics/seller');
 }
 
+export async function getSellerTrend(days = 14): Promise<SellerTrend> {
+  return getJson<SellerTrend>(`/disputes/analytics/seller/trend?days=${days}`);
+}
+
 export async function getPlatformStats(): Promise<PlatformStats> {
   return getJson<PlatformStats>('/disputes/analytics/platform');
 }
@@ -1807,4 +1914,20 @@ export async function fileToBase64(file: File): Promise<{ data: string; mime: st
 export async function uploadImage(data: string, mime: string): Promise<string> {
   const res = await postJson<{ storage_key: string }>('/media', { data, mime });
   return res.storage_key;
+}
+
+export interface SellerAppearance {
+  profile_photo_url: string | null;
+  banner_url: string | null;
+}
+
+/**
+ * Update this seller's storefront appearance. Pass an explicit null to clear
+ * a field; omit a field to leave it untouched.
+ */
+export async function updateSellerAppearance(input: {
+  profile_photo_url?: string | null;
+  banner_url?: string | null;
+}): Promise<SellerAppearance> {
+  return patchJson<SellerAppearance>('/sellers/appearance', input);
 }

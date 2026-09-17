@@ -60,7 +60,7 @@ export default function AdStudio() {
             Promote your products with popup notices and homepage banners. Ad Studio is available to sellers — open a stall
             to start advertising.
           </p>
-          <Button className="mt-6" onClick={() => navigate('/offers/new')}>
+          <Button className="mt-6" onClick={() => navigate('/seller/products/new')}>
             Start selling
           </Button>
         </div>

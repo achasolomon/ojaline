@@ -2,6 +2,7 @@ import { Injectable, Inject, NotFoundException, ForbiddenException, BadRequestEx
 import { Pool } from 'pg';
 import { MarketFeedService } from '../realtime/market-feed.service.js';
 import type { AuthUser } from '../auth/auth.service.js';
+import { MEDIA_KEY_RE, removeStoredFile } from '../media/storage.js';
 
 export interface DiscoverOffersQuery {
   channel?: string;
@@ -103,6 +104,7 @@ export class CatalogService {
          l.physical_ref,
          l.category_id,
          p.new_price_cents::int AS price_cents,
+         sp.profile_photo_url,
          COALESCE(
            (SELECT json_build_object('id', m.id, 'storage_key', m.storage_key)
             FROM catalog.offer_media m
@@ -130,7 +132,7 @@ export class CatalogService {
     return { offers: rows, total };
   }
 
-  async findOfferById(offerId: string): Promise<Record<string, unknown>> {
+  async findOfferById(offerId: string, viewer?: AuthUser): Promise<Record<string, unknown>> {
     const { rows } = await this.pool.query(
       `SELECT
          o.id,
@@ -145,9 +147,17 @@ export class CatalogService {
          o.created_at,
          o.negotiable,
          o.unit,
+         o.market_id,
          l.product_name,
          l.physical_ref,
+         l.description,
          l.category_id,
+         c.name AS cluster_name,
+         c.lga,
+         c.state,
+         mk.name AS market_name,
+         mk.calendar AS market_calendar,
+         cat.name AS category_name,
          p.new_price_cents::int AS price_cents,
          sp.stall_number,
          sp.market_name,
@@ -171,6 +181,9 @@ export class CatalogService {
        JOIN catalog.lots l ON l.id = o.lot_id
        JOIN pii.users u ON u.id = o.seller_id
        LEFT JOIN catalog.seller_profiles sp ON sp.user_id = o.seller_id
+       LEFT JOIN catalog.clusters c ON c.id = o.cluster_id
+       LEFT JOIN catalog.markets mk ON mk.id = o.market_id
+       LEFT JOIN catalog.categories cat ON cat.id = l.category_id
        LEFT JOIN catalog.offer_price_history p ON p.offer_id = o.id
          AND p.changed_at = (
            SELECT max(p2.changed_at)
@@ -185,7 +198,160 @@ export class CatalogService {
       throw new NotFoundException(`Offer ${offerId} not found`);
     }
 
-    return rows[0];
+    // Count a view when a non-owner opens the offer detail. Fire-and-forget:
+    // a slow counter write must never hold up the public page.
+    const offer = rows[0];
+    if (!viewer || String(viewer.id) !== String(offer.seller_id)) {
+      void this.pool
+        .query(
+          `INSERT INTO catalog.offer_views (offer_id, viewed_on, views)
+           VALUES ($1, CURRENT_DATE, 1)
+           ON CONFLICT (offer_id, viewed_on) DO UPDATE SET views = offer_views.views + 1`,
+          [offerId],
+        )
+        .catch(() => {});
+    }
+
+    return offer;
+  }
+
+  /**
+   * Per-offer performance for the seller's product detail page: view history
+   * (last 14 days), sales/delivery totals and revenue, plus a views→sales
+   * conversion figure. Ownership-gated to the offer's seller (or OPS/AGENT).
+   */
+  async getOfferAnalytics(offerId: string, actor: AuthUser): Promise<Record<string, unknown>> {
+    const { rows: owned } = await this.pool.query(
+      `SELECT seller_id FROM catalog.offers WHERE id = $1`,
+      [offerId],
+    );
+    if (owned.length === 0) throw new NotFoundException(`Offer ${offerId} not found`);
+    const sellerId = String(owned[0].seller_id);
+    if (actor.id !== sellerId && !actor.roles.some((r) => r === 'OPS' || r === 'AGENT')) {
+      throw new ForbiddenException('This offer belongs to another seller');
+    }
+
+    const { rows } = await this.pool.query(
+      `SELECT
+         (SELECT COALESCE(SUM(v.views)::int, 0) FROM catalog.offer_views v WHERE v.offer_id = o.id) AS total_views,
+         (SELECT COALESCE(SUM(v.views)::int, 0) FROM catalog.offer_views v WHERE v.offer_id = o.id AND v.viewed_on >= CURRENT_DATE - 6) AS views_7d,
+         COALESCE(SUM(ol.qty) FILTER (WHERE ol.status IN ('PAID','ACCEPTED','DISPATCHED','DELIVERED')), 0)::int AS sold_qty,
+         COALESCE(SUM(ol.qty) FILTER (WHERE ol.status = 'DELIVERED'), 0)::int AS delivered_qty,
+         COALESCE(SUM(ol.qty * ol.unit_price_cents) FILTER (WHERE ol.status IN ('PAID','ACCEPTED','DISPATCHED','DELIVERED')), 0)::bigint AS revenue_cents
+       FROM catalog.offers o
+       LEFT JOIN orders.order_lines ol ON ol.offer_id = o.id
+       WHERE o.id = $1
+       GROUP BY o.id`,
+      [offerId],
+    );
+
+    const daily = await this.pool.query(
+      `SELECT to_char(d.day, 'YYYY-MM-DD') AS viewed_on, COALESCE(v.views, 0)::int AS views
+         FROM generate_series(CURRENT_DATE - 13, CURRENT_DATE, '1 day'::interval) AS d(day)
+         LEFT JOIN catalog.offer_views v ON v.offer_id = $1 AND v.viewed_on = d.day
+        ORDER BY d.day ASC`,
+      [offerId],
+    );
+
+    const a = rows[0];
+    const totalViews = Number(a.total_views);
+    const soldQty = Number(a.sold_qty);
+    return {
+      offer_id: offerId,
+      total_views: totalViews,
+      views_7d: Number(a.views_7d),
+      views_14d: daily.rows.reduce<number>((sum, r) => sum + Number(r.views), 0),
+      sold_qty: soldQty,
+      delivered_qty: Number(a.delivered_qty),
+      revenue_cents: Number(a.revenue_cents),
+      conversion_rate_7d: totalViews > 0 ? Math.round((soldQty / totalViews) * 1000) / 10 : null,
+      views: daily.rows.map((r) => ({ date: String(r.viewed_on), views: Number(r.views) })),
+    };
+  }
+
+  /**
+   * Seller-wide performance for the inventory list page: aggregate totals across
+   * all of a seller's offers plus a per-offer 14-day views series for sparklines.
+   */
+  async getSellerAnalytics(sellerId: string, actor: AuthUser): Promise<Record<string, unknown>> {
+    if (actor.id !== sellerId && !actor.roles.some((r) => r === 'OPS' || r === 'AGENT')) {
+      throw new ForbiddenException('This analytics belongs to another seller');
+    }
+
+    const [totalsRes, perOfferRes, dailyRes] = await Promise.all([
+      this.pool.query(
+        `SELECT
+           COALESCE((SELECT SUM(v.views)::int FROM catalog.offer_views v
+                      JOIN catalog.offers o ON o.id = v.offer_id WHERE o.seller_id = $1), 0) AS total_views,
+           COALESCE((SELECT SUM(v.views)::int FROM catalog.offer_views v
+                      JOIN catalog.offers o ON o.id = v.offer_id
+                     WHERE o.seller_id = $1 AND v.viewed_on >= CURRENT_DATE - 6), 0) AS views_7d,
+           COALESCE(SUM(ol.qty) FILTER (WHERE ol.status IN ('PAID','ACCEPTED','DISPATCHED','DELIVERED')), 0)::int AS sold_qty,
+           COALESCE(SUM(ol.qty) FILTER (WHERE ol.status = 'DELIVERED'), 0)::int AS delivered_qty,
+           COALESCE(SUM(ol.qty * ol.unit_price_cents) FILTER (WHERE ol.status IN ('PAID','ACCEPTED','DISPATCHED','DELIVERED')), 0)::bigint AS revenue_cents
+         FROM catalog.offers o
+         LEFT JOIN orders.order_lines ol ON ol.offer_id = o.id
+         WHERE o.seller_id = $1`,
+        [sellerId],
+      ),
+      this.pool.query(
+        `SELECT o.id AS offer_id,
+           COALESCE((SELECT SUM(v.views)::int FROM catalog.offer_views v WHERE v.offer_id = o.id), 0) AS total_views,
+           COALESCE((SELECT SUM(v.views)::int FROM catalog.offer_views v WHERE v.offer_id = o.id AND v.viewed_on >= CURRENT_DATE - 6), 0) AS views_7d,
+           COALESCE(SUM(ol.qty) FILTER (WHERE ol.status IN ('PAID','ACCEPTED','DISPATCHED','DELIVERED')), 0)::int AS sold_qty,
+           COALESCE(SUM(ol.qty * ol.unit_price_cents) FILTER (WHERE ol.status IN ('PAID','ACCEPTED','DISPATCHED','DELIVERED')), 0)::bigint AS revenue_cents
+         FROM catalog.offers o
+         LEFT JOIN orders.order_lines ol ON ol.offer_id = o.id
+         WHERE o.seller_id = $1
+         GROUP BY o.id`,
+        [sellerId],
+      ),
+      this.pool.query(
+        `SELECT o.id AS offer_id, to_char(d.day, 'YYYY-MM-DD') AS viewed_on, COALESCE(v.views, 0)::int AS views
+           FROM catalog.offers o
+           CROSS JOIN generate_series(CURRENT_DATE - 13, CURRENT_DATE, '1 day'::interval) AS d(day)
+           LEFT JOIN catalog.offer_views v ON v.offer_id = o.id AND v.viewed_on = d.day
+          WHERE o.seller_id = $1
+          ORDER BY o.id ASC, d.day ASC`,
+        [sellerId],
+      ),
+    ]);
+
+    const series = new Map<string, Array<{ date: string; views: number }>>();
+    for (const r of dailyRes.rows) {
+      const key = String(r.offer_id);
+      if (!series.has(key)) series.set(key, []);
+      series.get(key)!.push({ date: String(r.viewed_on), views: Number(r.views) });
+    }
+
+    const offers = perOfferRes.rows.map((o) => {
+      const points = series.get(String(o.offer_id)) ?? [];
+      return {
+        offer_id: String(o.offer_id),
+        total_views: Number(o.total_views),
+        views_7d: Number(o.views_7d),
+        views_14d: points.reduce((sum, p) => sum + p.views, 0),
+        sold_qty: Number(o.sold_qty),
+        revenue_cents: Number(o.revenue_cents),
+        views: points,
+      };
+    });
+
+    const t = totalsRes.rows[0];
+    const totalViews = Number(t.total_views);
+    const soldQty = Number(t.sold_qty);
+    return {
+      totals: {
+        total_views: totalViews,
+        views_7d: Number(t.views_7d),
+        views_14d: offers.reduce((sum, o) => sum + o.views_14d, 0),
+        sold_qty: soldQty,
+        delivered_qty: Number(t.delivered_qty),
+        revenue_cents: Number(t.revenue_cents),
+        conversion_rate_7d: totalViews > 0 ? Math.round((soldQty / totalViews) * 1000) / 10 : null,
+      },
+      offers,
+    };
   }
 
   async getCategories(): Promise<Array<Record<string, unknown>>> {
@@ -249,26 +415,61 @@ export class CatalogService {
     price_cents: number;
     category_id?: string;
     unit?: string;
+    market_id?: string;
+    description?: string;
+    media_keys?: string[];
   }): Promise<{ offer_id: string; lot_id: string }> {
     await this.assertCanSell(input.seller_id);
+
+    const mediaKeys = (input.media_keys ?? []).map((k) => String(k).trim());
+    if (mediaKeys.length < 2) {
+      throw new BadRequestException('At least two product photos are required');
+    }
+    if (mediaKeys.length > 8) {
+      throw new BadRequestException('A listing can have at most 8 photos');
+    }
+    if (mediaKeys.some((k) => !MEDIA_KEY_RE.test(k))) {
+      throw new BadRequestException('media_keys must reference uploaded images (jpg, jpeg, png, webp or gif)');
+    }
+
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
 
+      const { rows: clusterRows } = await client.query(
+        `SELECT ST_X(centroid::geometry) AS lon, ST_Y(centroid::geometry) AS lat
+           FROM catalog.clusters WHERE id = $1`,
+        [input.cluster_id],
+      );
+      if (clusterRows.length === 0) {
+        throw new BadRequestException(`Cluster ${input.cluster_id} not found`);
+      }
+
+      let marketId: string | null = input.market_id?.trim() || null;
+      if (marketId) {
+        const { rows: mrows } = await client.query(
+          `SELECT 1 FROM catalog.markets WHERE id = $1 AND cluster_id = $2`,
+          [marketId, input.cluster_id],
+        );
+        if (mrows.length === 0) {
+          throw new BadRequestException('The selected market does not belong to the chosen location');
+        }
+      }
+
       const { rows: lotRows } = await client.query(
-        `INSERT INTO catalog.lots (seller_id, product_name, physical_ref, category_id)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO catalog.lots (seller_id, product_name, physical_ref, category_id, description)
+         VALUES ($1, $2, $3, $4, $5)
          RETURNING id`,
-        [input.seller_id, input.product_name, input.physical_ref, input.category_id || null],
+        [input.seller_id, input.product_name, input.physical_ref, input.category_id || null, input.description?.trim() || null],
       );
       const lotId: string = lotRows[0].id;
 
       const { rows: offerRows } = await client.query(
         `INSERT INTO catalog.offers
            (seller_id, channel, lot_id, available_qty, min_order_qty,
-            perishability, fulfilment_modes, cluster_id, geo, unit)
+            perishability, fulfilment_modes, cluster_id, geo, unit, market_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
-            ST_SetSRID(ST_MakePoint(3.3792, 6.5244), 4326)::geography, $9)
+            ST_SetSRID(ST_MakePoint($9, $10), 4326)::geography, $11, $12)
          RETURNING id`,
         [
           input.seller_id,
@@ -279,7 +480,10 @@ export class CatalogService {
           input.perishability,
           input.fulfilment_modes,
           input.cluster_id,
+          Number(clusterRows[0].lon),
+          Number(clusterRows[0].lat),
           input.unit?.trim() || null,
+          marketId,
         ],
       );
       const offerId: string = offerRows[0].id;
@@ -288,6 +492,13 @@ export class CatalogService {
         `INSERT INTO catalog.offer_price_history (offer_id, new_price_cents)
          VALUES ($1, $2)`,
         [offerId, input.price_cents],
+      );
+
+      await client.query(
+        `INSERT INTO catalog.offer_media (offer_id, kind, storage_key, is_primary)
+         SELECT $1, 'GALLERY', x.key, x.idx = 1
+           FROM unnest($2::text[]) WITH ORDINALITY AS x(key, idx)`,
+        [offerId, mediaKeys],
       );
 
       await client.query('COMMIT');
@@ -596,7 +807,7 @@ export class CatalogService {
               CASE WHEN sp.kyc_tier = 'FULL' THEN TRUE ELSE FALSE END AS verified,
               sp.bio, sp.seller_type AS profile_type,
               sp.stall_number, sp.market_name, sp.member_since,
-              sp.profile_photo_url, sp.years_in_market,
+              sp.profile_photo_url, sp.banner_url, sp.years_in_market,
               sp.avg_rating, sp.review_count,
               sp.completed_orders, sp.total_orders,
               CASE WHEN sp.total_orders > 0
@@ -907,8 +1118,8 @@ export class CatalogService {
          o.available_qty, o.reserved_qty, o.soft_held_qty,
          (o.available_qty - o.reserved_qty - o.soft_held_qty) AS sellable_qty,
          o.min_order_qty, o.perishability, o.fulfilment_modes, o.cluster_id,
-         o.unit, o.created_at,
-         l.product_name, l.physical_ref, l.category_id,
+         o.unit, o.market_id, o.created_at,
+         l.product_name, l.physical_ref, l.description, l.category_id,
          p.new_price_cents::int AS price_cents,
          COALESCE(
            (SELECT json_build_object('id', m.id, 'storage_key', m.storage_key)
@@ -917,6 +1128,12 @@ export class CatalogService {
             LIMIT 1),
            'null'
          ) AS primary_image,
+         COALESCE(
+           (SELECT json_agg(json_build_object('id', m.id, 'storage_key', m.storage_key, 'is_primary', m.is_primary))
+            FROM catalog.offer_media m
+            WHERE m.offer_id = o.id),
+           '[]'
+         ) AS images,
          COALESCE(SUM(ol.qty) FILTER (WHERE ol.status IN ('PAID','ACCEPTED','DISPATCHED','DELIVERED')), 0)::int AS sold_qty,
          COALESCE(SUM(ol.qty) FILTER (WHERE ol.status = 'DELIVERED'), 0)::int AS delivered_qty
        FROM catalog.offers o
@@ -931,7 +1148,7 @@ export class CatalogService {
        ${where}
        GROUP BY o.id, o.status, o.channel, o.available_qty, o.reserved_qty, o.soft_held_qty,
                 o.min_order_qty, o.perishability, o.fulfilment_modes, o.cluster_id,
-                o.unit, o.created_at, l.product_name, l.physical_ref, l.category_id,
+                o.unit, o.market_id, o.created_at, l.product_name, l.physical_ref, l.description, l.category_id,
                 p.new_price_cents
        ORDER BY o.created_at DESC
        LIMIT $${idx++} OFFSET $${idx++}`,
@@ -947,6 +1164,7 @@ export class CatalogService {
     patch: {
       product_name?: string;
       physical_ref?: string;
+      description?: string;
       unit?: string;
       available_qty?: number;
       min_order_qty?: number;
@@ -954,6 +1172,8 @@ export class CatalogService {
       perishability?: string;
       fulfilment_modes?: string[];
       cluster_id?: string;
+      market_id?: string | null;
+      category_id?: string;
       price_cents?: number;
     },
   ): Promise<{ offer_id: string; updated: string[] }> {
@@ -974,6 +1194,7 @@ export class CatalogService {
     }
     if (patch.product_name !== undefined && !patch.product_name.trim()) throw new BadRequestException('product_name cannot be empty');
     if (patch.physical_ref !== undefined && !patch.physical_ref.trim()) throw new BadRequestException('physical_ref cannot be empty');
+    if (patch.description !== undefined && !patch.description.trim()) throw new BadRequestException('description cannot be empty');
     if (patch.available_qty !== undefined && (!Number.isInteger(patch.available_qty) || patch.available_qty < 0)) {
       throw new BadRequestException('available_qty must be a non-negative integer');
     }
@@ -989,7 +1210,7 @@ export class CatalogService {
       await client.query('BEGIN');
 
       const { rows } = await client.query(
-        `SELECT o.seller_id, o.available_qty, o.reserved_qty, o.soft_held_qty,
+        `SELECT o.seller_id, o.available_qty, o.reserved_qty, o.soft_held_qty, o.cluster_id,
                 l.id AS lot_id, l.product_name AS current_name,
                 p.new_price_cents AS current_price
            FROM catalog.offers o
@@ -1010,6 +1231,8 @@ export class CatalogService {
         throw new ForbiddenException('This offer belongs to another seller');
       }
 
+      const effectiveCluster = patch.cluster_id !== undefined ? patch.cluster_id : String(offer.cluster_id);
+
       const updated: string[] = [];
       const sets: string[] = [];
       const vals: unknown[] = [];
@@ -1020,6 +1243,36 @@ export class CatalogService {
         vals.push(value);
         updated.push(col);
       };
+
+      // Location changes recompute geo from the cluster centroid so the pin is
+      // never stale or misleading.
+      if (patch.cluster_id !== undefined) {
+        const { rows: crow } = await client.query(
+          `SELECT ST_X(centroid::geometry) AS lon, ST_Y(centroid::geometry) AS lat
+             FROM catalog.clusters WHERE id = $1`,
+          [patch.cluster_id],
+        );
+        if (crow.length === 0) throw new BadRequestException(`Cluster ${patch.cluster_id} not found`);
+        sets.push(`geo = ST_SetSRID(ST_MakePoint($${idx}, $${idx + 1}), 4326)::geography`);
+        vals.push(Number(crow[0].lon), Number(crow[0].lat));
+        idx += 2;
+      }
+
+      if (patch.market_id !== undefined) {
+        if (patch.market_id) {
+          const { rows: mrows } = await client.query(
+            `SELECT 1 FROM catalog.markets WHERE id = $1 AND cluster_id = $2`,
+            [patch.market_id, effectiveCluster],
+          );
+          if (mrows.length === 0) {
+            throw new BadRequestException('The selected market does not belong to the chosen location');
+          }
+          setIf('market_id', patch.market_id, 'market_id');
+        } else {
+          setIf('market_id', null, 'market_id');
+        }
+      }
+
       if (patch.available_qty !== undefined) {
         const floor = Number(offer.reserved_qty) + Number(offer.soft_held_qty);
         if (patch.available_qty < floor) {
@@ -1045,6 +1298,8 @@ export class CatalogService {
       let lidx = 1;
       if (patch.product_name !== undefined) { lotSets.push(`product_name = $${lidx++}`); lotVals.push(patch.product_name.trim()); updated.push('product_name'); }
       if (patch.physical_ref !== undefined) { lotSets.push(`physical_ref = $${lidx++}`); lotVals.push(patch.physical_ref.trim()); updated.push('physical_ref'); }
+      if (patch.description !== undefined) { lotSets.push(`description = $${lidx++}`); lotVals.push(patch.description.trim() || null); updated.push('description'); }
+      if (patch.category_id !== undefined) { lotSets.push(`category_id = $${lidx++}`); lotVals.push(patch.category_id || null); updated.push('category_id'); }
       if (lotSets.length > 0) {
         await client.query(
           `UPDATE catalog.lots SET ${lotSets.join(', ')} WHERE id = $${lidx++}`,
@@ -1168,7 +1423,7 @@ export class CatalogService {
       await client.query('BEGIN');
 
       const { rows } = await client.query(
-        `SELECT o.seller_id
+        `SELECT o.seller_id, m.storage_key
            FROM catalog.offer_media m
            JOIN catalog.offers o ON o.id = m.offer_id
           WHERE m.id = $1 AND m.offer_id = $2
@@ -1182,7 +1437,42 @@ export class CatalogService {
 
       await client.query(`DELETE FROM catalog.offer_media WHERE id = $1`, [mediaId]);
       await client.query('COMMIT');
+      void removeStoredFile(String(rows[0].storage_key));
       return { removed: true };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async setOfferPrimary(
+    offerId: string,
+    actor: AuthUser,
+    mediaId: string,
+  ): Promise<{ media_id: string; is_primary: boolean }> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const { rows } = await client.query(
+        `SELECT o.seller_id
+           FROM catalog.offer_media m
+           JOIN catalog.offers o ON o.id = m.offer_id
+          WHERE m.id = $1 AND m.offer_id = $2
+          FOR UPDATE OF o`,
+        [mediaId, offerId],
+      );
+      if (rows.length === 0) throw new NotFoundException(`Media ${mediaId} not found on offer ${offerId}`);
+      if (actor.id !== String(rows[0].seller_id) && !actor.roles.some((r) => r === 'OPS' || r === 'AGENT')) {
+        throw new ForbiddenException('This offer belongs to another seller');
+      }
+
+      await client.query(`UPDATE catalog.offer_media SET is_primary = FALSE WHERE offer_id = $1`, [offerId]);
+      await client.query(`UPDATE catalog.offer_media SET is_primary = TRUE WHERE id = $1`, [mediaId]);
+      await client.query('COMMIT');
+      return { media_id: mediaId, is_primary: true };
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;

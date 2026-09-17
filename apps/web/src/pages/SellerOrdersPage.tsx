@@ -11,7 +11,6 @@ import {
 import { getUserId, getUser } from '../lib/session';
 import { toCSV, downloadCSV } from '../lib/csv';
 import { Icon } from '../components/icons';
-import { NotificationBell } from '../components/NotificationBell';
 
 const fmt = (kobo: number) => naira.format(kobo / 100);
 
@@ -133,7 +132,7 @@ export default function SellerOrdersPage() {
         <p className="mt-1 text-xs text-textSecondary">Register a seller profile to start receiving and managing orders.</p>
         <button
           type="button"
-          onClick={() => navigate('/offers/new')}
+          onClick={() => navigate('/seller/products/new')}
           className="mt-4 rounded-xl bg-primary px-4 py-2.5 text-[12px] font-bold text-white transition hover:bg-primary-dark"
         >
           Set up seller profile
@@ -189,14 +188,17 @@ export default function SellerOrdersPage() {
   };
 
   return (
-    <div className="flex h-full flex-col bg-surface/60">
-      <header className="flex items-center gap-3 border-b border-border px-4 py-3">
-        <button type="button" onClick={() => navigate(-1)} className="p-1">
-          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
+    <div className="flex h-full flex-col">
+      <header className="flex items-center gap-2 border-b border-border bg-white px-3 py-2.5">
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-text transition hover:bg-surface"
+          aria-label="Go back"
+        >
+          <Icon name="arrowRight" size={19} className="rotate-180" />
         </button>
-        <h1 className="flex-1 text-lg font-semibold text-text">Seller Orders</h1>
+        <h1 className="flex-1 text-[15px] font-extrabold text-text">Orders</h1>
         {orders && orders.length > 0 && (
           <button
             type="button"
@@ -206,7 +208,6 @@ export default function SellerOrdersPage() {
             Export CSV
           </button>
         )}
-        <NotificationBell />
         <span className="flex items-center gap-1.5 rounded-full bg-primary-light px-2.5 py-1 text-[10px] font-bold text-primary">
           <Icon name="orders" size={12} />
           {orders == null ? '…' : orders.length}
@@ -224,13 +225,13 @@ export default function SellerOrdersPage() {
             <span className="grid h-14 w-14 place-items-center rounded-full bg-surface text-textSecondary">
               <Icon name="orders" size={24} />
             </span>
-            <p className="mt-3 text-sm font-bold text-text">You no get seller orders yet</p>
+            <p className="mt-3 text-sm font-bold text-text">No seller orders yet</p>
             <p className="mt-1 text-xs text-textSecondary">
-              When a buyer pays for your item, the order go dey show here.
+              When a buyer pays for your item, the order will show here.
             </p>
             <button
               type="button"
-              onClick={() => navigate('/offers/new')}
+              onClick={() => navigate('/seller/products/new')}
               className="mt-4 rounded-xl bg-primary px-4 py-2.5 text-[12px] font-bold text-white transition hover:bg-primary-dark"
             >
               Create an offer
@@ -244,14 +245,14 @@ export default function SellerOrdersPage() {
                   key={item.id}
                   type="button"
                   onClick={() => setFilter(item.id)}
-                  className={`shrink-0 rounded-lg px-3 py-1.5 text-[10px] font-bold transition ${filter === item.id ? 'bg-primary text-white' : 'border border-border bg-white text-textSecondary hover:border-primary/40'}`}
+                  className={`shrink-0 rounded-lg px-3 py-1.5 text-[10px] font-bold transition ${filter === item.id ? 'bg-primary text-white' : 'bg-white text-textSecondary hover:border-primary/40 border border-border'}`}
                 >
                   {item.label}
                 </button>
               ))}
             </div>
             {orders.length === 0 ? (
-              <div className="rounded-2xl border border-border bg-white px-5 py-10 text-center">
+              <div className="rounded-2xl bg-white px-5 py-10 text-center">
                 <p className="text-sm font-bold text-text">
                   No {LINE_FILTERS.find((item) => item.id === filter)?.label.toLowerCase()} orders
                 </p>
@@ -261,7 +262,7 @@ export default function SellerOrdersPage() {
               orders.map((o) => (
                 <div
                   key={o.id}
-                  className="mb-4 rounded-2xl border border-border bg-white px-4 py-3.5 shadow-[0_4px_16px_rgba(15,48,28,0.04)] transition hover:border-primary/30 hover:shadow-sm"
+                  className="mb-4 rounded-2xl bg-white px-4 py-3.5 transition hover:border-primary/30 hover:shadow-sm"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-[11px] font-bold uppercase tracking-wide text-textSecondary">
@@ -286,7 +287,7 @@ export default function SellerOrdersPage() {
                       return (
                         <div
                           key={l.id}
-                          className="rounded-xl border border-border/60 bg-surface/40 p-3"
+                          className="rounded-xl bg-surface/40 p-3"
                         >
                           <div className="flex items-start justify-between gap-2">
                             <p className="min-w-0 flex-1 text-[13px] font-semibold text-text">
@@ -306,36 +307,36 @@ export default function SellerOrdersPage() {
                           {l.decline_reason && (
                             <p className="mt-1 text-[11px] font-medium text-danger">Reason declined: {l.decline_reason}</p>
                           )}
-                          {(l.status === 'PAID' || l.status === 'ACCEPTED') && (
-                            <div className="mt-2.5 flex flex-wrap gap-2 border-t border-border/60 pt-2.5">
-                              {l.status === 'PAID' && (
-                                <button
-                                  type="button"
-                                  disabled={anyBusy}
-                                  onClick={() => handleAccept(o.id, l.id)}
-                                  className={`rounded-lg bg-[#087A38] px-3 py-1.5 text-[11px] font-bold text-white transition ${anyBusy && busyKey === kAccept ? 'opacity-60' : 'hover:bg-[#065e2c]'}`}
-                                >
-                                  {busyKey === kAccept ? 'Accepting…' : 'Accept'}
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                disabled={anyBusy}
-                                onClick={() => handleDispatch(o.id, l.id)}
-                                className={`rounded-lg bg-primary px-3 py-1.5 text-[11px] font-bold text-white transition ${anyBusy && busyKey === kDispatch ? 'opacity-60' : 'hover:bg-primary-dark'}`}
-                              >
-                                {busyKey === kDispatch ? 'Dispatching…' : 'Dispatch'}
-                              </button>
-                              <button
-                                type="button"
-                                disabled={anyBusy}
-                                onClick={() => handleDecline(o.id, l.id)}
-                                className={`rounded-lg border border-danger bg-white px-3 py-1.5 text-[11px] font-bold text-danger transition ${anyBusy && busyKey === kDecline ? 'opacity-60' : 'hover:bg-danger/5'}`}
-                              >
-                                {busyKey === kDecline ? 'Declining…' : 'Decline'}
-                              </button>
-                            </div>
-                          )}
+{(l.status === 'PAID' || l.status === 'ACCEPTED') && (
+                <div className="mt-2.5 grid grid-cols-2 gap-2 border-t border-border/60 pt-2.5">
+                  {l.status === 'PAID' && (
+                    <button
+                      type="button"
+                      disabled={anyBusy}
+                      onClick={() => handleAccept(o.id, l.id)}
+                      className={`rounded-lg bg-[#087A38] px-3 py-2 text-[11px] font-bold text-white transition ${anyBusy && busyKey === kAccept ? 'opacity-60' : 'hover:bg-[#065e2c]'}`}
+                    >
+                      {busyKey === kAccept ? 'Accepting…' : 'Accept'}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={anyBusy}
+                    onClick={() => handleDispatch(o.id, l.id)}
+                    className={`rounded-lg bg-primary px-3 py-2 text-[11px] font-bold text-white transition ${anyBusy && busyKey === kDispatch ? 'opacity-60' : 'hover:bg-primary-dark'}`}
+                  >
+                    {busyKey === kDispatch ? 'Dispatching…' : 'Dispatch'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={anyBusy}
+                    onClick={() => handleDecline(o.id, l.id)}
+                    className={`rounded-lg border border-danger bg-white px-3 py-2 text-[11px] font-bold text-danger transition ${anyBusy && busyKey === kDecline ? 'opacity-60' : 'hover:bg-danger/5'}`}
+                  >
+                    {busyKey === kDecline ? 'Declining…' : 'Decline'}
+                  </button>
+                </div>
+              )}
                         </div>
                       );
                     })}
