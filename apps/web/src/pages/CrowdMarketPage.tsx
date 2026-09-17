@@ -15,7 +15,15 @@ import {
   findRequestNegotiation,
   type Negotiation,
 } from '../lib/negotiation';
-import { getOfferById } from '../lib/api';
+import { getCategories, getOfferById, type Category } from '../lib/api';
+import {
+  formatDistanceKm,
+  getGuestLocation,
+  requestBrowserLocation,
+  setGuestLocation,
+  subscribeGuestLocation,
+  type GuestLocation,
+} from '../lib/guestLocation';
 import { addToCart } from '../lib/cart';
 import { pluralUnit } from '../lib/bargain';
 import { NegotiationChat } from '../components/NegotiationChat';
@@ -89,6 +97,11 @@ function BiddingCard({
           <p className="truncate text-[10px] font-medium text-textSecondary">
             <Icon name="map" size={10} className="mr-0.5 inline" />
             {bidder.market_name ?? 'Oja'} · Stall {bidder.stall_number ?? '—'}
+            {bidder.distance_m != null && (
+              <span className="ml-1.5 font-bold text-primary">
+                · {formatDistanceKm(bidder.distance_m / 1000)} away
+              </span>
+            )}
             {bidder.rating != null && (
               <span className="ml-1.5 text-[#B8860B]">
                 ★ {Number(bidder.rating).toFixed(1)} ({bidder.review_count})
@@ -193,6 +206,17 @@ export function CrowdMarketPage() {
   const [unitCustom, setUnitCustom] = useState('');
   const [budget, setBudget] = useState('');
   const [note, setNote] = useState('');
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoryId, setCategoryId] = useState('');
+  const [guestLoc, setGuestLoc] = useState<GuestLocation | null>(() => getGuestLocation());
+  const [locating, setLocating] = useState(false);
+  const [locError, setLocError] = useState('');
+
+  useEffect(() => {
+    void getCategories().then(setCategories, () => {});
+  }, []);
+
+  useEffect(() => subscribeGuestLocation(setGuestLoc), []);
 
   // New-bid arrive toast (mobile): only fires after the initial snapshot.
   const seenBids = useRef<Record<string, string[]>>({});
@@ -253,6 +277,19 @@ export function CrowdMarketPage() {
 
   const finalUnit = unit === 'custom' ? unitCustom.trim() : unit;
 
+  const useMyLocation = async () => {
+    setLocError('');
+    setLocating(true);
+    try {
+      const { lat, lon } = await requestBrowserLocation();
+      setGuestLocation({ lat, lon, label: 'Current location', source: 'gps' });
+    } catch (err) {
+      setLocError(err instanceof Error ? err.message : 'Could not get your location');
+    } finally {
+      setLocating(false);
+    }
+  };
+
   const submit = async () => {
     const name = productName.trim();
     if (!name || qty < 1) return;
@@ -264,10 +301,14 @@ export function CrowdMarketPage() {
         unit: finalUnit || null,
         ceiling_kobo: budget.trim() ? Math.round(Number(budget.replace(/[^0-9]/g, '')) * 100) : null,
         note,
+        lat: guestLoc?.lat ?? null,
+        lon: guestLoc?.lon ?? null,
+        category_id: categoryId || null,
       });
       setProductName('');
       setNote('');
       setBudget('');
+      setCategoryId('');
       setExpanded({});
       setSelected(null);
     } finally {
@@ -450,6 +491,53 @@ export function CrowdMarketPage() {
             </label>
           </div>
 
+          <label className="mt-3 block">
+            <span className="mb-1.5 block text-[12px] font-bold text-text">
+              Category (optional — make the right sellers see am)
+            </span>
+            <select
+              value={categoryId}
+              onChange={(e) => setCategoryId(e.target.value)}
+              className="h-11 w-full rounded-xl border border-border bg-white px-2 text-sm font-medium text-text outline-none transition focus:border-primary"
+            >
+              <option value="">Any category</option>
+              {categories.map((top) =>
+                top.children && top.children.length > 0 ? (
+                  <optgroup key={top.id} label={top.name}>
+                    <option value={top.id}>{top.name} (general)</option>
+                    {top.children.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : (
+                  <option key={top.id} value={top.id}>
+                    {top.name}
+                  </option>
+                ),
+              )}
+            </select>
+          </label>
+
+          <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-border bg-white px-3 py-2.5">
+            <div className="min-w-0">
+              <span className="block text-[11px] font-bold text-text">Your location</span>
+              <span className="block truncate text-[11px] text-textSecondary">
+                {guestLoc ? guestLoc.label : 'Not set — set am make sellers near you answer first'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => void useMyLocation()}
+              disabled={locating}
+              className="shrink-0 rounded-lg border border-primary px-3 py-1.5 text-[11px] font-bold text-primary transition hover:bg-primary/5 disabled:opacity-40"
+            >
+              {locating ? 'Finding…' : guestLoc ? 'Update' : 'Use my location'}
+            </button>
+          </div>
+          {locError && <p className="mt-1.5 text-[11px] font-medium text-red-600">{locError}</p>}
+
           <button
             type="submit"
             disabled={!productName.trim() || qty < 1 || (unit === 'custom' && !unitCustom.trim())}
@@ -476,6 +564,13 @@ export function CrowdMarketPage() {
                   {activeRequest.ceiling_kobo != null && (
                     <p className="text-[11px] font-medium text-white/80">
                       budget {fmt(activeRequest.ceiling_kobo)} {activeRequest.note && `· ${activeRequest.note}`}
+                    </p>
+                  )}
+                  {(activeRequest.category_name || activeRequest.latitude != null) && (
+                    <p className="mt-0.5 text-[10px] font-medium text-white/70">
+                      {activeRequest.category_name ? `#${activeRequest.category_name}` : ''}
+                      {activeRequest.category_name && activeRequest.latitude != null ? ' · ' : ''}
+                      {activeRequest.latitude != null ? 'location shared' : ''}
                     </p>
                   )}
                 </div>
@@ -557,6 +652,8 @@ export function CrowdMarketPage() {
                     </p>
                     <p className="truncate text-[11px] font-medium text-[#8A5F00]">
                       {selectedBidder.market_name ?? 'Oja'} · Stall {selectedBidder.stall_number ?? '—'}{' '}
+                      {selectedBidder.distance_m != null &&
+                        `· ${formatDistanceKm(selectedBidder.distance_m / 1000)} away `}
                       {selectedBidder.rating != null && `· ★ ${Number(selectedBidder.rating).toFixed(1)}`}
                     </p>
                   </div>

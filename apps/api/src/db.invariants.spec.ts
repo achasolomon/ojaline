@@ -108,6 +108,25 @@ describe('DB invariants (integration — requires docker compose stack)', () => 
   });
 
   afterAll(async () => {
+    // Leave no fixture residue behind: the Test LGA cluster, its offers/lots and
+    // the escrow/order rows created against it are torn down FK-safe.
+    await admin.query(
+      `DELETE FROM escrow.ledger_entries
+        WHERE escrow_order_id IN (
+          SELECT id FROM escrow.escrow_orders
+           WHERE order_id IN (SELECT id FROM orders.orders WHERE buyer_id = $1))`,
+      [buyerId],
+    );
+    await admin.query(
+      `DELETE FROM escrow.escrow_orders
+        WHERE order_id IN (SELECT id FROM orders.orders WHERE buyer_id = $1)`,
+      [buyerId],
+    );
+    await admin.query(`DELETE FROM orders.orders WHERE buyer_id = $1`, [buyerId]);
+    await admin.query(`DELETE FROM catalog.offers WHERE seller_id = $1`, [sellerId]);
+    await admin.query(`DELETE FROM catalog.lots WHERE seller_id = $1`, [sellerId]);
+    await admin.query(`DELETE FROM catalog.clusters WHERE id = $1`, [clusterId]);
+    await admin.query(`DELETE FROM pii.users WHERE id = ANY($1)`, [[sellerId, buyerId]]);
     await admin.end();
     await app.end();
   });

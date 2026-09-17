@@ -18,6 +18,9 @@ export interface CreateWantInput {
   unit?: string | null;
   ceiling_kobo?: number | null;
   note?: string;
+  lat?: number | null;
+  lon?: number | null;
+  category_id?: string | null;
 }
 
 export interface CreateThreadInput {
@@ -250,12 +253,45 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
       quote_per_unit_kobo: perUnit,
       quote_total_kobo: perUnit * qty,
       pitch,
+      distance_m: o.distance_m == null ? null : Number(o.distance_m),
     };
   }
 
-  private async findBidderOffers(products: string[], qty: number): Promise<Array<Record<string, unknown>>> {
-    const params: unknown[] = [qty, ...products];
-    const likes = products.map((_, i) => `l.product_name ILIKE $${i + 2}`).join(' OR ');
+  private async findBidderOffers(opts: {
+    terms: string[];
+    qty: number;
+    categoryId?: string | null;
+    lat?: number | null;
+    lon?: number | null;
+  }): Promise<Array<Record<string, unknown>>> {
+    const params: unknown[] = [opts.qty];
+    let idx = 2;
+
+    // Product-name terms OR a shared category, so a want reaches sellers whose
+    // relevant offers are filed under the same category even if wording differs.
+    const matchClauses: string[] = [];
+    for (const term of opts.terms) {
+      matchClauses.push(`l.product_name ILIKE $${idx++}`);
+      params.push(`%${term}%`);
+    }
+    if (opts.categoryId) {
+      matchClauses.push(`o.category_id = $${idx++}`);
+      params.push(opts.categoryId);
+    }
+    const match = matchClauses.length > 0 ? matchClauses.join(' OR ') : 'FALSE';
+
+    const hasGeo =
+      opts.lat != null && opts.lon != null && Number.isFinite(opts.lat) && Number.isFinite(opts.lon);
+    let distanceSelect = 'NULL::int AS distance_m';
+    let orderBy = 'p.new_price_cents ASC';
+    if (hasGeo) {
+      const lonIdx = idx++;
+      const latIdx = idx++;
+      params.push(opts.lon, opts.lat);
+      distanceSelect = `ST_Distance(o.geo, ST_SetSRID(ST_MakePoint($${lonIdx}, $${latIdx}), 4326)::geography)::int AS distance_m`;
+      orderBy = 'distance_m ASC NULLS LAST, p.new_price_cents ASC';
+    }
+
     const { rows } = await this.pool.query(
       `SELECT
          o.id, o.seller_id, o.channel, o.unit, o.min_order_qty,
@@ -263,6 +299,7 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
          l.product_name,
          p.new_price_cents::int AS price_cents,
          sp.market_name, sp.stall_number,
+         ${distanceSelect},
          (SELECT AVG(r.rating)::numeric(2,1) FROM catalog.reviews r WHERE r.seller_id = o.seller_id) AS avg_rating,
          (SELECT COUNT(*) FROM catalog.reviews r WHERE r.seller_id = o.seller_id)::int AS review_count
        FROM catalog.offers o
@@ -274,8 +311,8 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
          AND o.available_qty > o.reserved_qty + o.soft_held_qty
          AND o.available_qty - o.reserved_qty - o.soft_held_qty >= $1
          AND p.new_price_cents IS NOT NULL
-         AND (${likes})
-       ORDER BY p.new_price_cents ASC`,
+         AND (${match})
+       ORDER BY ${orderBy}`,
       params,
     );
     return rows;
@@ -299,12 +336,17 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
     const qty = Math.floor(Number(input.qty));
     if (!Number.isFinite(qty) || qty <= 0) throw new Error('qty must be a positive integer');
 
+    const lat = Number(input.lat);
+    const lon = Number(input.lon);
+    const hasPoint = Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180;
+    const categoryId = input.category_id?.trim() || null;
+
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
       const { rows } = await client.query(
-        `INSERT INTO market.wants (buyer_id, product_name, qty, unit, ceiling_kobo, note)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO market.wants (buyer_id, product_name, qty, unit, ceiling_kobo, note, latitude, longitude, category_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          RETURNING id`,
         [
           buyerId,
@@ -313,6 +355,9 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
           input.unit?.trim() || null,
           Number(input.ceiling_kobo) > 0 ? Math.floor(Number(input.ceiling_kobo)) : null,
           input.note?.trim() ?? '',
+          hasPoint ? lat : null,
+          hasPoint ? lon : null,
+          categoryId,
         ],
       );
       const wantId = String(rows[0].id);
@@ -342,11 +387,11 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
     const { rows } = await this.pool.query(
       `SELECT b.id, b.seller_id, u.full_name AS seller_name, b.offer_id, b.product_name,
               b.unit, b.market_name, b.stall_number, b.rating, b.review_count,
-              b.quote_per_unit_kobo, b.quote_total_kobo, b.pitch, b.chosen, b.created_at
+              b.quote_per_unit_kobo, b.quote_total_kobo, b.pitch, b.chosen, b.distance_m, b.created_at
          FROM market.bids b
          JOIN pii.users u ON u.id = b.seller_id
         WHERE b.want_id = $1
-        ORDER BY b.quote_per_unit_kobo ASC, b.created_at ASC`,
+        ORDER BY b.distance_m ASC NULLS LAST, b.quote_per_unit_kobo ASC, b.created_at ASC`,
       [wantId],
     );
     return rows.map((r) => ({
@@ -364,6 +409,7 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
       quote_total_kobo: Number(r.quote_total_kobo),
       pitch: String(r.pitch),
       chosen: Boolean(r.chosen),
+      distance_m: r.distance_m == null ? null : Number(r.distance_m),
       created_at: r.created_at,
     }));
   }
@@ -393,9 +439,11 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
     const { rows } = await conn.query(
       `SELECT w.id, w.buyer_id, u.full_name AS buyer_name, w.product_name, w.qty, w.unit,
               w.ceiling_kobo, w.note, w.status, w.chosen_bid_id, w.closed_at, w.created_at,
+              w.latitude, w.longitude, w.category_id, c.name AS category_name,
               (SELECT COUNT(*)::int FROM market.bids b WHERE b.want_id = w.id) AS bid_count
          FROM market.wants w
          JOIN pii.users u ON u.id = w.buyer_id
+         LEFT JOIN catalog.categories c ON c.id = w.category_id
         ${where}
         ORDER BY w.created_at DESC
         LIMIT 100`,
@@ -417,6 +465,10 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
         note: String(r.note ?? ''),
         status: String(r.status),
         chosen_bid_id: r.chosen_bid_id ? String(r.chosen_bid_id) : null,
+        latitude: r.latitude == null ? null : Number(r.latitude),
+        longitude: r.longitude == null ? null : Number(r.longitude),
+        category_id: r.category_id ? String(r.category_id) : null,
+        category_name: r.category_name ? String(r.category_name) : null,
         settled_with: settledBid,
         closed_at: r.closed_at,
         created_at: r.created_at,
@@ -436,19 +488,25 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
   private async attachBids(wantId: string, qty: number): Promise<void> {
     const existing = await this.pool.query(`SELECT id FROM market.bids WHERE want_id = $1 LIMIT 1`, [wantId]);
     if (existing.rows.length > 0) return;
-    const { rows } = await this.pool.query(`SELECT product_name FROM market.wants WHERE id = $1`, [wantId]);
+    const { rows } = await this.pool.query(
+      `SELECT product_name, latitude, longitude, category_id FROM market.wants WHERE id = $1`,
+      [wantId],
+    );
     if (rows.length === 0) throw new Error('Want not found');
     const productName = String(rows[0].product_name);
+    const lat = rows[0].latitude == null ? null : Number(rows[0].latitude);
+    const lon = rows[0].longitude == null ? null : Number(rows[0].longitude);
+    const categoryId = rows[0].category_id ? String(rows[0].category_id) : null;
     const terms = await this.searchTerms(productName);
 
     let offers: Array<Record<string, unknown>> = [];
     for (const term of terms) {
-      const hit = await this.findBidderOffers([term], qty);
+      const hit = await this.findBidderOffers({ terms: [term], qty, categoryId, lat, lon });
       if (hit.length > offers.length) offers = hit;
       if (offers.length >= 3) break;
     }
 
-    // One representative (cheapest) listing per seller.
+    // One representative (nearest, then cheapest) listing per seller.
     const bySeller = new Map<string, Record<string, unknown>>();
     for (const o of offers) {
       if (!bySeller.has(String(o.seller_id))) bySeller.set(String(o.seller_id), o);
@@ -464,8 +522,8 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
         await client.query(
           `INSERT INTO market.bids
              (want_id, seller_id, offer_id, product_name, unit, market_name, stall_number,
-              rating, review_count, quote_per_unit_kobo, quote_total_kobo, pitch)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+              rating, review_count, quote_per_unit_kobo, quote_total_kobo, pitch, distance_m)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
           [
             wantId,
             b.seller_id,
@@ -479,6 +537,7 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
             b.quote_per_unit_kobo,
             b.quote_total_kobo,
             b.pitch,
+            b.distance_m,
           ],
         );
       }

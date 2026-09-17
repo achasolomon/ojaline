@@ -1,6 +1,6 @@
 import { Injectable, Inject, NotFoundException, BadRequestException } from '@nestjs/common';
 import { Pool } from 'pg';
-import { NIGERIA, normalizeState, wardsFor, type Ward } from './areas.data.js';
+import { NIGERIA, normalizeState, type Ward } from './areas.data.js';
 
 export interface CreateAddressInput {
   label?: string;
@@ -33,9 +33,24 @@ export class AddressesService {
     return NIGERIA;
   }
 
-  getWards(state: string, lga: string): Ward[] {
+  /**
+   * Wards come from the national geo registry (catalog.states → lgas → wards,
+   * seeded from data/*.json) so a DB edit updates delivery instantly. The ward
+   * is descriptive on the address; only state + address line are validated.
+   */
+  async getWards(state: string, lga: string): Promise<Ward[]> {
     if (!state?.trim() || !lga?.trim()) throw new BadRequestException('state and lga are required');
-    return wardsFor(state, lga);
+    const { rows } = await this.pool.query(
+      `SELECT w.name, w.latitude, w.longitude
+         FROM catalog.wards w
+         JOIN catalog.lgas l ON l.id = w.lga_id
+         JOIN catalog.states st ON st.id = l.state_id
+        WHERE st.name = $1
+          AND translate(lower(l.name), '|', '/') = translate(lower($2), '|', '/')
+        ORDER BY w.name`,
+      [state, lga],
+    );
+    return rows;
   }
 
   async getAddresses(userId: string): Promise<Array<Record<string, unknown>>> {

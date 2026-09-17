@@ -12,6 +12,7 @@ import {
   getLgas,
   getClusters,
   getMarkets,
+  getCatalogWards,
   mediaUrl,
   type Channel,
   type Perishability,
@@ -22,6 +23,7 @@ import {
   type Category,
   type Cluster,
   type Market,
+  type CatalogWard,
   type StateLocation,
   type LgaLocation,
 } from '../lib/api';
@@ -598,6 +600,8 @@ function OfferWizard({ session, navigate }: { session: SessionSnapshot; navigate
   const [stateName, setStateName] = useState('');
   const [lgas, setLgas] = useState<LgaLocation[]>([]);
   const [lga, setLga] = useState('');
+  const [wards, setWards] = useState<CatalogWard[]>([]);
+  const [wardId, setWardId] = useState('');
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [clusterId, setClusterId] = useState('');
   const [markets, setMarkets] = useState<Market[]>([]);
@@ -614,8 +618,13 @@ function OfferWizard({ session, navigate }: { session: SessionSnapshot; navigate
   }, [stateName]);
 
   useEffect(() => {
-    if (!stateName || !lga) return setClusters([]);
-    void getClusters(stateName, lga).then(setClusters, () => setClusters([]));
+    if (!lga) return setClusters([]);
+    void getClusters(stateName, lga, wardId || undefined).then(setClusters, () => setClusters([]));
+  }, [stateName, lga, wardId]);
+
+  useEffect(() => {
+    if (!stateName || !lga) return setWards([]);
+    void getCatalogWards(stateName, lga).then(setWards, () => setWards([]));
   }, [stateName, lga]);
 
   useEffect(() => {
@@ -645,11 +654,18 @@ function OfferWizard({ session, navigate }: { session: SessionSnapshot; navigate
   const handleState = (value: string) => {
     setStateName(value);
     setLga('');
+    setWardId('');
     setClusterId('');
     setMarketId('');
   };
   const handleLga = (value: string) => {
     setLga(value);
+    setWardId('');
+    setClusterId('');
+    setMarketId('');
+  };
+  const handleWard = (value: string) => {
+    setWardId(value);
     setClusterId('');
     setMarketId('');
   };
@@ -933,8 +949,14 @@ function OfferWizard({ session, navigate }: { session: SessionSnapshot; navigate
                   ))}
                 </select>
               </div>
+              <select className={inputCls} value={wardId} onChange={(e) => handleWard(e.target.value)} disabled={!lga}>
+                <option value="">Nearest ward…</option>
+                {wards.map((w) => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
+                ))}
+              </select>
               <select className={inputCls} value={clusterId} onChange={(e) => handleCluster(e.target.value)} disabled={!lga}>
-                <option value="">Nearest market area…</option>
+                <option value="">{wardId ? 'Market area near this ward…' : 'Market area…'}</option>
                 {clusters.map((c) => (
                   <option key={c.id} value={c.id}>{c.name}{c.lga !== lga ? ` (${c.lga})` : ''}</option>
                 ))}

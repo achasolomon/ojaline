@@ -15,6 +15,7 @@ import {
   type MyOffer,
 } from '../lib/api';
 import { mapWant, mapBidder, openSellerChat } from '../lib/crowd';
+import { formatDistanceKm } from '../lib/guestLocation';
 import { PageTopBar } from '../components/PageTopBar';
 
 const fmtKobo = (k: number) => naira.format(k / 100);
@@ -75,6 +76,7 @@ export default function SellerCrowdPage() {
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<'launch' | 'serve'>('launch');
   const [composerOpen, setComposerOpen] = useState(false);
+  const [catFilter, setCatFilter] = useState('');
 
   useEffect(() => {
     if (!sellerId) {
@@ -103,6 +105,19 @@ export default function SellerCrowdPage() {
   const priceNum = Number(priceKobo);
   const qtyNum = Number(qty);
   const valid = offerId.length > 0 && priceNum > 0 && qtyNum > 0;
+
+  const serveCategories = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const w of servables) {
+      if (w.category_id) seen.set(w.category_id, w.category_name ?? 'Uncategorised');
+    }
+    return [...seen.entries()].map(([id, name]) => ({ id, name }));
+  }, [servables]);
+
+  const filteredServables = useMemo(
+    () => (catFilter ? servables.filter((w) => w.category_id === catFilter) : servables),
+    [servables, catFilter],
+  );
 
   const openComposer = () => {
     setMode('launch');
@@ -253,16 +268,49 @@ export default function SellerCrowdPage() {
 
         {mode === 'serve' ? (
           <section>
-            <SectionTitle icon="handshake" count={servables.length}>Buyer wants you can serve</SectionTitle>
-            {servables.length === 0 ? (
+            <SectionTitle icon="handshake" count={filteredServables.length}>Buyer wants you can serve</SectionTitle>
+
+            {serveCategories.length > 0 && (
+              <div className="mb-3 flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setCatFilter('')}
+                  className={cn(
+                    'rounded-full px-3 py-1.5 text-[11px] font-bold transition',
+                    catFilter === '' ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50',
+                  )}
+                >
+                  All
+                </button>
+                {serveCategories.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setCatFilter(c.id)}
+                    className={cn(
+                      'rounded-full px-3 py-1.5 text-[11px] font-bold transition',
+                      catFilter === c.id ? 'bg-primary text-white' : 'bg-white text-gray-600 hover:bg-gray-50',
+                    )}
+                  >
+                    {c.name}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {filteredServables.length === 0 ? (
               <EmptyState
                 icon="handshake"
-                title="No matching wants"
-                sub="When a buyer's request matches one of your active offers, it appears here."
+                title={servables.length === 0 ? 'No matching wants' : 'Nothing in this category'}
+                sub={
+                  servables.length === 0
+                    ? "When a buyer's request matches one of your active offers, it appears here."
+                    : 'Clear the filter to see all the wants you can serve.'
+                }
               />
             ) : (
               <ul className="space-y-2.5">
-                {servables.map((w) => {
+                {filteredServables.map((w) => {
                   const mine = w.bidders.find((b) => b.seller_id === sellerId);
                   return (
                     <li
@@ -291,9 +339,20 @@ export default function SellerCrowdPage() {
                         <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-bold text-gray-600">
                           {w.qty}{w.unit ? ` ${w.unit}` : ''}
                         </span>
+                        {w.category_name && (
+                          <span className="inline-flex items-center rounded-full bg-primary-light px-2.5 py-1 text-[11px] font-bold text-primary">
+                            {w.category_name}
+                          </span>
+                        )}
                         {w.ceiling_kobo != null && (
                           <span className="inline-flex items-center rounded-full bg-[#FFF6DA] px-2.5 py-1 text-[11px] font-bold text-[#A36A00]">
                             Up to {fmtKobo(w.ceiling_kobo)}
+                          </span>
+                        )}
+                        {mine?.distance_m != null && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-bold text-gray-600">
+                            <Icon name="map" size={10} />
+                            {formatDistanceKm(mine.distance_m / 1000)} from buyer
                           </span>
                         )}
                       </div>

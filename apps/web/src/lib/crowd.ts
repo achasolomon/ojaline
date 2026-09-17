@@ -37,6 +37,7 @@ export interface CrowdBidder {
   quote_total_kobo: number;
   pitch: string;
   chosen: boolean;
+  distance_m: number | null;
   created_at: string;
 }
 
@@ -51,6 +52,10 @@ export interface CrowdRequest {
   note: string;
   status: 'OPEN' | 'SETTLED' | 'CLOSED' | 'EXPIRED';
   chosen_bid_id: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  category_id: string | null;
+  category_name: string | null;
   settled_with: CrowdBidder | null;
   closed_at: string | null;
   created_at: string;
@@ -64,6 +69,9 @@ export interface CreateCrowdRequestInput {
   unit: string | null;
   ceiling_kobo: number | null;
   note?: string;
+  lat?: number | null;
+  lon?: number | null;
+  category_id?: string | null;
 }
 
 export function sellerLabel(channel: Channel, name: string): string {
@@ -124,6 +132,10 @@ export function mapWant(w: ApiWant): CrowdRequest {
     note: w.note,
     status: w.status,
     chosen_bid_id: w.chosen_bid_id,
+    latitude: w.latitude,
+    longitude: w.longitude,
+    category_id: w.category_id,
+    category_name: w.category_name,
     settled_with: w.settled_with ? mapBidder(w.settled_with) : null,
     closed_at: w.closed_at,
     created_at: w.created_at,
@@ -182,6 +194,9 @@ export async function makeCrowdRequest(input: CreateCrowdRequestInput): Promise<
     unit: input.unit,
     ceiling_kobo: input.ceiling_kobo,
     note: input.note,
+    lat: input.lat,
+    lon: input.lon,
+    category_id: input.category_id,
   });
   await refresh();
   const created = items[0];

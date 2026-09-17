@@ -81,6 +81,8 @@ export interface DiscoverOffersParams {
   price_min?: number;
   price_max?: number;
   sort?: 'newest' | 'popular' | 'cheapest';
+  lat?: number;
+  lon?: number;
   limit?: number;
   offset?: number;
 }
@@ -333,6 +335,10 @@ export async function discoverOffers(params: DiscoverOffersParams = {}): Promise
   if (params.price_min != null) qs.set('price_min', String(params.price_min));
   if (params.price_max != null) qs.set('price_max', String(params.price_max));
   if (params.sort) qs.set('sort', params.sort);
+  if (params.lat != null && params.lon != null) {
+    qs.set('lat', String(params.lat));
+    qs.set('lon', String(params.lon));
+  }
   if (params.limit) qs.set('limit', String(params.limit));
   if (params.offset) qs.set('offset', String(params.offset));
   const query = qs.toString();
@@ -405,6 +411,7 @@ export interface Cluster {
   name: string;
   lga: string;
   state: string;
+  ward_id?: string | null;
 }
 
 export interface Market {
@@ -414,6 +421,8 @@ export interface Market {
   cluster_name: string;
   lga: string;
   state?: string;
+  ward_id?: string | null;
+  distance_km?: number | null;
   operating_days: string[];
   next_date: string | null;
   is_open_today: boolean;
@@ -460,10 +469,24 @@ export interface LgaLocation {
   cluster_count: number;
 }
 
-export async function getClusters(state?: string, lga?: string): Promise<Cluster[]> {
+export interface CatalogWard {
+  id: string;
+  name: string;
+  latitude: number | null;
+  longitude: number | null;
+}
+
+export async function getCatalogWards(state: string, lga: string): Promise<CatalogWard[]> {
+  return getJson<CatalogWard[]>(
+    `/catalog/locations/wards?state=${encodeURIComponent(state)}&lga=${encodeURIComponent(lga)}`,
+  );
+}
+
+export async function getClusters(state?: string, lga?: string, wardId?: string): Promise<Cluster[]> {
   const qs = new URLSearchParams();
   if (state) qs.set('state', state);
   if (lga) qs.set('lga', lga);
+  if (wardId) qs.set('ward_id', wardId);
   const query = qs.toString();
   return getJson<Cluster[]>(`/catalog/clusters${query ? `?${query}` : ''}`);
 }
@@ -476,10 +499,13 @@ export async function getLgas(state: string): Promise<LgaLocation[]> {
   return getJson<LgaLocation[]>(`/catalog/locations/lgas?state=${encodeURIComponent(state)}`);
 }
 
-export async function getMarkets(clusterId?: string, date?: string): Promise<Market[]> {
+export async function getMarkets(clusterId?: string, date?: string, wardId?: string, lat?: number, lon?: number): Promise<Market[]> {
   const qs = new URLSearchParams();
   if (clusterId) qs.set('cluster_id', clusterId);
   if (date) qs.set('date', date);
+  if (wardId) qs.set('ward_id', wardId);
+  if (lat != null) qs.set('lat', String(lat));
+  if (lon != null) qs.set('lon', String(lon));
   const query = qs.toString();
   return getJson<Market[]>(`/catalog/markets${query ? `?${query}` : ''}`);
 }
@@ -1009,6 +1035,7 @@ export interface CrowdBidder {
   quote_total_kobo: number;
   pitch: string;
   chosen: boolean;
+  distance_m: number | null;
   created_at: string;
 }
 
@@ -1023,6 +1050,10 @@ export interface CrowdWant {
   note: string;
   status: 'OPEN' | 'SETTLED' | 'CLOSED' | 'EXPIRED';
   chosen_bid_id: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  category_id: string | null;
+  category_name: string | null;
   settled_with: CrowdBidder | null;
   closed_at: string | null;
   created_at: string;
@@ -1037,6 +1068,9 @@ export async function createWant(buyerId: string, input: {
   unit?: string | null;
   ceiling_kobo?: number | null;
   note?: string;
+  lat?: number | null;
+  lon?: number | null;
+  category_id?: string | null;
 }): Promise<CrowdWant> {
   return postJson<CrowdWant>(`/wants?buyer_id=${encodeURIComponent(buyerId)}`, input);
 }

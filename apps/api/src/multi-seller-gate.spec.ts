@@ -106,6 +106,13 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Tear down everything this suite created so no Test LGA cluster is left.
+  await admin.query(`DELETE FROM fulfilment.capacity_slots WHERE cluster_id = ANY($1)`, [[clusterA, clusterB]]);
+  await admin.query(`DELETE FROM catalog.offers WHERE cluster_id = ANY($1)`, [[clusterA, clusterB]]);
+  await admin.query(`DELETE FROM catalog.lots WHERE seller_id = ANY($1)`, [[seller1, seller2, seller3]]);
+  await admin.query(`DELETE FROM trust.seller_risk_tiers WHERE seller_id = ANY($1)`, [[seller1, seller2, seller3]]);
+  await admin.query(`DELETE FROM catalog.clusters WHERE id = ANY($1)`, [[clusterA, clusterB]]);
+  await admin.query(`DELETE FROM pii.users WHERE id = ANY($1)`, [[seller1, seller2, seller3]]);
   await admin.end();
   await pool.end();
 });

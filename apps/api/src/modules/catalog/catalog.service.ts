@@ -13,6 +13,9 @@ export interface DiscoverOffersQuery {
   price_min?: number;
   price_max?: number;
   sort?: 'newest' | 'popular' | 'cheapest';
+  /** Buyer/visitor coordinates — orders results nearest-first. */
+  lat?: number;
+  lon?: number;
   limit?: number;
   offset?: number;
 }
@@ -71,6 +74,16 @@ export class CatalogService {
     const limit = Math.min(query.limit ?? 20, 100);
     const offset = query.offset ?? 0;
 
+    // Nearest-first: when the visitor shares a point, distance beats everything
+    // (still gated by the filters above and the seller-visibility penalty).
+    const nearParams: unknown[] = [];
+    let nearbyOrder = '';
+    if (query.lat != null && query.lon != null) {
+      nearbyOrder = `ST_Distance(o.geo, ST_SetSRID(ST_MakePoint($${idx}, $${idx + 1}), 4326)::geography) ASC, `;
+      nearParams.push(query.lon, query.lat);
+      idx += 2;
+    }
+
     const countResult = await this.pool.query<{ count: string }>(
       `SELECT count(*) AS count
        FROM catalog.offers o
@@ -124,9 +137,9 @@ export class CatalogService {
        LEFT JOIN catalog.seller_profiles sp ON sp.user_id = o.seller_id
        ${where}
        ORDER BY sp.visibility_penalty ASC,
-         ${query.sort === 'cheapest' ? 'p.new_price_cents ASC' : query.sort === 'popular' ? 'o.available_qty DESC' : 'o.created_at DESC'}
+         ${nearbyOrder}${query.sort === 'cheapest' ? 'p.new_price_cents ASC' : query.sort === 'popular' ? 'o.available_qty DESC' : 'o.created_at DESC'}
        LIMIT $${idx++} OFFSET $${idx++}`,
-      [...params, limit, offset],
+      [...params, ...nearParams, limit, offset],
     );
 
     return { offers: rows, total };
@@ -445,7 +458,7 @@ export class CatalogService {
         throw new BadRequestException(`Cluster ${input.cluster_id} not found`);
       }
 
-      let marketId: string | null = input.market_id?.trim() || null;
+      const marketId: string | null = input.market_id?.trim() || null;
       if (marketId) {
         const { rows: mrows } = await client.query(
           `SELECT 1 FROM catalog.markets WHERE id = $1 AND cluster_id = $2`,
@@ -587,46 +600,112 @@ export class CatalogService {
     }
   }
 
-  async getClusters(state?: string, lga?: string): Promise<Array<Record<string, unknown>>> {
-    const conditions: string[] = [];
+  async getClusters(state?: string, lga?: string, wardId?: string): Promise<Array<Record<string, unknown>>> {
+    const pt = wardId ? await this.wardPoint(wardId) : null;
+
+    // Primary lookup: market areas of this state/LGA, restricted to the chosen
+    // ward when given, ordered by distance to that ward when its point is known.
     const params: unknown[] = [];
+    const where: string[] = [];
     let idx = 1;
-    if (state) { conditions.push(`c.state = $${idx++}`); params.push(state); }
-    if (lga) { conditions.push(`c.lga = $${idx++}`); params.push(lga); }
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    if (state) { where.push(`c.state = $${idx++}`); params.push(state); }
+    if (lga) { where.push(`c.lga = $${idx++}`); params.push(lga); }
+    if (wardId) { where.push(`c.ward_id = $${idx++}`); params.push(wardId); }
+    let orderBy = 'c.name';
+    if (pt) {
+      orderBy = this.wardDistanceSql('c.centroid', idx) + ', c.name';
+      params.push(pt.lon, pt.lat);
+    }
+
     const { rows } = await this.pool.query(
-      `SELECT c.id, c.name, c.lga, c.state
+      `SELECT c.id, c.name, c.lga, c.state, c.ward_id
        FROM catalog.clusters c
-       ${where}
-       ORDER BY c.name`,
+       ${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''}
+       ORDER BY ${orderBy}`,
       params,
     );
+    if (rows.length > 0) return rows;
+
+    // Fallback 1: the ward has no market area of its own — show the whole LGA's
+    // areas ordered by distance to that ward so "markets near this ward" works.
+    if (pt && state && lga) {
+      const nearby = await this.pool.query(
+        `SELECT c.id, c.name, c.lga, c.state, c.ward_id
+         FROM catalog.clusters c
+         WHERE c.state = $1 AND c.lga = $2
+         ORDER BY ${this.wardDistanceSql('c.centroid', 3)}, c.name`,
+        [state, lga, pt.lon, pt.lat],
+      );
+      if (nearby.rows.length > 0) return nearby.rows;
+    }
+
+    // Fallback 2: the LGA has no areas — list the whole state's market areas.
+    if (state && lga) {
+      return this.getClusters(state);
+    }
     return rows;
   }
 
   async getStates(): Promise<Array<{ state: string; cluster_count: number }>> {
     const { rows } = await this.pool.query(
-      `SELECT state, COUNT(*)::int AS cluster_count
-       FROM catalog.clusters
-       GROUP BY state
-       ORDER BY state`,
+      `SELECT st.name AS state,
+              COUNT(c.id)::int AS cluster_count
+         FROM catalog.states st
+         LEFT JOIN catalog.clusters c ON c.state = st.name
+        GROUP BY st.name
+        ORDER BY st.name`,
     );
     return rows;
   }
 
   async getLgas(state: string): Promise<Array<{ lga: string; cluster_count: number }>> {
     const { rows } = await this.pool.query(
-      `SELECT lga, COUNT(*)::int AS cluster_count
-       FROM catalog.clusters
-       WHERE state = $1
-       GROUP BY lga
-       ORDER BY lga`,
+      `SELECT l.name AS lga,
+              COUNT(c.id)::int AS cluster_count
+         FROM catalog.lgas l
+         JOIN catalog.states st ON st.id = l.state_id
+         LEFT JOIN catalog.clusters c ON c.state = st.name AND c.lga = l.name
+        WHERE st.name = $1
+        GROUP BY l.name, st.name
+        ORDER BY l.name`,
       [state],
     );
     return rows;
   }
 
-  async getMarkets(clusterId?: string, date?: string): Promise<Array<Record<string, unknown>>> {
+  async getWards(state: string, lga: string): Promise<Array<Record<string, unknown>>> {
+    if (!state?.trim() || !lga?.trim()) {
+      throw new BadRequestException('state and lga are required');
+    }
+    const { rows } = await this.pool.query(
+      `SELECT w.id, w.name, w.latitude, w.longitude
+         FROM catalog.wards w
+         JOIN catalog.lgas l ON l.id = w.lga_id
+         JOIN catalog.states st ON st.id = l.state_id
+        WHERE st.name = $1 AND l.name = $2
+        ORDER BY w.name`,
+      [state, lga],
+    );
+    return rows;
+  }
+
+  /** Coordinates for a ward (lat, lon) or null when the ward is unknown. */
+  private async wardPoint(wardId: string): Promise<{ lat: number; lon: number } | null> {
+    const { rows } = await this.pool.query(
+      `SELECT latitude, longitude FROM catalog.wards WHERE id = $1`,
+      [wardId],
+    );
+    const r = rows[0];
+    if (!r || r.latitude == null || r.longitude == null) return null;
+    return { lat: Number(r.latitude), lon: Number(r.longitude) };
+  }
+
+  /** `ST_Distance(<expr>, <point at placeholders idx,idx+1>) ASC` — callers must push lon,lat. */
+  private wardDistanceSql(expr: string, idx: number): string {
+    return `ST_Distance(${expr}, ST_SetSRID(ST_MakePoint($${idx}, $${idx + 1}), 4326)::geography) ASC`;
+  }
+
+  async getMarkets(clusterId?: string, date?: string, wardId?: string, lat?: number, lon?: number): Promise<Array<Record<string, unknown>>> {
     const DAY_MAP: Record<string, number> = {
       SUN: 0, MON: 1, TUE: 2, WED: 3, THU: 4, FRI: 5, SAT: 6,
     };
@@ -639,12 +718,23 @@ export class CatalogService {
     const params: unknown[] = [];
     let idx = 1;
     if (clusterId) { conditions.push(`m.cluster_id = $${idx++}`); params.push(clusterId); }
+    if (wardId) { conditions.push(`c.ward_id = $${idx++}`); params.push(wardId); }
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    // Pivot for "markets near here": an explicit ward point beats raw coords.
+    let pivot: { lat: number; lon: number } | null = wardId ? await this.wardPoint(wardId) : null;
+    if (!pivot && lat != null && lon != null && Number.isFinite(lat) && Number.isFinite(lon)) {
+      pivot = { lat, lon };
+    }
+    const distSelect = pivot
+      ? `, ST_Distance(c.centroid, ST_SetSRID(ST_MakePoint($${idx}, $${idx + 1}), 4326)::geography) AS distance_m`
+      : '';
+    if (pivot) params.push(pivot.lon, pivot.lat);
 
     const { rows: markets } = await this.pool.query(
       `SELECT
          m.id, m.name, m.calendar, m.order_cutoff,
-         c.id AS cluster_id, c.name AS cluster_name, c.lga, c.state
+         c.id AS cluster_id, c.name AS cluster_name, c.lga, c.state, c.ward_id${distSelect}
        FROM catalog.markets m
        JOIN catalog.clusters c ON c.id = m.cluster_id
        ${where}
@@ -711,6 +801,8 @@ export class CatalogService {
         cluster_name: m.cluster_name,
         lga: m.lga,
         state: m.state,
+        ward_id: m.ward_id ?? null,
+        distance_km: m.distance_m != null ? Math.round((Number(m.distance_m) / 1000) * 10) / 10 : null,
         operating_days: calDays,
         next_date: nextDateStr,
         is_open_today: isToday,
@@ -721,6 +813,9 @@ export class CatalogService {
     }
 
     results.sort((a, b) => {
+      const da = a.distance_km as number | null;
+      const db = b.distance_km as number | null;
+      if (da != null && db != null && da !== db) return da - db;
       if (a.is_open_today && !b.is_open_today) return -1;
       if (!a.is_open_today && b.is_open_today) return 1;
       if (a.next_date && b.next_date) return (a.next_date as string).localeCompare(b.next_date as string);

@@ -30,12 +30,21 @@ export function MediaPicker({
   max?: number;
   disabled?: boolean;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const pick = () => {
-    if (!disabled && !uploading) inputRef.current?.click();
+  // Default action is the live camera (capture="environment" opens the phone
+  // camera directly) — sellers should photograph the actual produce rather than
+  // re-uploading random/downloaded pictures. Gallery stays as a fallback for
+  // desktop or when the camera isn't available.
+  const takePhoto = () => {
+    if (!disabled && !uploading) cameraRef.current?.click();
+  };
+
+  const pickFromDevice = () => {
+    if (!disabled && !uploading) galleryRef.current?.click();
   };
 
   const handleFiles = async (files: FileList | null) => {
@@ -66,7 +75,8 @@ export function MediaPicker({
       setUploading(false);
     }
     if (added.length > 0) onChange([...value, ...added]);
-    if (inputRef.current) inputRef.current.value = '';
+    if (cameraRef.current) cameraRef.current.value = '';
+    if (galleryRef.current) galleryRef.current.value = '';
   };
 
   const makePrimary = (entry: MediaEntry) => {
@@ -120,9 +130,10 @@ export function MediaPicker({
         {value.length < max && (
           <button
             type="button"
-            onClick={pick}
+            onClick={takePhoto}
             disabled={disabled || uploading}
             className="flex aspect-square flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-border bg-surface/60 text-textSecondary transition hover:border-primary/40 hover:text-primary"
+            aria-label="Take a photo with the camera"
           >
             {uploading ? (
               <>
@@ -131,14 +142,22 @@ export function MediaPicker({
               </>
             ) : (
               <>
-                <Icon name="plus" size={18} />
-                <span className="text-[10px] font-semibold">Add photo</span>
+                <Icon name="camera" size={18} />
+                <span className="text-[10px] font-semibold">Take photo</span>
               </>
             )}
           </button>
         )}
         <input
-          ref={inputRef}
+          ref={cameraRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => void handleFiles(e.target.files)}
+        />
+        <input
+          ref={galleryRef}
           type="file"
           accept="image/jpeg,image/png,image/webp,image/gif"
           multiple
@@ -146,7 +165,17 @@ export function MediaPicker({
           onChange={(e) => void handleFiles(e.target.files)}
         />
       </div>
-      <p className="mt-2 text-[11px] text-gray-500">
+      {value.length < max && !disabled && (
+        <button
+          type="button"
+          onClick={pickFromDevice}
+          disabled={uploading}
+          className="mt-1.5 text-[11px] font-medium text-primary hover:underline"
+        >
+          or choose existing photos from this device
+        </button>
+      )}
+      <p className="mt-1 text-[11px] text-gray-500">
         {value.length >= min ? (
           <>
             {value.length}/{max} photos ·{' '}
@@ -158,6 +187,11 @@ export function MediaPicker({
           <span className="font-medium text-danger">Add at least {min} clear photos of the product</span>
         )}
       </p>
+      {value.length < min && (
+        <p className="mt-0.5 text-[10px] text-gray-400">
+          Take live photos of your actual produce — re-uploaded/downloaded pictures may be removed after review.
+        </p>
+      )}
       {error && <p className="mt-1 text-[11px] font-medium text-danger">{error}</p>}
     </div>
   );

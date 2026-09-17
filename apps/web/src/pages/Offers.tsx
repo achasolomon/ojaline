@@ -7,6 +7,7 @@ import type { Offer, Channel, Perishability, DiscoverOffersParams, Category } fr
 import { OfferCard } from '../components/OfferCard';
 import { OfferFilters } from '../components/OfferFilters';
 import { MarketBuzz } from '../components/MarketBuzz';
+import { NearMeControl, type NearMeSelection } from '../components/NearMeControl';
 import { Icon } from '../components/icons';
 import { useMediaQuery, DESKTOP_BREAKPOINT } from '../lib/useMediaQuery';
 
@@ -126,6 +127,7 @@ export default function Offers() {
   const [priceMin, setPriceMin] = useState('');
   const [priceMax, setPriceMax] = useState('');
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [nearMe, setNearMe] = useState<NearMeSelection | null>(null);
 
   useEffect(() => {
     getCategories()
@@ -160,6 +162,10 @@ export default function Offers() {
       if (urlSort) params.sort = urlSort;
       if (priceMinKobo != null) params.price_min = priceMinKobo;
       if (priceMaxKobo != null) params.price_max = priceMaxKobo;
+      if (nearMe) {
+        params.lat = nearMe.lat;
+        params.lon = nearMe.lon;
+      }
 
       discoverOffers(params)
         .then((res) => {
@@ -177,7 +183,7 @@ export default function Offers() {
     }, 250);
 
     return () => window.clearTimeout(timer);
-  }, [channelFilter, perishabilityFilter, selectedCategoryId, priceMinKobo, priceMaxKobo, offset, urlQuery, urlSort]);
+  }, [channelFilter, perishabilityFilter, selectedCategoryId, priceMinKobo, priceMaxKobo, offset, urlQuery, urlSort, nearMe]);
 
   const category = useMemo(() => {
     if (!selectedCategoryId) return null;
@@ -255,6 +261,9 @@ export default function Offers() {
 
   const listContent = (
     <>
+      <div className="mb-3.5">
+        <NearMeControl onChange={setNearMe} />
+      </div>
       {loading ? (
         <OfferSkeletonGrid cols={isDesktop ? 'grid-cols-3 gap-3.5 2xl:grid-cols-4' : 'grid-cols-2 gap-2.5'} />
       ) : error ? (

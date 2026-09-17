@@ -16,6 +16,8 @@ export class CatalogController {
     @Query('price_min') priceMin?: string,
     @Query('price_max') priceMax?: string,
     @Query('sort') sort?: string,
+    @Query('lat') lat?: string,
+    @Query('lon') lon?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ) {
@@ -28,6 +30,8 @@ export class CatalogController {
       price_min: priceMin ? parseInt(priceMin, 10) : undefined,
       price_max: priceMax ? parseInt(priceMax, 10) : undefined,
       sort: (sort as any) || undefined,
+      lat: lat != null && lat !== '' ? parseFloat(lat) : undefined,
+      lon: lon != null && lon !== '' ? parseFloat(lon) : undefined,
       limit: limit ? parseInt(limit, 10) : undefined,
       offset: offset ? parseInt(offset, 10) : undefined,
     };
@@ -49,20 +53,35 @@ export class CatalogController {
     return this.catalog.getLgas(state);
   }
 
+  @Get('locations/wards')
+  async getWards(@Query('state') state: string, @Query('lga') lga: string) {
+    return this.catalog.getWards(state, lga);
+  }
+
   @Get('clusters')
   async getClusters(
     @Query('state') state?: string,
     @Query('lga') lga?: string,
+    @Query('ward_id') wardId?: string,
   ) {
-    return this.catalog.getClusters(state || undefined, lga || undefined);
+    return this.catalog.getClusters(state || undefined, lga || undefined, wardId || undefined);
   }
 
   @Get('markets')
   async getMarkets(
     @Query('cluster_id') clusterId?: string,
     @Query('date') date?: string,
+    @Query('ward_id') wardId?: string,
+    @Query('lat') lat?: string,
+    @Query('lon') lon?: string,
   ) {
-    return this.catalog.getMarkets(clusterId || undefined, date || undefined);
+    return this.catalog.getMarkets(
+      clusterId || undefined,
+      date || undefined,
+      wardId || undefined,
+      lat != null && lat !== '' ? parseFloat(lat) : undefined,
+      lon != null && lon !== '' ? parseFloat(lon) : undefined,
+    );
   }
 
   @Get('markets/:id')
