@@ -39,3 +39,8 @@ scripts/load/results.json
 # design artifacts
 ojaline.png
 ojaline_mobile_prototype.html
+
+# runtime uploads / scratch
+apps/api/storage/
+states.json
+data/check_views.cjs
