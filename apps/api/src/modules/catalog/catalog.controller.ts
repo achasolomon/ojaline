@@ -181,8 +181,8 @@ export class CatalogController {
   }
 
   @Get('offers/:id')
-  async findOffer(@Param('id') id: string, @CurrentUser() user?: AuthUser) {
-    return this.catalog.findOfferById(id, user);
+  async findOffer(@Param('id') id: string, @CurrentUser() user?: AuthUser, @Query('vid') vid?: string) {
+    return this.catalog.findOfferById(id, user, vid);
   }
 
   @Patch('offers/:id/price')

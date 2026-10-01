@@ -1,6 +1,7 @@
 import { validateEnvelope } from '@ojaline/contracts';
 import type { EventType, EventPayload, OutboxEnvelope } from '@ojaline/contracts';
 import { getToken, handleUnauthorized } from './session';
+import { getVisitorId } from './visitor';
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api';
 
@@ -679,7 +680,7 @@ export async function createOffer(body: CreateOfferRequest): Promise<CreateOffer
 const offerFetchCache = new Map<string, Promise<Offer>>();
 
 async function fetchOffer(id: string): Promise<Offer> {
-  const raw = await getJson<any>(`/catalog/offers/${id}`);
+  const raw = await getJson<any>(`/catalog/offers/${id}?vid=${encodeURIComponent(getVisitorId())}`);
   return {
     ...raw,
     primary_image: Array.isArray(raw.images) && raw.images.length > 0
@@ -1558,6 +1559,7 @@ export interface NegotiationThread {
   frozen_seller_per_unit_kobo: number | null;
   frozen_buyer_per_unit_kobo: number | null;
   freeze_expires_at: string | null;
+  reopen_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -1638,6 +1640,62 @@ export async function continueNegotiation(
   );
 }
 
+/** Seller drops a counter-offer onto an OPEN thread. */
+export async function sellerOfferNegotiation(
+  negotiationId: string,
+  sellerId: string,
+  input: { per_unit_kobo: number; qty?: number; message?: string },
+): Promise<NegotiationThread> {
+  return postJson<NegotiationThread>(
+    `/negotiations/${negotiationId}/seller-offer?seller_id=${encodeURIComponent(sellerId)}`,
+    input,
+  );
+}
+
+/** Seller accepts the buyer's current price and settles the deal. */
+export async function sellerAcceptNegotiation(
+  negotiationId: string,
+  sellerId: string,
+  per_unit_kobo: number,
+): Promise<NegotiationThread> {
+  return postJson<NegotiationThread>(
+    `/negotiations/${negotiationId}/seller-accept?seller_id=${encodeURIComponent(sellerId)}`,
+    { per_unit_kobo },
+  );
+}
+
+/** Seller "Sells for this" — takes the buyer's frozen price and settles. */
+export async function sellerSellFrozenNegotiation(negotiationId: string, sellerId: string): Promise<NegotiationThread> {
+  return postJson<NegotiationThread>(
+    `/negotiations/${negotiationId}/accept-frozen?seller_id=${encodeURIComponent(sellerId)}`,
+    {},
+  );
+}
+
+/** Seller ends the haggle and freezes the current prices for 24h. */
+export async function sellerEndNegotiation(
+  negotiationId: string,
+  sellerId: string,
+  message?: string,
+): Promise<NegotiationThread> {
+  return postJson<NegotiationThread>(
+    `/negotiations/${negotiationId}/end?seller_id=${encodeURIComponent(sellerId)}`,
+    message ? { message } : {},
+  );
+}
+
+/** Seller reopens an ended bargain with a fresh counter-offer. */
+export async function sellerContinueNegotiation(
+  negotiationId: string,
+  sellerId: string,
+  input: { per_unit_kobo: number; qty?: number; message?: string },
+): Promise<NegotiationThread> {
+  return postJson<NegotiationThread>(
+    `/negotiations/${negotiationId}/continue?seller_id=${encodeURIComponent(sellerId)}`,
+    input,
+  );
+}
+
 /* ── Notifications feed ── */
 
 export type NotificationType = 'order' | 'chat' | 'market' | 'deal' | 'system';
@@ -1689,6 +1747,7 @@ export interface Ad {
   ends_at: string;
   max_impressions?: number | null;
   impressions_shown?: number;
+  clicks_shown?: number;
   created_at: string;
   updated_at: string;
 }
@@ -1703,6 +1762,8 @@ export interface CreateAdInput {
   category_id?: string;
   cluster_id?: string;
   channel?: string;
+  starts_at?: string;
+  ends_at?: string;
   max_impressions?: number;
 }
 
@@ -1729,6 +1790,11 @@ export async function getActiveAds(params: { format?: AdFormat; cluster_id?: str
   if (params.category_id) qs.set('category_id', params.category_id);
   const query = qs.toString();
   return getJson<Ad[]>(`/ads/active${query ? `?${query}` : ''}`);
+}
+
+/** Best-effort tap counter for a served ad — fires when a buyer opens an ad. */
+export async function registerAdClick(adId: string): Promise<{ ok: boolean }> {
+  return postJson<{ ok: boolean }>(`/ads/${encodeURIComponent(adId)}/click`, {});
 }
 
 export async function reportAd(adId: string, userId: string | null, reason: string): Promise<{ ok: boolean; removed: boolean }> {
@@ -1826,6 +1892,8 @@ export interface SellerStats {
   dispute_rate_30d: number;
   avg_rating: number | null;
   review_count: number;
+  views_total: number;
+  views_7d: number;
   top_products: Array<{ offer_id: string; product_name: string; sold_qty: number; revenue_cents: number }>;
 }
 

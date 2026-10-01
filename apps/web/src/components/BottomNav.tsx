@@ -111,7 +111,7 @@ export function BottomNav() {
               {item.label}
             </span>
             {item.icon === 'handshake' && haggleCount > 0 && (
-              <span className="absolute top-0 right-[calc(50%-26px)] min-w-4 h-4 rounded-full bg-[#F5A623] text-[#4A2D00] text-[9px] font-bold flex items-center justify-center px-1 leading-none">
+              <span className="absolute top-0 right-[calc(50%-26px)] min-w-4 h-4 rounded-full bg-secondary text-tertiary text-[9px] font-bold flex items-center justify-center px-1 leading-none">
                 {haggleCount > 99 ? '99+' : haggleCount}
               </span>
             )}

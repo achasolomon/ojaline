@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getActiveAds, type Ad } from '../lib/api';
-import { isAdSeen, addSeenAd, adTargetUrl } from '../lib/ads';
+import { isAdSeen, addSeenAd, adTargetUrl, fireAdClick } from '../lib/ads';
 import { Icon } from './icons';
 
 /**
@@ -29,13 +29,14 @@ export function HomeAdBanner() {
   const open = () => {
     if (!ad) return;
     addSeenAd(ad.id);
+    fireAdClick(ad.id);
     navigate(adTargetUrl(ad));
   };
 
   if (!ad) return null;
 
   return (
-    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#2E7CF6] to-[#0B63C9] text-white shadow-sm">
+    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-primary to-primary-dark text-white shadow-sm">
       <button
         type="button"
         onClick={() => { addSeenAd(ad.id); setAd(null); }}
@@ -65,7 +66,7 @@ export function HomeAdBanner() {
           <span className="mt-1.5 block truncate text-sm font-bold">{ad.title}</span>
           {ad.body && <span className="mt-0.5 block text-[11px] leading-snug text-white/85 line-clamp-2">{ad.body}</span>}
         </span>
-        <span className="shrink-0 rounded-lg bg-white px-3 py-1.5 text-[11px] font-extrabold text-[#0B63C9]">
+        <span className="shrink-0 rounded-lg bg-white px-3 py-1.5 text-[11px] font-extrabold text-primary-dark">
           View
         </span>
       </button>

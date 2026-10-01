@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { naira } from '@ojaline/design';
 import { getUserId } from '../lib/session';
-import { addSeenAd, isAdSeen, adTargetUrl } from '../lib/ads';
+import { addSeenAd, isAdSeen, adTargetUrl, fireAdClick } from '../lib/ads';
 import {
   connectMarketFeed,
   disconnectMarketFeed,
@@ -22,6 +22,7 @@ interface Toast {
   ctaLabel: string;
   to: string;
   expiresAt: number;
+  ad_id?: string;
 }
 
 interface SellerOnlinePayload { seller_id: string; seller_name: string; market_name?: string; }
@@ -54,7 +55,7 @@ const KIND_STYLE: Record<Kind, { avatar: string; bar: string; tag: string }> = {
   SELLER_ONLINE: { avatar: 'bg-primary-light text-primary', bar: 'bg-primary', tag: 'Seller online' },
   NEW_ITEM: { avatar: 'bg-[#FFF6DA] text-[#A36A00]', bar: 'bg-secondary', tag: 'New item' },
   PRICE_BUZZ: { avatar: 'bg-[#FFF0E0] text-[#D97A06]', bar: 'bg-[#E87A1A]', tag: 'Price drop' },
-  AD: { avatar: 'bg-[#E8F0FF] text-[#0B63C9]', bar: 'bg-[#2E7CF6]', tag: 'Sponsored' },
+  AD: { avatar: 'bg-primary-light text-primary-dark', bar: 'bg-primary', tag: 'Sponsored' },
 };
 
 let toastSeq = 1;
@@ -111,6 +112,7 @@ function envelopeToToast(env: MarketEnvelope, selfId: string | null): Omit<Toast
       title: `${p.seller_name} is advertising “${p.title}”`,
       body: p.body || 'Tap to see what they are promoting.',
       ctaLabel: 'View ad',
+      ad_id: p.ad_id,
       to: adTargetUrl({ target_type: p.target_type, target_id: p.target_id ?? null, seller_id: p.seller_id }),
     };
   }
@@ -179,6 +181,7 @@ export function MarketActivityFeed() {
 
   const dismiss = (id: number) => setToasts((prev) => prev.filter((t) => t.id !== id));
   const go = (t: Toast) => {
+    if (t.kind === 'AD' && t.ad_id) fireAdClick(t.ad_id);
     navigate(t.to);
     dismiss(t.id);
   };

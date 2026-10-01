@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@ojaline/design';
 import { naira } from '@ojaline/design';
-import { getOfferById, getSimilarOffers, getReviews, trackView, createConversation, getSellerById, discoverOffers, getBatchOffers, getRecentlyViewedIds, addToWishlist, removeFromWishlist } from '../lib/api';
+import { getOfferById, getSimilarOffers, getReviews, trackView, createConversation, getSellerById, discoverOffers, getBatchOffers, getRecentlyViewedIds, addToWishlist, removeFromWishlist, mediaUrl } from '../lib/api';
 import type { Offer, FulfilmentMode, Review, OfferImage } from '../lib/api';
 import { LandedCost } from '../components/LandedCost';
 import { OfferCard } from '../components/OfferCard';
@@ -67,7 +67,7 @@ const CHANNEL_LABELS: Record<Offer['channel'], string> = {
 
 const CHANNEL_COLORS: Record<Offer['channel'], string> = {
   RETAILER: 'bg-primary-light text-primary',
-  WHOLESALE: 'bg-blue-50 text-blue-700',
+  WHOLESALE: 'bg-primary text-white',
   DIRECT: 'bg-amber-50 text-amber-700',
   OPEN: 'bg-neutral-100 text-neutral-600',
 };
@@ -88,6 +88,7 @@ export default function OfferDetail() {
   const [qty, setQty] = useState(1);
   const [similar, setSimilar] = useState<Offer[]>([]);
   const [sellerProducts, setSellerProducts] = useState<Offer[]>([]);
+  const [sellerVerified, setSellerVerified] = useState(false);
   const [suggested, setSuggested] = useState<Offer[]>([]);
   const [recentlyViewed, setRecentlyViewed] = useState<Offer[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -134,7 +135,10 @@ export default function OfferDetail() {
           if (!cancelled) setSimilar(s);
         }).catch(() => {});
         getSellerById(found.seller_id).then((seller) => {
-          if (!cancelled) setSellerProducts(seller.products.filter((p) => p.id !== found.id).slice(0, 8));
+          if (!cancelled) {
+            setSellerVerified(Boolean(seller.verified));
+            setSellerProducts(seller.products.filter((p) => p.id !== found.id).slice(0, 8));
+          }
         }).catch(() => {});
         const picks = found.category_id != null
           ? discoverOffers({ category_id: found.category_id, limit: 4 })
@@ -255,6 +259,7 @@ export default function OfferDetail() {
   const originalKobo = offer.price_cents ?? 0;
   const buyerChannel = getUser()?.channel ?? 'OPEN';
   const buyerCanBuy = offer.channel === 'OPEN' || buyerChannel === 'OPEN' || offer.channel === buyerChannel;
+  const blocked = !buyerCanBuy;
   const unitKobo = agreedKobo ?? originalKobo;
   const deliveryFee = DELIVERY_FEE_CENTS[deliveryMode];
   const ratingRaw = offer.seller_stats?.avg_rating;
@@ -473,8 +478,17 @@ export default function OfferDetail() {
           <div className="rounded-2xl border border-border bg-white p-5 lg:p-6">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="flex min-w-0 items-center gap-3.5">
-                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary-light text-primary">
-                  <Icon name="user" size={24} />
+                <span className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary-light text-primary">
+                  {offer.profile_photo_url ? (
+                    <img src={mediaUrl(offer.profile_photo_url) ?? ''} alt={offer.seller_name ?? 'seller'} className="h-full w-full object-cover" />
+                  ) : (
+                    <Icon name="user" size={24} />
+                  )}
+                  {sellerVerified && (
+                    <span className="absolute bottom-0 right-0 grid h-3.5 w-3.5 place-items-center rounded-full border border-white bg-primary text-white">
+                      <Icon name="check" size={8} />
+                    </span>
+                  )}
                 </span>
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
@@ -486,11 +500,18 @@ export default function OfferDetail() {
                       </span>
                     )}
                   </div>
-                  <div className="mt-0.5 flex items-center gap-1 text-xs text-textSecondary">
-                    <Icon name="check" size={13} className="text-primary" />
-                    Verified seller
-                    {offer.market_name && <span>· {offer.stall_number ? `${offer.stall_number}, ` : ''}{offer.market_name}</span>}
-                  </div>
+                  {sellerVerified && (
+                    <div className="mt-0.5 flex items-center gap-1 text-xs text-textSecondary">
+                      <Icon name="check" size={13} className="text-primary" />
+                      Verified seller
+                    </div>
+                  )}
+                  {offer.market_name && (
+                    <div className="mt-0.5 flex items-center gap-1 text-xs text-textSecondary">
+                      <Icon name="pin" size={13} className="text-primary" />
+                      {offer.stall_number ? `${offer.stall_number}, ` : ''}{offer.market_name}
+                    </div>
+                  )}
                   {offer.years_in_market != null && (
                     <div className="mt-0.5 text-xs text-textSecondary">
                       {offer.years_in_market} year{offer.years_in_market === 1 ? '' : 's'} in market
@@ -573,7 +594,7 @@ export default function OfferDetail() {
                 <button
                   type="button"
                   onClick={() => setBargainOpen(true)}
-                  className="flex h-[52px] flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-secondary to-[#F5A623] text-sm font-bold text-primary-dark shadow-[0_6px_16px_rgba(217,158,0,0.22)] transition hover:from-[#F0BE1F] hover:to-[#F0A21F] active:scale-[0.99] cursor-pointer"
+                  className="flex h-[52px] flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-secondary to-[#E8A800] text-sm font-bold text-primary-dark shadow-[0_6px_16px_rgba(217,158,0,0.22)] transition hover:from-[#F0BE1F] hover:to-[#E89A00] active:scale-[0.99] cursor-pointer"
                 >
                   <Icon name="bolt" size={16} className="fill-current" />
                   Bargain · from {fmt(askKobo!)}
@@ -714,9 +735,10 @@ export default function OfferDetail() {
             <button
               type="button"
               onClick={quickAdd}
-              className={`flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-xl border-2 text-primary transition active:scale-[0.99] cursor-pointer ${
+              disabled={blocked}
+              className={`flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-xl border-2 text-primary transition active:scale-[0.99] ${
                 added ? 'border-primary bg-primary text-white' : 'border-primary bg-white hover:bg-primary hover:text-white'
-              }`}
+              } ${blocked ? 'cursor-not-allowed opacity-45 hover:bg-white hover:text-primary' : 'cursor-pointer'}`}
               aria-label="Add to cart"
             >
               {added ? <Icon name="check" size={20} /> : <Icon name="cart" size={20} />}
@@ -724,9 +746,12 @@ export default function OfferDetail() {
             <button
               type="button"
               onClick={() => { addToCart(offer, qty, cartOverride, schedule); navigate('/checkout'); }}
-              className="flex h-[52px] flex-1 items-center justify-center gap-2 rounded-xl bg-primary text-sm font-bold tracking-tight text-white transition hover:bg-primary-dark active:scale-[0.99] cursor-pointer"
+              disabled={blocked}
+              className={`flex h-[52px] flex-1 items-center justify-center gap-2 rounded-xl bg-primary text-sm font-bold tracking-tight text-white transition active:scale-[0.99] ${
+                blocked ? 'cursor-not-allowed bg-surface text-textSecondary' : 'cursor-pointer hover:bg-primary-dark'
+              }`}
             >
-              Buy Now · {fmt(unitKobo)}
+              {blocked ? 'Unavailable on your channel' : <>Buy Now · {fmt(unitKobo)}</>}
             </button>
           </div>
 
@@ -737,7 +762,7 @@ export default function OfferDetail() {
               Buyer Protection: Orders paid through Kika are fully protected. Payments outside the platform forfeit refund and dispute support.
             </p>
           </div>
-          <p className="mt-2.5 text-[10px] leading-relaxed text-textSecondary">
+          <p className={`mt-2.5 text-[10px] leading-relaxed ${blocked ? 'text-primary-dark' : 'text-textSecondary'}`}>
             This offer is listed on the {CHANNEL_LABELS[offer.channel]} channel.
             {buyerCanBuy
               ? ' Your buyer channel matches, so you can purchase this now.'
@@ -861,8 +886,8 @@ export default function OfferDetail() {
       <div className="fixed inset-x-0 bottom-[64px] z-30 border-t border-border bg-white px-4 py-3 shadow-[0_-5px_18px_rgba(15,48,28,0.10)] md:hidden">
         <div className="mx-auto flex max-w-lg items-center gap-3">
           <div className="min-w-0"><p className="text-[10px] text-textSecondary">{offer.unit ? `per ${offer.unit}` : 'Price'}</p><p className="text-lg font-black tracking-tight text-text">{fmt(unitKobo)}</p></div>
-          <button type="button" onClick={quickAdd} className={`flex h-12 flex-1 items-center justify-center gap-2 rounded-xl text-sm font-bold transition ${added ? 'bg-primary-light text-primary' : 'bg-primary text-white hover:bg-primary-dark'}`}>
-            <Icon name={added ? 'check' : 'cart'} size={17} /> {added ? 'Added to cart' : 'Add to Cart'}
+          <button type="button" onClick={quickAdd} disabled={blocked} className={`flex h-12 flex-1 items-center justify-center gap-2 rounded-xl text-sm font-bold transition ${added ? 'bg-primary-light text-primary' : blocked ? 'cursor-not-allowed bg-surface text-textSecondary' : 'bg-primary text-white hover:bg-primary-dark'}`}>
+            <Icon name={added ? 'check' : 'cart'} size={17} /> {blocked ? 'Unavailable on your channel' : added ? 'Added to cart' : 'Add to Cart'}
           </button>
         </div>
       </div>

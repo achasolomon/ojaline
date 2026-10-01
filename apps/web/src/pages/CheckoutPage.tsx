@@ -220,8 +220,18 @@ export default function CheckoutPage() {
     setAddressOpen(false);
   };
 
+  /* Monads that form one delivery leg: a seller + its cluster + its window,
+   * kept to a 2-seller cap by the server (MAX_SELLERS_PER_ORDER=2). Surface the
+   * cap BEFORE the raw 400 from the checkout endpoint with a friendly note. */
+  const sellerNames = Array.from(new Set(items.map((i) => i.seller_name).filter(Boolean)));
+  const sellerCapExceeded = sellerNames.length > 2;
+
   const placeOrder = async () => {
     if (placing) return;
+    if (sellerCapExceeded) {
+      setError(`This cart needs ${sellerNames.length} sellers — the max per order is 2. Split delivery so each dispatch serves at most 2 sellers.`);
+      return;
+    }
     setPlacing(true);
     setError(null);
     try {

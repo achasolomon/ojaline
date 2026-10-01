@@ -95,6 +95,7 @@ const paths: Record<string, ReactNode> = {
     </>
   ),
   chevronRight: <polyline points="9 18 15 12 9 6" />,
+  chevronLeft: <polyline points="15 18 9 12 15 6" />,
   chevronDown: <polyline points="6 9 12 15 18 9" />,
   close: (
     <>
@@ -222,6 +223,25 @@ const paths: Record<string, ReactNode> = {
       <line x1="6" y1="20" x2="6" y2="16" />
     </>
   ),
+  pie: (
+    <>
+      <path d="M21.21 15.89A10 10 0 1 1 8 2.83" />
+      <path d="M22 12A10 10 0 0 0 12 2v10z" />
+    </>
+  ),
+  bars: (
+    <>
+      <line x1="6" y1="20" x2="6" y2="10" />
+      <line x1="12" y1="20" x2="12" y2="4" />
+      <line x1="18" y1="20" x2="18" y2="14" />
+    </>
+  ),
+  trend: (
+    <>
+      <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+      <polyline points="17 6 23 6 23 12" />
+    </>
+  ),
   'shopping-bag': (
     <>
       <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
@@ -250,6 +270,19 @@ const paths: Record<string, ReactNode> = {
       <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
       <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
       <line x1="1" y1="1" x2="23" y2="23" />
+    </>
+  ),
+  globe: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <line x1="2" y1="12" x2="22" y2="12" />
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+    </>
+  ),
+  send: (
+    <>
+      <line x1="22" y1="2" x2="11" y2="13" />
+      <polygon points="22 2 15 22 11 13 2 9 22 2" />
     </>
   ),
 };

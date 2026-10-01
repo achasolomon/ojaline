@@ -79,6 +79,8 @@ beforeEach(async () => {
 afterAll(async () => {
   if (app) {
     await app.query('DELETE FROM catalog.wishlist_items');
+    await app.query('DELETE FROM catalog.offer_view_events WHERE offer_id = $1', [offerId]);
+    await app.query('DELETE FROM catalog.offer_views WHERE offer_id = $1', [offerId]);
   }
   await app.end();
   await admin.query(`DELETE FROM catalog.offers WHERE id = $1`, [offerId]);
@@ -124,5 +126,28 @@ describe('CatalogService wishlist (integration — requires postgres on DB_HOST)
 
   it('rejects wishlisting a missing offer', async () => {
     await expect(catalog.addWishlistItem(buyerId, randomUUID())).rejects.toThrow(/not found/i);
+  });
+
+  it('counts an offer view once per viewer per day', async () => {
+    await app.query('DELETE FROM catalog.offer_view_events WHERE offer_id = $1', [offerId]);
+    await app.query('DELETE FROM catalog.offer_views WHERE offer_id = $1', [offerId]);
+
+    const settle = () => new Promise((r) => setTimeout(r, 100));
+    const viewer = (id: string) => ({ id, roles: ['BUYER'] }) as unknown as Parameters<typeof catalog.findOfferById>[1];
+
+    // Same guest re-opens repeatedly — still exactly one view.
+    await catalog.findOfferById(offerId, undefined, 'visitor-1');
+    await catalog.findOfferById(offerId, undefined, 'visitor-1');
+    await settle();
+    const one = await app.query(`SELECT COALESCE(SUM(views)::int, 0) AS n FROM catalog.offer_views WHERE offer_id = $1`, [offerId]);
+    expect(Number(one.rows[0].n)).toBe(1);
+
+    // A signed-in user adds their own view, but a repeat visit does not.
+    const otherId = await insertUser(admin);
+    await catalog.findOfferById(offerId, viewer(otherId));
+    await catalog.findOfferById(offerId, viewer(otherId));
+    await settle();
+    const two = await app.query(`SELECT COALESCE(SUM(views)::int, 0) AS n FROM catalog.offer_views WHERE offer_id = $1`, [offerId]);
+    expect(Number(two.rows[0].n)).toBe(2);
   });
 });

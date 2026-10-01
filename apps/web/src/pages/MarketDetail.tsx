@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getMarketById, type MarketDetail } from '../lib/api';
+import { formatMarketDayDate } from '../lib/promos';
 import { Icon, type IconName } from '../components/icons';
 
 const SELLER_TYPE_LABELS: Record<string, string> = {
@@ -48,7 +49,7 @@ export default function MarketDetail() {
   if (!market) {
     return (
       <div className="max-w-[1200px] mx-auto px-6 py-6">
-        <p className="text-sm text-text-secondary">Market not found.</p>
+        <p className="text-sm text-textSecondary">Market not found.</p>
       </div>
     );
   }
@@ -60,8 +61,18 @@ export default function MarketDetail() {
 
   return (
     <div className="max-w-[1200px] mx-auto px-6 py-6">
+      {/* Back */}
+      <button
+        type="button"
+        onClick={() => navigate(-1)}
+        className="mb-3 grid h-9 w-9 place-items-center rounded-full bg-gray-50 text-textSecondary border-none transition hover:bg-gray-100 cursor-pointer"
+        aria-label="Go back"
+      >
+        <Icon name="chevronLeft" size={16} />
+      </button>
+
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-xs text-text-secondary mb-4">
+      <div className="flex items-center gap-2 text-xs text-textSecondary mb-4">
         <span className="cursor-pointer hover:text-primary" onClick={() => navigate('/')}>Home</span>
         <span>/</span>
         <span className="cursor-pointer hover:text-primary" onClick={() => navigate('/market-days')}>Market Days</span>
@@ -72,14 +83,23 @@ export default function MarketDetail() {
       {/* Market header */}
       <div className="mb-6">
         <h1 className="text-2xl font-black text-text">{market.name}</h1>
-        <p className="text-sm text-text-secondary mt-1">
+        <p className="text-sm text-textSecondary mt-1">
           {market.cluster_name}, {market.lga}
         </p>
-        <div className="flex items-center gap-4 mt-2">
-          <span className="text-xs text-text-secondary">
-            Every {market.operating_days.map((d) => d).join(', ')}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-2">
+          {market.is_open_today ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-light px-2.5 py-0.5 text-[11px] font-bold text-primary-dark">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary" /> Open today
+            </span>
+          ) : market.next_date ? (
+            <span className="text-xs font-semibold text-textSecondary">
+              Next market day: {formatMarketDayDate(market.next_date)}
+            </span>
+          ) : null}
+          <span className="flex items-center gap-1 text-xs text-textSecondary">
+            <Icon name="clock" size={13} /> Every {market.operating_days.map((d) => d).join(', ')}
           </span>
-          <span className="text-xs text-text-secondary">
+          <span className="text-xs text-textSecondary">
             {market.sellers.length} sellers · {market.product_count} products
           </span>
         </div>
@@ -130,15 +150,12 @@ export default function MarketDetail() {
               </div>
               <div>
                 <h3 className="text-sm font-bold text-text">{seller.full_name}</h3>
-                <p className="text-[11px] text-text-secondary">
+                <p className="text-[11px] text-textSecondary">
                   {SELLER_TYPE_LABELS[seller.seller_type || ''] || seller.seller_type || 'Seller'}
                 </p>
               </div>
             </div>
             <div className="pt-3 border-t border-border flex items-center justify-between">
-              <span className="text-[10px] text-text-secondary">
-                {market.product_count} products at this market
-              </span>
               <span className="flex items-center gap-0.5 text-[10px] font-bold text-primary">View Products <Icon name="arrowRight" size={12} /></span>
             </div>
           </article>
@@ -147,7 +164,10 @@ export default function MarketDetail() {
 
       {displayedSellers.length === 0 && (
         <div className="bg-white border border-border rounded-xl p-12 text-center">
-          <p className="text-sm text-text-secondary">No sellers found in this category.</p>
+          <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-full bg-surface">
+            <Icon name="megaphone" size={22} className="text-textSecondary" />
+          </div>
+          <p className="text-sm text-textSecondary">No sellers found in this category.</p>
         </div>
       )}
     </div>

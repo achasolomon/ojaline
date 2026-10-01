@@ -1,4 +1,5 @@
 import type { Ad } from './api';
+import { registerAdClick } from './api';
 
 /**
  * Per-device ad grounds: an ad the user has already seen/dismissed is not
@@ -41,4 +42,9 @@ export function adTargetUrl(ad: Pick<Ad, 'target_type' | 'target_id' | 'seller_i
   if (ad.target_type === 'OFFER' && ad.target_id) return `/offers/${ad.target_id}`;
   if (ad.target_type === 'SELLER' && ad.target_id) return `/sellers/${ad.target_id}`;
   return `/sellers/${ad.seller_id}`;
+}
+
+/** Best-effort tap counter so sellers can see ad performance in Ad Studio. */
+export function fireAdClick(adId: string): void {
+  void registerAdClick(adId).catch(() => {});
 }

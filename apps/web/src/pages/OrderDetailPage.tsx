@@ -24,7 +24,7 @@ function statusBadge(s: string): { label: string; cls: string } {
     case 'PENDING_PAYMENT': return { label: 'Awaiting payment', cls: 'bg-[#FFF6DA] text-[#A36A00]' };
     case 'DELIVERED': return { label: 'Delivered', cls: 'bg-primary text-white' };
     case 'DISPATCHED':
-    case 'PARTIALLY_DISPATCHED': return { label: 'In transit', cls: 'bg-blue-50 text-blue-700' };
+    case 'PARTIALLY_DISPATCHED': return { label: 'In transit', cls: 'bg-primary-light text-primary-dark' };
     case 'CANCELLED': return { label: 'Cancelled', cls: 'bg-danger/10 text-danger' };
     case 'PARTIALLY_REFUNDED':
     case 'REFUNDED': return { label: 'Refunded', cls: 'bg-danger/10 text-danger' };
@@ -85,7 +85,7 @@ function lineStatusChip(status: string): string {
   const map: Record<string, string> = {
     PENDING: 'bg-surface text-textSecondary',
     PAID: 'bg-primary-light text-primary',
-    DISPATCHED: 'bg-blue-50 text-blue-700',
+    DISPATCHED: 'bg-primary-light text-primary-dark',
     DELIVERED: 'bg-primary text-white',
     REFUNDED: 'bg-danger/10 text-danger',
     CANCELLED: 'bg-surface text-textSecondary',

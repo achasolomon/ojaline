@@ -160,18 +160,62 @@ export class OrdersService {
         throw new BadRequestException(`multi-seller gate rejected: ${gateResult.reason}`);
       }
 
-      const totalQty = input.items.reduce((sum, item) => sum + item.qty, 0);
-      const clusterId = gateItems[0].cluster_id;
-      const capacityResult = await this.multiSellerGate.checkCapacity(
-        clusterId,
-        input.window_start,
-        input.window_end,
-        totalQty,
-      );
-      if (capacityResult.available < totalQty) {
-        throw new BadRequestException(
-          `capacity exceeded: ${capacityResult.available} available, ${totalQty} requested for window ${input.window_start}–${input.window_end}`,
+      // ----------------------------------------------------------------
+      // One fulfilment leg per seller. The buyer may shop ANY market (even a
+      // far one — the platform only suggests the nearest), so sellers are NOT
+      // forced into one cluster. Each seller owns its own delivery: mode, fee
+      // and cluster come from THAT seller's offers alone, never the union.
+      // ----------------------------------------------------------------
+      const legsBySeller = new Map<string, Array<{ offer_id: string; cluster_id: string; qty: number }>>();
+      for (const gi of gateItems) {
+        const leg = legsBySeller.get(gi.seller_id) ?? [];
+        leg.push({ offer_id: gi.offer_id, cluster_id: gi.cluster_id, qty: gi.qty });
+        legsBySeller.set(gi.seller_id, leg);
+      }
+
+      const legs: Array<{
+        seller_id: string;
+        cluster_id: string;
+        delivery_mode: FulfilmentMode;
+        delivery_fee_cents: number;
+        window_start: string;
+        window_end: string;
+        qty: number;
+      }> = [];
+
+      for (const [sellerId, lines] of legsBySeller) {
+        const sellerModes = new Set<string>();
+        for (const line of lines) {
+          const offer = offerMap.get(line.offer_id)!;
+          for (const m of offer.fulfilment_modes) sellerModes.add(m);
+        }
+        const mode = FULFILMENT_PREFERENCE.find((m) => sellerModes.has(m)) ?? 'SCHEDULED';
+        const legQty = lines.reduce((sum, l) => sum + l.qty, 0);
+        legs.push({
+          seller_id: sellerId,
+          cluster_id: lines[0].cluster_id,
+          delivery_mode: mode,
+          delivery_fee_cents: DELIVERY_FEE_CENTS[mode],
+          window_start: input.window_start,
+          window_end: input.window_end,
+          qty: legQty,
+        });
+      }
+
+      // Per-leg capacity: each seller reserves its own cluster+window. Legs
+      // share the buyer-chosen window but their clusters may differ.
+      for (const leg of legs) {
+        const capacity = await this.multiSellerGate.checkCapacity(
+          leg.cluster_id,
+          leg.window_start,
+          leg.window_end,
+          leg.qty,
         );
+        if (capacity.available < leg.qty) {
+          throw new BadRequestException(
+            `capacity exceeded for seller ${leg.seller_id} (cluster ${leg.cluster_id}): ${capacity.available} available, ${leg.qty} requested for window ${leg.window_start}–${leg.window_end}`,
+          );
+        }
       }
 
       const orderChannel = offerMap.get(offerIds[0])?.channel ?? 'RETAILER';
@@ -283,17 +327,43 @@ export class OrdersService {
         );
       }
 
-      const capacityReserved = await this.multiSellerGate.reserveCapacity(
-        clusterId,
-        input.window_start,
-        input.window_end,
-        totalQty,
-      );
-      if (!capacityReserved) {
-        for (const h of holdKeys) {
-          await this.gate.releaseSoftHold(h.key, h.qty);
+      // ------------------------------------------------
+      // Reserve per-leg capacity: each seller leg reserves ITS OWN
+      // cluster+window so legs are never collapsed onto one aggregate.
+      // Mirrors the per-leg capacity checks above — on failure every soft
+      // hold AND every already-reserved leg is released before rethrowing.
+      // ------------------------------------------------
+      const reservedLegs: Array<{ seller_id: string; cluster_id: string; window_start: string; window_end: string; qty: number }> = [];
+      for (const leg of legs) {
+        const reserved = await this.multiSellerGate.reserveCapacity(
+          leg.cluster_id,
+          leg.window_start,
+          leg.window_end,
+          leg.qty,
+        );
+        if (!reserved) {
+          for (const h of holdKeys) {
+            await this.gate.releaseSoftHold(h.key, h.qty);
+          }
+          for (const rl of reservedLegs) {
+            await this.multiSellerGate.releaseCapacity(
+              rl.cluster_id,
+              rl.window_start,
+              rl.window_end,
+              rl.qty,
+            );
+          }
+          throw new ConflictException(
+            `capacity no longer available for seller ${leg.seller_id} window ${input.window_start}–${input.window_end}`,
+          );
         }
-        throw new ConflictException(`capacity no longer available for window ${input.window_start}–${input.window_end}`);
+        reservedLegs.push({
+          seller_id: leg.seller_id,
+          cluster_id: leg.cluster_id,
+          window_start: leg.window_start,
+          window_end: leg.window_end,
+          qty: leg.qty,
+        });
       }
 
       await client.query('COMMIT');

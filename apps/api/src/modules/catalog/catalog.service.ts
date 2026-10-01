@@ -145,7 +145,7 @@ export class CatalogService {
     return { offers: rows, total };
   }
 
-  async findOfferById(offerId: string, viewer?: AuthUser): Promise<Record<string, unknown>> {
+  async findOfferById(offerId: string, viewer?: AuthUser, viewerKey?: string): Promise<Record<string, unknown>> {
     const { rows } = await this.pool.query(
       `SELECT
          o.id,
@@ -211,18 +211,47 @@ export class CatalogService {
       throw new NotFoundException(`Offer ${offerId} not found`);
     }
 
-    // Count a view when a non-owner opens the offer detail. Fire-and-forget:
-    // a slow counter write must never hold up the public page.
+    // Count a view when a non-owner opens the offer detail — once per viewer per
+    // day. Signed-in users dedupe on their user id; guests dedupe on a client-
+    // generated anonymous visitor id (passed as `vid`), so refreshing a page no
+    // longer inflates the counts. Fire-and-forget: a slow counter write must
+    // never hold up the public page.
     const offer = rows[0];
     if (!viewer || String(viewer.id) !== String(offer.seller_id)) {
-      void this.pool
-        .query(
-          `INSERT INTO catalog.offer_views (offer_id, viewed_on, views)
-           VALUES ($1, CURRENT_DATE, 1)
-           ON CONFLICT (offer_id, viewed_on) DO UPDATE SET views = offer_views.views + 1`,
-          [offerId],
-        )
-        .catch(() => {});
+      const key = viewer
+        ? `u:${viewer.id}`
+        : viewerKey && viewerKey.length > 3 && viewerKey.length <= 128
+          ? `a:${viewerKey}`
+          : null;
+      if (key) {
+        void this.pool
+          .query(
+            `INSERT INTO catalog.offer_view_events (offer_id, viewer_key, viewed_on)
+             VALUES ($1, $2, CURRENT_DATE)
+             ON CONFLICT (offer_id, viewer_key, viewed_on) DO NOTHING
+             RETURNING 1`,
+            [offerId, key],
+          )
+          .then((res) => {
+            if ((res.rowCount ?? 0) === 0) return null;
+            return this.pool.query(
+              `INSERT INTO catalog.offer_views (offer_id, viewed_on, views)
+               VALUES ($1, CURRENT_DATE, 1)
+               ON CONFLICT (offer_id, viewed_on) DO UPDATE SET views = offer_views.views + 1`,
+              [offerId],
+            );
+          })
+          .catch(() => {});
+      } else {
+        void this.pool
+          .query(
+            `INSERT INTO catalog.offer_views (offer_id, viewed_on, views)
+             VALUES ($1, CURRENT_DATE, 1)
+             ON CONFLICT (offer_id, viewed_on) DO UPDATE SET views = offer_views.views + 1`,
+            [offerId],
+          )
+          .catch(() => {});
+      }
     }
 
     return offer;

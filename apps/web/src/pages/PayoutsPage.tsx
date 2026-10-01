@@ -102,6 +102,7 @@ export default function PayoutsPage() {
   const [accountId, setAccountId] = useState('');
 
   const [showBankForm, setShowBankForm] = useState(false);
+  const [tab, setTab] = useState<'accounts' | 'withdrawals' | 'releases'>('accounts');
   const [bankName, setBankName] = useState('');
   const [bankCode, setBankCode] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
@@ -299,7 +300,14 @@ export default function PayoutsPage() {
           )}
 
           {showWithdraw && canWithdraw && (
-          <section className="rounded-2xl bg-white p-4 sm:p-5">
+          <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+            <button
+              type="button"
+              aria-label="Close withdraw"
+              onClick={() => setShowWithdraw(false)}
+              className="absolute inset-0 bg-black/40"
+            />
+            <div className="relative z-10 max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-4 shadow-2xl sm:rounded-2xl sm:p-5">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-sm font-extrabold text-gray-900">Request a withdrawal</h2>
@@ -379,12 +387,35 @@ export default function PayoutsPage() {
                   >
                     {busy ? 'Requesting…' : 'Request payout'}
                   </button>
-                </div>
+</div>
               </div>
             )}
-          </section>
+            </div>
+          </div>
         )}
 
+        <div className="flex gap-1 overflow-x-auto rounded-2xl bg-white p-1">
+          {[
+            { id: 'accounts' as const, label: 'Bank accounts', icon: 'bank' as const },
+            { id: 'withdrawals' as const, label: 'Withdrawals', icon: 'card' as const },
+            { id: 'releases' as const, label: 'Release history', icon: 'clock' as const },
+          ].map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={cn(
+                'flex min-w-max flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[12px] font-bold transition',
+                tab === t.id ? 'bg-primary text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700',
+              )}
+            >
+              <Icon name={t.icon} size={14} />
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'accounts' && (
         <section className="rounded-2xl bg-white p-4 sm:p-5">
           <SectionHeader
             icon="bank"
@@ -500,7 +531,9 @@ export default function PayoutsPage() {
             </ul>
           )}
         </section>
+        )}
 
+        {tab === 'withdrawals' && (
         <section className="rounded-2xl bg-white p-4 sm:p-5">
           <SectionHeader icon="card" title="Withdrawal requests" count={requests?.length} />
           {requests == null ? (
@@ -536,7 +569,9 @@ export default function PayoutsPage() {
             </ul>
           )}
         </section>
+        )}
 
+        {tab === 'releases' && (
         <section className="rounded-2xl bg-white p-4 sm:p-5">
           <SectionHeader icon="check" title="Release history" count={ledger?.length} />
           {ledger == null ? (
@@ -568,6 +603,8 @@ export default function PayoutsPage() {
             </ul>
           )}
         </section>
+        )}
+
         </div>
       </div>
     </div>

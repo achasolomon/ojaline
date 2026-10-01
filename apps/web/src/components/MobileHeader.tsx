@@ -50,10 +50,10 @@ export function MobileHeader({ minimal = false }: { minimal?: boolean }) {
           <button
             type="button"
             onClick={() => navigate(-1)}
-            className="w-9 h-9 flex items-center justify-center rounded-lg bg-surface text-text border-none cursor-pointer"
+            className="grid h-9 w-9 place-items-center rounded-full bg-gray-50 text-textSecondary border-none cursor-pointer transition hover:bg-gray-100"
             aria-label="Go back"
           >
-            <Icon name="arrowRight" size={18} className="rotate-180" />
+            <Icon name="chevronLeft" size={16} />
           </button>
         )}
         <button type="button" onClick={() => navigate('/')} className="flex items-center bg-transparent border-none cursor-pointer p-0">
@@ -69,7 +69,7 @@ export function MobileHeader({ minimal = false }: { minimal?: boolean }) {
         {authed && (
           <button type="button" onClick={() => navigate('/negotiations')} className="relative w-9 h-9 flex items-center justify-center rounded-full bg-transparent border-none cursor-pointer" aria-label="Your negotiations">
             <Icon name="handshake" size={20} />
-            {haggleCount > 0 && <span className="absolute top-0.5 right-0.5 min-w-4 h-4 rounded-full bg-[#F5A623] text-[#4A2D00] text-[10px] font-bold flex items-center justify-center px-1">{haggleCount > 99 ? '99+' : haggleCount}</span>}
+            {haggleCount > 0 && <span className="absolute top-0.5 right-0.5 min-w-4 h-4 rounded-full bg-secondary text-tertiary text-[10px] font-bold flex items-center justify-center px-1">{haggleCount > 99 ? '99+' : haggleCount}</span>}
           </button>
         )}
         <button type="button" onClick={() => navigate('/cart')} className="relative w-9 h-9 flex items-center justify-center rounded-full bg-transparent border-none cursor-pointer" aria-label="Cart">

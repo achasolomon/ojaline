@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getStorefront, type Seller } from '../lib/api';
+import { getStorefront, mediaUrl, type Seller } from '../lib/api';
 import { getUser, getUserId, clearSession } from '../lib/session';
 import { Icon, type IconName } from '../components/icons';
 
@@ -79,6 +79,8 @@ export default function SellerAccountPage() {
     .toUpperCase();
 
   const stats = seller ? buildStats(seller) : [];
+  const photoUrl = seller?.profile_photo_url ? mediaUrl(seller.profile_photo_url) : null;
+  const bannerUrl = seller?.banner_url ? mediaUrl(seller.banner_url) : null;
 
   return (
     <div className="mx-auto w-full max-w-[900px] space-y-6">
@@ -89,14 +91,23 @@ export default function SellerAccountPage() {
 
       {/* Identity */}
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
-        <div className="h-20 bg-gradient-to-r from-primary to-primary-dark" />
+        <div
+          className={`h-20 w-full ${bannerUrl ? 'bg-cover bg-center' : 'bg-gradient-to-r from-primary to-primary-dark'}`}
+          style={bannerUrl ? { backgroundImage: `url(${bannerUrl})` } : undefined}
+          role="img"
+          aria-label="Storefront banner"
+        />
         <div className="px-5 pb-6 lg:px-8">
           <div className="-mt-9 flex items-end gap-4">
             <div className="w-[88px] shrink-0">
               <div className="aspect-square rounded-full bg-white p-1.5 shadow-[0_4px_14px_rgba(0,0,0,0.08)]">
-                <div className="grid h-full w-full place-items-center rounded-full bg-primary-light text-base font-black text-primary">
-                  {initials}
-                </div>
+                {photoUrl ? (
+                  <img src={photoUrl} alt={`${user?.full_name || 'seller'} photo`} className="h-full w-full rounded-full object-cover" />
+                ) : (
+                  <div className="grid h-full w-full place-items-center rounded-full bg-primary-light text-base font-black text-primary">
+                    {initials}
+                  </div>
+                )}
               </div>
             </div>
             <div className="min-w-0 flex-1 pb-0.5">
@@ -106,7 +117,7 @@ export default function SellerAccountPage() {
               </p>
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                 {seller?.verified ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-[#D6F5E7] px-2.5 py-1 text-[10px] font-bold text-[#087A38]">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-primary-light px-2.5 py-1 text-[10px] font-bold text-primary-dark">
                     <Icon name="shield" size={12} /> Verified storefront
                   </span>
                 ) : (

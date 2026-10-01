@@ -51,10 +51,11 @@ export interface SellerStorefrontViewProps {
   seller: Seller;
   onOpenProduct?: (offer: Offer) => void;
   onOpenMarket?: (marketId: string) => void;
+  onMessage?: () => void;
 }
 
 /** Storefront profile card + product grid, shared by the marketplace page and the seller portal preview. */
-export function SellerStorefrontView({ seller, onOpenProduct, onOpenMarket }: SellerStorefrontViewProps) {
+export function SellerStorefrontView({ seller, onOpenProduct, onOpenMarket, onMessage }: SellerStorefrontViewProps) {
   const markets = Array.isArray(seller.markets) ? seller.markets : [];
   const products = Array.isArray(seller.products) ? seller.products : [];
   const type = seller.seller_type || seller.profile_type || '';
@@ -93,12 +94,25 @@ export function SellerStorefrontView({ seller, onOpenProduct, onOpenMarket }: Se
               </div>
             </div>
             <div className="min-w-0 flex-1 pb-0.5">
-              <h1 className="truncate text-xl font-black text-text lg:text-2xl">{seller.full_name}</h1>
-              <p className="text-xs font-semibold text-primary lg:text-sm">
-                {SELLER_TYPE_LABELS[type] || type || 'Seller'}
-              </p>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h1 className="truncate text-xl font-black text-text lg:text-2xl">{seller.full_name}</h1>
+                  <p className="text-xs font-semibold text-primary lg:text-sm">
+                    {SELLER_TYPE_LABELS[type] || type || 'Seller'}
+                  </p>
+                </div>
+                {onMessage && (
+                  <button
+                    type="button"
+                    onClick={onMessage}
+                    className="flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-primary px-4 text-xs font-bold text-white transition hover:bg-primary-dark cursor-pointer"
+                  >
+                    <Icon name="message" size={14} /> Message seller
+                  </button>
+                )}
+              </div>
               {seller.verified && (
-                <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-[#D6F5E7] px-2.5 py-1 text-[10px] font-bold text-[#087A38]">
+                <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-primary-light px-2.5 py-1 text-[10px] font-bold text-primary-dark">
                   <Icon name="shield" size={12} /> Verified
                 </span>
               )}

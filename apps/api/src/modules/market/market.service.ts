@@ -183,6 +183,15 @@ function sellerMessageText(kind: 'SELLER_OFFER' | 'SELLER_ACCEPT', kobo: number,
   return lines[roll % lines.length];
 }
 
+/* ---------- bounded haggle: every thread is guaranteed to end ---------- */
+
+const MAX_BUYER_BIDS = 3;
+const MAX_SELLER_OFFERS = 3;
+const TURN_DEADLINE_MS = 24 * 60 * 60 * 1000; // idle OPEN thread auto-freezes after 24h
+const FREEZE_WINDOW_MS = 24 * 60 * 60 * 1000; // a frozen price is grabbable for 24h, then the thread closes
+const REMIND_BEFORE_MS = 6 * 60 * 60 * 1000; // nudge the idle side 6h before auto-freeze kicks in
+const MAX_REOPENS = 1; // after an END→OPEN reopen, the next freeze is final
+
 /* ================================================================ service */
 
 @Injectable()
@@ -200,6 +209,7 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
   onModuleInit(): void {
     this.timer = setInterval(() => {
       void this.replySweep();
+      void this.deadlineSweep();
       void this.pruneEmptyThreads();
     }, 3000);
   }
@@ -809,6 +819,7 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
       frozen_seller_per_unit_kobo: n.frozen_seller_per_unit_kobo == null ? null : Number(n.frozen_seller_per_unit_kobo),
       frozen_buyer_per_unit_kobo: n.frozen_buyer_per_unit_kobo == null ? null : Number(n.frozen_buyer_per_unit_kobo),
       freeze_expires_at: n.freeze_expires_at,
+      reopen_count: Number(n.reopen_count ?? 0),
       created_at: n.created_at,
       updated_at: n.updated_at,
     };
@@ -976,10 +987,25 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
     return String(rows[0].id);
   }
 
+  /** How many times one side has already moved the price on a thread. */
+  private async countRoundMoves(negotiationId: string, kind: 'BUYER_BID' | 'SELLER_OFFER'): Promise<number> {
+    const { rows } = await this.pool.query(
+      `SELECT count(*)::int AS n FROM market.negotiation_messages
+        WHERE negotiation_id = $1 AND kind = $2`,
+      [negotiationId, kind],
+    );
+    return Number(rows[0].n);
+  }
+
   async buyerBid(negotiationId: string, buyerId: string, qty: number, totalKobo: number, message: string): Promise<Record<string, unknown>> {
     const n = await this.assertThread(negotiationId);
     if (String(n.buyer_id) !== buyerId) throw new Error('Not your negotiation');
     if (String(n.observable) !== 'OPEN') throw new Error('Negotiation is not open');
+
+    const bids = await this.countRoundMoves(negotiationId, 'BUYER_BID');
+    if (bids >= MAX_BUYER_BIDS) {
+      throw new Error(`You don use your ${MAX_BUYER_BIDS} rounds — accept the seller price or end the bargain.`);
+    }
 
     const perUnit = Math.max(50, Math.round((totalKobo / qty) / 50) * 50);
     const msgText = message.trim() || `I go pay ${label(perUnit)} each for ${qty}`;
@@ -1040,6 +1066,11 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
       demeanor: String(n.demeanor) as 'easy' | 'fair' | 'tough',
       round,
     });
+    // No counters left: the seller's reply can only be an accept now.
+    const offerCount = await this.countRoundMoves(negotiationId, 'SELLER_OFFER');
+    const final = offerCount >= MAX_SELLER_OFFERS
+      ? { kind: 'SELLER_ACCEPT' as const, perUnitKobo: bidPerUnitKobo }
+      : r;
     const unit = n.basis_type === 'OFFER' ? (n.offer_unit ? String(n.offer_unit) : null) : null;
     const delayMs = 5000 + (hashCode(`${negotiationId}:${bidPerUnitKobo}:${Date.now()}`) % 7000);
     await this.pool.query(
@@ -1050,10 +1081,10 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
         WHERE id = $6`,
       [
         delayMs,
-        r.kind,
-        r.perUnitKobo,
+        final.kind,
+        final.perUnitKobo,
         qty,
-        sellerMessageText(r.kind, r.perUnitKobo, unit ?? 'unit', qty),
+        sellerMessageText(final.kind, final.perUnitKobo, unit ?? 'unit', qty),
         negotiationId,
       ],
     );
@@ -1094,6 +1125,11 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
     const n = await this.assertThread(negotiationId);
     if (String(n.seller_id) !== sellerId) throw new Error('Not your negotiation');
     if (String(n.observable) !== 'OPEN') throw new Error('Negotiation is not open');
+
+    const offers = await this.countRoundMoves(negotiationId, 'SELLER_OFFER');
+    if (offers >= MAX_SELLER_OFFERS) {
+      throw new Error(`Na your final word — you don drop ${MAX_SELLER_OFFERS} counters. Accept the buyer price or end the bargain.`);
+    }
 
     const perUnit = Math.max(50, Math.round(perUnitKobo / 50) * 50);
     const newQty = qty != null ? Math.max(1, Math.floor(qty)) : Number(n.qty);
@@ -1303,6 +1339,24 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
     if (side === 'SELLER' && String(n.seller_id) !== actorId) throw new Error('Not your negotiation');
     if (String(n.observable) !== 'ENDED') throw new Error('Negotiation is not ended');
 
+    const expires = n.freeze_expires_at ? new Date(String(n.freeze_expires_at)).getTime() : null;
+    if (expires == null || expires < Date.now()) {
+      throw new Error('The frozen window don close — this bargain don finish.');
+    }
+    const reopenCount = Number(n.reopen_count ?? 0);
+    if (reopenCount >= MAX_REOPENS) {
+      throw new Error('You don already reopen this bargain once — make we settle or comot.');
+    }
+    const cap = side === 'BUYER' ? MAX_BUYER_BIDS : MAX_SELLER_OFFERS;
+    const used = await this.countRoundMoves(negotiationId, side === 'BUYER' ? 'BUYER_BID' : 'SELLER_OFFER');
+    if (used >= cap) {
+      throw new Error(
+        side === 'BUYER'
+          ? `You don use your ${MAX_BUYER_BIDS} rounds — accept the price or comot.`
+          : `Na your final word — you don drop ${MAX_SELLER_OFFERS} counters. Accept or end.`,
+      );
+    }
+
     const perUnit = Math.max(50, Math.round(perUnitKobo / 50) * 50);
     const newQty = qty != null ? Math.max(1, Math.floor(qty)) : Number(n.qty);
     const kind = side === 'BUYER' ? 'BUYER_BID' : 'SELLER_OFFER';
@@ -1318,7 +1372,8 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
       `UPDATE market.negotiations
           SET observable = 'OPEN', ended_at = NULL, ended_by = NULL,
               frozen_seller_per_unit_kobo = NULL, frozen_buyer_per_unit_kobo = NULL,
-              freeze_expires_at = NULL, qty = $1, updated_at = now()
+              freeze_expires_at = NULL, reopen_count = reopen_count + 1,
+              auto_freeze_reminded_at = NULL, qty = $1, updated_at = now()
         WHERE id = $2`,
       [newQty, negotiationId],
     );
@@ -1486,10 +1541,188 @@ export class MarketService implements OnModuleInit, OnModuleDestroy {
               SELECT 1 FROM market.negotiation_messages m WHERE m.negotiation_id = n.id
             )`,
       );
-      if (rows.length > 0) this.logger.log(`pruned ${rows.length} empty negotiation thread(s)`);
+if (rows.length > 0) this.logger.log(`pruned ${rows.length} empty negotiation thread(s)`);
     } catch (err) {
       this.logger.error(`empty-thread prune failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
+  /* ----------------------- deadline sweep (bounded haggle) ----------------------- */
+
+  /**
+   * Guarantees a stuck haggle never hangs forever. Runs on the 3s interval in
+   * one transaction:
+   *   1. nudges the idle side once, 6h before their 24h reply window expires;
+   *   2. auto-freezes an OPEN thread that has gone quiet for 24h — the last
+   *      prices each side put on the table are pinned for another 24h, exactly
+   *      like a manual "end";
+   *   3. when a frozen grab window passes, the pins are dropped and the thread
+   *      is inert for good (reopen is already blocked past the window).
+   */
+  async deadlineSweep(): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // 1 ── Reminders: find OPEN threads whose turn owner has been idle
+      // (TURN_DEADLINE_MS − REMIND_BEFORE_MS) and who haven't been nudged yet.
+      // The last message's side tells us whose move it is; the idle party gets
+      // exactly one nudge.
+      const remindAfterMs = TURN_DEADLINE_MS - REMIND_BEFORE_MS;
+      const { rows: nudges } = await client.query(
+        `SELECT n.id, last_side,
+                CASE WHEN last_side = 'BUYER' THEN su.full_name ELSE bu.full_name END AS idle_name,
+                CASE WHEN last_side = 'BUYER' THEN n.seller_id ELSE n.buyer_id END AS idle_id
+           FROM market.negotiations n
+           JOIN pii.users bu ON bu.id = n.buyer_id
+           JOIN pii.users su ON su.id = n.seller_id
+           JOIN LATERAL (
+             SELECT side AS last_side FROM market.negotiation_messages m
+              WHERE m.negotiation_id = n.id
+              ORDER BY m.created_at DESC, m.id DESC LIMIT 1
+           ) last ON true
+          WHERE n.observable = 'OPEN'
+            AND n.auto_freeze_reminded_at IS NULL
+            AND n.reply_at IS NULL
+            AND EXISTS (SELECT 1 FROM market.negotiation_messages m WHERE m.negotiation_id = n.id)
+            AND n.updated_at <= now() - ($1 || ' milliseconds')::interval
+          FOR UPDATE SKIP LOCKED`,
+        [remindAfterMs],
+      );
+      for (const r of nudges) {
+        const id = String(r.id);
+        await client.query(`UPDATE market.negotiations SET auto_freeze_reminded_at = now() WHERE id = $1`, [id]);
+        void this.notify.notify(String(r.idle_id), {
+          type: 'chat',
+          title: 'Your turn dey o — price go freeze soon',
+          body: `${firstName(String(r.idle_name))}, if you no reply within 6 hours that price go stand frozen.`,
+          deep_link: `/negotiations/${id}`,
+        });
+      }
+
+      // 2 ── Auto-freeze: OPEN threads with no activity for the full 24h turn
+      // deadline. Pin the last prices for one more 24h grab window.
+      const { rows: stale } = await client.query(
+        `SELECT n.id, n.buyer_id, n.seller_id, n.qty,
+                bu.full_name AS buyer_name, su.full_name AS seller_name
+           FROM market.negotiations n
+           JOIN pii.users bu ON bu.id = n.buyer_id
+           JOIN pii.users su ON su.id = n.seller_id
+          WHERE n.observable = 'OPEN'
+            AND n.reply_at IS NULL
+            AND n.updated_at <= now() - ($1 || ' milliseconds')::interval
+            AND EXISTS (SELECT 1 FROM market.negotiation_messages m WHERE m.negotiation_id = n.id)
+          FOR UPDATE SKIP LOCKED`,
+        [TURN_DEADLINE_MS],
+      );
+      for (const r of stale) {
+        const id = String(r.id);
+        const qty = Number(r.qty);
+        const { rows: prices } = await client.query(
+          `SELECT side, per_unit_kobo FROM market.negotiation_messages
+            WHERE negotiation_id = $1 AND per_unit_kobo IS NOT NULL AND side IN ('BUYER', 'SELLER')
+            ORDER BY created_at DESC, id DESC`,
+          [id],
+        );
+        let frozenSeller: number | null = null;
+        let frozenBuyer: number | null = null;
+        for (const p of prices) {
+          if (String(p.side) === 'SELLER' && frozenSeller == null) frozenSeller = Number(p.per_unit_kobo);
+          else if (String(p.side) === 'BUYER' && frozenBuyer == null) frozenBuyer = Number(p.per_unit_kobo);
+        }
+        await client.query(
+          `INSERT INTO market.negotiation_messages (negotiation_id, kind, side, qty, per_unit_kobo, message)
+           VALUES ($1, 'NOTE', 'SYSTEM', $2, NULL,
+                   'Nobody reply for 24 hours — price don stand frozen. Settle within 24 hours or the bargain go close.')`,
+          [id, qty],
+        );
+        await client.query(
+          `UPDATE market.negotiations
+              SET observable = 'ENDED', ended_at = now(), ended_by = NULL,
+                  frozen_seller_per_unit_kobo = $1, frozen_buyer_per_unit_kobo = $2,
+                  freeze_expires_at = now() + ($3 || ' milliseconds')::interval,
+                  reply_at = NULL, reply_kind = NULL, reply_per_unit_kobo = NULL, reply_qty = NULL, reply_text = NULL,
+                  updated_at = now()
+            WHERE id = $4`,
+          [frozenSeller, frozenBuyer, FREEZE_WINDOW_MS, id],
+        );
+        void this.feed.publishMarket('market.negotiation_message', id, {
+          negotiation_id: id,
+          buyer_id: String(r.buyer_id),
+          seller_id: String(r.seller_id),
+          message_id: null,
+          kind: 'NOTE' as const,
+          side: 'SYSTEM' as const,
+          qty,
+          per_unit_kobo: null,
+        });
+        const buyerTold = `${firstName(String(r.seller_name))} no reply — your offer don lock for ${label(frozenBuyer ?? 0)} each. Grab am within 24h.`;
+        await this.notify.notify(String(r.buyer_id), {
+          type: 'deal',
+          title: 'Your bargain don stand frozen',
+          body: buyerTold,
+          deep_link: `/negotiations/${id}`,
+        });
+        await this.notify.notify(String(r.seller_id), {
+          type: 'deal',
+          title: 'Your bargain don stand frozen',
+          body: `The buyer no reply for 24 hours — their price lock for ${label(frozenSeller ?? 0)} each. You still get 24h to sell am.`,
+          deep_link: `/seller/negotiations/${id}`,
+        });
+      }
+
+      // 3 ── Frozen window passed: drop the pins. The thread stays ENDED and
+      // can no longer be reopened (continueBargain rejects when expired).
+      const { rows: expired } = await client.query(
+        `UPDATE market.negotiations
+            SET frozen_seller_per_unit_kobo = NULL,
+                frozen_buyer_per_unit_kobo = NULL,
+                freeze_expires_at = NULL,
+                updated_at = now()
+          WHERE observable = 'ENDED'
+            AND freeze_expires_at IS NOT NULL
+            AND freeze_expires_at <= now()
+          RETURNING id, buyer_id, seller_id, qty`,
+      );
+      for (const r of expired) {
+        const id = String(r.id);
+        await client.query(
+          `INSERT INTO market.negotiation_messages (negotiation_id, kind, side, qty, per_unit_kobo, message)
+           VALUES ($1, 'NOTE', 'SYSTEM', $2, NULL,
+                   'The frozen price don expire — this bargain don close. If you still wan deal, open the offer afresh.')`,
+          [id, Number(r.qty)],
+        );
+        void this.feed.publishMarket('market.negotiation_message', id, {
+          negotiation_id: id,
+          buyer_id: String(r.buyer_id),
+          seller_id: String(r.seller_id),
+          message_id: null,
+          kind: 'NOTE' as const,
+          side: 'SYSTEM' as const,
+          qty: Number(r.qty),
+          per_unit_kobo: null,
+        });
+        await this.notify.notify(String(r.buyer_id), {
+          type: 'chat',
+          title: 'The frozen price don expire',
+          body: 'Bargain don close. If you still wan deal, open the offer afresh.',
+          deep_link: `/negotiations/${id}`,
+        });
+        await this.notify.notify(String(r.seller_id), {
+          type: 'chat',
+          title: 'The frozen price don expire',
+          body: 'That bargain don close. If the buyer come back, you go see am for your seller centre.',
+          deep_link: `/seller/negotiations/${id}`,
+        });
+      }
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      this.logger.error(`deadline sweep failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      client.release();
+    }
   }
+
+}

@@ -14,6 +14,7 @@ import { MarketBuzz } from '../components/MarketBuzz';
 import { MobileProductSkeleton } from '../components/Loading';
 import { HomeAdBanner } from '../components/HomeAdBanner';
 import { Icon, type IconName } from '../components/icons';
+import { useCountdownToMidnight } from '../lib/countdown';
 
 const FEATURES = [
   { label: 'Market Day', sublabel: '(Wholesale)', icon: 'calendar' },
@@ -242,6 +243,7 @@ export default function Home() {
 
 function MobileHome() {
   const navigate = useNavigate();
+  const dealsEndsIn = useCountdownToMidnight();
   const marketDay = useMarketDay();
   const [categories, setCategories] = useState<Category[]>([]);
   const [deals, setDeals] = useState<Offer[]>([]);
@@ -321,7 +323,7 @@ function MobileHome() {
             <p className="mt-1 text-[11px] leading-snug text-white/85">
               Bargain, walk away — and dem fit call you back with better price.
             </p>
-            <span className="mt-2.5 inline-flex items-center gap-1 rounded-lg bg-[#F5A623] px-3.5 py-1.5 text-[11px] font-bold text-[#4A2D00]">
+            <span className="mt-2.5 inline-flex items-center gap-1 rounded-lg bg-secondary px-3.5 py-1.5 text-[11px] font-bold text-tertiary">
               Post a want <Icon name="arrowRight" size={12} />
             </span>
           </div>
@@ -408,9 +410,9 @@ function MobileHome() {
             <MobileProductSkeleton />
           ) : deals.length > 0 ? (
             <div className="px-4">
-              <div className="bg-gradient-to-r from-[#ff4d4d] to-[#ff7b00] rounded-xl px-3 py-2 mb-3 inline-flex items-center gap-2">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-                <span className="text-white text-[11px] font-bold">Ends in 02:34:17</span>
+              <div className="bg-gradient-to-r from-secondary to-[#E8A800] rounded-xl px-3 py-2 mb-3 inline-flex items-center gap-2">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1F1F1F" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                <span className="text-[#1F1F1F] text-[11px] font-bold">Ends in {dealsEndsIn}</span>
               </div>
               <ProductScroll offers={deals} onNavigate={(id) => navigate(`/offers/${id}`)} />
             </div>

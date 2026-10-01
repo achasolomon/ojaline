@@ -13,6 +13,7 @@ import { MarketBuzz } from '../MarketBuzz';
 import { ProductSkeletonGrid } from '../Loading';
 import { HomeAdBanner } from '../HomeAdBanner';
 import { Icon, type IconName } from '../icons';
+import { useCountdownToMidnight } from '../../lib/countdown';
 
 const CATEGORY_PLACEHOLDER_BG: Record<string, string> = {
   'Fresh Vegetables': 'linear-gradient(145deg,#e8f5e9,#c8e6c9)',
@@ -170,6 +171,7 @@ function SectionHeader({ title, subtitle, onSeeAll }: { title: string; subtitle?
 
 export function DesktopHome() {
   const navigate = useNavigate();
+  const dealsEndsIn = useCountdownToMidnight();
   const [categories, setCategories] = useState<Category[]>([]);
   const [offers, setOffers] = useState<Offer[]>([]);
   const [deals, setDeals] = useState<Offer[]>([]);
@@ -360,7 +362,7 @@ export function DesktopHome() {
               <p className="mt-2 max-w-[480px] text-[13px] leading-relaxed text-white/85">
                 Add wetin you need, sellers go pitch, you fit bargain, walk away — and dem fit call you back with better price.
               </p>
-              <span className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-[#F5A623] px-4 py-2 text-[12px] font-bold text-[#4A2D00]">
+              <span className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-secondary px-4 py-2 text-[12px] font-bold text-tertiary">
                 Post a want <Icon name="arrowRight" size={13} />
               </span>
             </div>
@@ -401,9 +403,9 @@ export function DesktopHome() {
           {/* ── Deals / Flash Sales ── */}
           <div className="mt-6">
             <SectionHeader title="Deals & Offers" subtitle="Hot deals from trusted sellers" onSeeAll={() => navigate('/offers')} />
-            <div className="bg-gradient-to-r from-[#ff4d4d] to-[#ff7b00] rounded-[9px] px-4 py-3 mb-3 inline-flex items-center gap-2">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-              <span className="text-white text-[11px] font-bold">Ends in 02:34:17</span>
+            <div className="bg-gradient-to-r from-secondary to-[#E8A800] rounded-[9px] px-4 py-3 mb-3 inline-flex items-center gap-2">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F1F1F" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+              <span className="text-[#1F1F1F] text-[11px] font-bold">Ends in {dealsEndsIn}</span>
             </div>
             {loading ? (
               <ProductRailSkeleton count={5} />

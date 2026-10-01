@@ -10,6 +10,7 @@ import { MarketBuzz } from '../components/MarketBuzz';
 import { NearMeControl, type NearMeSelection } from '../components/NearMeControl';
 import { Icon } from '../components/icons';
 import { useMediaQuery, DESKTOP_BREAKPOINT } from '../lib/useMediaQuery';
+import { getUser } from '../lib/session';
 
 const PAGE_SIZE = 20;
 
@@ -107,6 +108,7 @@ function SortSelect({
 
 export default function Offers() {
   const navigate = useNavigate();
+  const isSeller = Boolean(getUser()?.seller_type);
   const isDesktop = useMediaQuery(DESKTOP_BREAKPOINT);
   const [searchParams, setSearchParams] = useSearchParams();
   const urlQuery = searchParams.get('q') || '';
@@ -215,9 +217,20 @@ export default function Offers() {
     setPriceMin('');
     setPriceMax('');
     setOffset(0);
+    setSearchParams(new URLSearchParams(), { replace: true });
   };
 
   const chips: { key: string; label: string; onRemove: () => void }[] = [];
+  if (urlQuery)
+    chips.push({
+      key: 'q',
+      label: `Search: "${urlQuery}"`,
+      onRemove: () => {
+        const next = new URLSearchParams(searchParams);
+        next.delete('q');
+        setSearchParams(next, { replace: true });
+      },
+    });
   if (category) chips.push({ key: 'cat', label: category.name, onRemove: () => setSelectedCategoryId(null) });
   if (channelFilter) chips.push({ key: 'ch', label: CHANNEL_LABELS[channelFilter], onRemove: () => setChannelFilter('') });
   if (perishabilityFilter)
@@ -375,9 +388,11 @@ export default function Offers() {
                 className="rounded-[9px] px-3 py-2.5 text-[11px]"
                 iconClass="right-2.5"
               />
-              <Button size="sm" onClick={() => navigate('/seller/products/new')}>
-                + New Offer
-              </Button>
+              {isSeller && (
+                <Button size="sm" onClick={() => navigate('/seller/products/new')}>
+                  + New Offer
+                </Button>
+              )}
             </div>
           </div>
 

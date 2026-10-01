@@ -218,4 +218,30 @@ describe('AdsService (integration — requires postgres on DB_HOST)', () => {
     expect(rows[0].status).toBe('ENDED');
     expect((await ads.getActive('TOAST')).some((a) => a.id === ad.id)).toBe(false);
   });
+
+  it('tracks taps on a live in-window ad', async () => {
+    const seller = await newSeller();
+    const ad = await ads.create(seller, toast({ title: 'Clickable' }));
+    await ads.getActive('TOAST'); // bumps impressions
+    await ads.registerClick(ad.id);
+    await ads.registerClick(ad.id);
+
+    const { rows } = await app.query(
+      `SELECT impressions_shown, clicks_shown FROM marketing.ads WHERE id = $1`, [ad.id],
+    );
+    expect(rows[0].impressions_shown).toBe(1);
+    expect(rows[0].clicks_shown).toBe(2);
+  });
+
+  it('does not count clicks on an out-of-window ad', async () => {
+    const seller = await newSeller();
+    const ad = await ads.create(seller, toast({
+      title: 'Expired click',
+      starts_at: new Date(Date.now() - 20 * 24 * 3600 * 1000).toISOString(),
+      ends_at: new Date(Date.now() - 15 * 24 * 3600 * 1000).toISOString(),
+    }));
+    await ads.registerClick(ad.id);
+    const { rows } = await app.query(`SELECT clicks_shown FROM marketing.ads WHERE id = $1`, [ad.id]);
+    expect(rows[0].clicks_shown).toBe(0);
+  });
 });

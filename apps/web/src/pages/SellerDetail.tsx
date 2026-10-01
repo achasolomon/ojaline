@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getSellerById, type Seller } from '../lib/api';
+import { getSellerById, createConversation, type Seller } from '../lib/api';
+import { activeBuyerId, isLoggedIn } from '../lib/session';
+import { Icon } from '../components/icons';
 import { SellerStorefrontView } from '../components/seller/SellerStorefrontView';
 
 export default function SellerDetail() {
@@ -17,6 +19,15 @@ export default function SellerDetail() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [id]);
+
+  const startChat = async () => {
+    if (!id || !seller) return;
+    if (!isLoggedIn()) { navigate('/login'); return; }
+    try {
+      const conv = await createConversation(activeBuyerId(), seller.id);
+      navigate(`/chat/${conv.id}`);
+    } catch { /* skip */ }
+  };
 
   if (loading) {
     return (
@@ -59,6 +70,16 @@ export default function SellerDetail() {
 
   return (
     <div className="mx-auto w-full max-w-[1200px] px-6 py-6">
+      {/* Back */}
+      <button
+        type="button"
+        onClick={() => navigate(-1)}
+        className="mb-4 grid h-9 w-9 place-items-center rounded-full bg-gray-50 text-textSecondary border-none transition hover:bg-gray-100 cursor-pointer"
+        aria-label="Go back"
+      >
+        <Icon name="chevronLeft" size={16} />
+      </button>
+
       {/* Breadcrumb */}
       <div className="mb-5 flex items-center gap-2 text-xs text-textSecondary">
         <span className="cursor-pointer hover:text-primary" onClick={() => navigate('/')}>Home</span>
@@ -70,6 +91,7 @@ export default function SellerDetail() {
         seller={seller}
         onOpenProduct={(o) => navigate(`/offers/${o.id}`)}
         onOpenMarket={(marketId) => navigate(`/market-days/${marketId}`)}
+        onMessage={startChat}
       />
     </div>
   );

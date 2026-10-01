@@ -18,7 +18,7 @@ const CHANNEL_LABELS: Record<Offer['channel'], string> = {
 
 const CHANNEL_STYLES: Record<Offer['channel'], string> = {
   RETAILER: 'bg-primary-light text-primary',
-  WHOLESALE: 'bg-blue-50 text-blue-700',
+  WHOLESALE: 'bg-primary text-white',
   DIRECT: 'bg-amber-50 text-amber-700',
   OPEN: 'bg-neutral-100 text-neutral-600',
 };
@@ -114,7 +114,7 @@ export function OfferCard({ offer, onClick, wished, onWishlistToggle }: OfferCar
           </button>
         )}
         {offer.negotiable && (
-          <span className="absolute bottom-2 left-2 rounded-md bg-[#f5a623] px-1.5 py-0.5 text-[9px] font-bold text-white shadow-sm">
+          <span className="absolute bottom-2 left-2 rounded-md bg-secondary px-1.5 py-0.5 text-[9px] font-bold text-[#1F1F1F] shadow-sm">
             Negotiable
           </span>
         )}

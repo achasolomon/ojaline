@@ -46,12 +46,10 @@ export default function CategoriesPage() {
   return (
     <div className="flex h-full flex-col bg-white">
       <header className="flex items-center gap-3 border-b border-border px-4 py-3">
-        <button type="button" onClick={() => navigate(-1)} className="p-1">
-          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
+        <button type="button" onClick={() => navigate(-1)} aria-label="Back" className="grid h-9 w-9 place-items-center rounded-full border-none bg-gray-50 text-textSecondary cursor-pointer transition hover:bg-gray-100">
+          <Icon name="chevronLeft" size={16} />
         </button>
-        <h1 className="flex-1 text-lg font-semibold text-text">Categories</h1>
+        <h1 className="flex-1 text-lg font-black tracking-tight text-text">Categories</h1>
         <span className="flex items-center gap-1.5 rounded-full bg-primary-light px-2.5 py-1 text-[10px] font-bold text-primary">
           <Icon name="categories" size={12} />
           {cats == null ? '…' : cats.length}

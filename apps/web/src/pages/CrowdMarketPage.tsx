@@ -642,7 +642,7 @@ export function CrowdMarketPage() {
           <div className="hidden lg:sticky lg:top-6 lg:block">
             {selectedBidder ? (
               <div className="overflow-hidden rounded-2xl border border-border bg-white">
-                <div className="flex items-center gap-3 border-b border-border bg-gradient-to-r from-secondary to-[#F5A623] px-4 py-3">
+                <div className="flex items-center gap-3 border-b border-border bg-gradient-to-r from-secondary to-[#E8A800] px-4 py-3">
                   <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white text-[13px] font-black text-[#6B4A00]">
                     {initials(selectedBidder.seller_name)}
                   </span>

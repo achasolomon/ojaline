@@ -91,17 +91,17 @@ export function BargainModal({
 
       <div className="animate-sheet-up sm:animate-scale-in relative flex h-[88vh] max-h-[680px] w-full max-w-md flex-col overflow-hidden rounded-t-2xl bg-white shadow-[0_24px_60px_rgba(0,0,0,0.3)] sm:rounded-2xl">
         {/* Header */}
-        <div className="bg-gradient-to-r from-secondary to-[#F5A623] px-5 py-4 text-[#6B4A00]">
+        <div className="bg-gradient-to-r from-secondary to-[#E8A800] px-5 py-4 text-[#6B4A00]">
           <div className="flex items-start justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2">
               {offer.profile_photo_url ? (
                 <img
                   src={mediaUrl(offer.profile_photo_url) ?? ''}
                   alt=""
-                  className="h-9 w-9 shrink-0 rounded-full border-2 border-[#F5A623]/40 object-cover"
+                  className="h-9 w-9 shrink-0 rounded-full border-2 border-secondary/40 object-cover"
                 />
               ) : (
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#F5A623]/20 text-[#8A5F00]">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-secondary/20 text-[#8A5F00]">
                   <Icon name="user" size={16} />
                 </span>
               )}

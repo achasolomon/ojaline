@@ -57,15 +57,8 @@ export class MultiSellerGate {
       };
     }
 
-    if (clusters.size > 1) {
-      return {
-        allowed: false,
-        reason: `sellers must be in the same cluster, found ${clusters.size} clusters`,
-        seller_count: sellers.size,
-        clusters: [...clusters],
-        capacity_ok: false,
-      };
-    }
+    // Buyers may shop any market — even a far one — so sellers are NOT forced
+    // into a single cluster. Each acquires capacity for its own cluster/window.
 
     const sellerIds = [...sellers];
     const riskResult = await this.pool.query<{

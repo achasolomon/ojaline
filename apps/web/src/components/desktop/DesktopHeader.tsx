@@ -93,13 +93,13 @@ export function DesktopHeader() {
                 className="relative grid h-9 w-9 place-items-center rounded-full text-text transition hover:bg-surface hover:text-primary shrink-0"
               >
                 <Icon name="handshake" size={18} />
-                {haggleCount > 0 && <sup className="absolute -top-0.5 -right-0.5 bg-[#F5A623] text-[#4A2D00] rounded-full px-1.5 py-px text-[8px] leading-none not-italic">{haggleCount}</sup>}
+                {haggleCount > 0 && <sup className="absolute -top-0.5 -right-0.5 bg-secondary text-tertiary rounded-full px-1.5 py-px text-[8px] leading-none not-italic">{haggleCount}</sup>}
               </button>
             )}
             {authed && (
               <button type="button" onClick={() => navigate('/notifications')} title="Notifications" className="relative flex h-9 items-center gap-1.5 rounded-full px-2 whitespace-nowrap bg-transparent border-none cursor-pointer text-text hover:text-primary hover:bg-surface transition">
                 <Icon name="bell" size={16} className="shrink-0" />
-                {unreadCount > 0 && <sup className="absolute top-0.5 right-0 bg-[#df3535] text-white rounded-full px-1.5 py-px text-[8px] leading-none not-italic">{unreadCount}</sup>}
+                {unreadCount > 0 && <sup className="absolute top-0.5 right-0 bg-danger text-white rounded-full px-1.5 py-px text-[8px] leading-none not-italic">{unreadCount}</sup>}
                 <span className="hidden xl:inline text-[11px] font-semibold">Notifications</span>
               </button>
             )}
@@ -111,7 +111,7 @@ export function DesktopHeader() {
             )}
             <button type="button" onClick={() => navigate('/cart')} title="Cart" className="relative flex h-9 items-center gap-1.5 rounded-full px-2 whitespace-nowrap bg-transparent border-none cursor-pointer text-text hover:text-primary hover:bg-surface transition">
               <Icon name="cart" size={16} className="shrink-0" />
-              {cartCount > 0 && <sup className="absolute top-0.5 right-0 bg-[#df3535] text-white rounded-full px-1.5 py-px text-[8px] leading-none not-italic">{cartCount}</sup>}
+              {cartCount > 0 && <sup className="absolute top-0.5 right-0 bg-danger text-white rounded-full px-1.5 py-px text-[8px] leading-none not-italic">{cartCount}</sup>}
               <span className="hidden xl:inline text-[11px] font-semibold">Cart</span>
             </button>
             <button

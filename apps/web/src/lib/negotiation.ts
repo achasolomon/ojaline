@@ -5,24 +5,42 @@ import {
   continueNegotiation,
   endNegotiation,
   listNegotiations,
+  listSellerNegotiations,
   openNegotiation,
   payFrozenNegotiation,
   revokeNegotiation,
+  sellerAcceptNegotiation,
+  sellerContinueNegotiation,
+  sellerEndNegotiation,
+  sellerOfferNegotiation,
+  sellerSellFrozenNegotiation,
   submitNegotiationBid,
   type NegotiationThread,
 } from './api';
 import { hashCode, volumeFloorKobo, volumePerUnitKobo } from './bargain';
 import { connectMarketFeed, disconnectMarketFeed, type MarketEnvelope } from './realtime';
-import { activeBuyerId } from './session';
+import { activeBuyerId, getUserId } from './session';
 
 /**
  * Multi-round negotiation threads, now backed by the API (market.negotiations
  * + market.negotiation_messages in postgres). Buyer bids, seller counters,
  * deal freezing ("Pay this" / "Sell for this") all run server-side: the store
  * mirrors the server, refreshes on a light poll and instantly on SSE events,
- * and every buyer action fires an optimistic update followed by the server's
+ * and every action fires an optimistic update followed by the server's
  * authoritative thread.
+ *
+ * One account can be the buyer on some threads and the seller on others — the
+ * store mirrors both lists and each screen figures out the user's role from
+ * `negotiationRole(n)`.
+ *
+ * Bounded haggle (V51): max 3 bids + 3 counters per thread, a 24h turn
+ * deadline that auto-freezes an idle thread, a 24h frozen-grab window, and a
+ * single reopen per thread. The server enforces all of it; this client just
+ * mirrors the caps so the buttons stop offering impossible moves.
  */
+
+export const MAX_ROUNDS = 3;
+export const REOPEN_LIMIT = 1;
 
 export type NegotiationSide = 'BUYER' | 'SELLER';
 export type NegotiationStatus = 'OPEN' | 'ENDED' | 'SETTLED' | 'REVOKED';
@@ -40,7 +58,7 @@ export type NegotiationKind =
 export interface NegotiationMessage {
   id: string;
   kind: NegotiationKind;
-  side: NegotiationSide;
+  side: NegotiationSide | 'SYSTEM';
   qty: number;
   per_unit_kobo: number | null;
   message: string;
@@ -82,6 +100,7 @@ export interface Negotiation {
   frozen_seller_per_unit_kobo: number | null;
   frozen_buyer_per_unit_kobo: number | null;
   freeze_expires_at: number | null;
+  reopen_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -158,6 +177,7 @@ function baseFromThread(t: NegotiationThread): Negotiation {
     frozen_seller_per_unit_kobo: t.frozen_seller_per_unit_kobo,
     frozen_buyer_per_unit_kobo: t.frozen_buyer_per_unit_kobo,
     freeze_expires_at: t.freeze_expires_at ? new Date(String(t.freeze_expires_at)).getTime() : null,
+    reopen_count: t.reopen_count ?? 0,
     created_at: t.created_at,
     updated_at: t.updated_at,
   };
@@ -198,6 +218,7 @@ function applyVolatile(existing: Negotiation, fresh: Negotiation): Negotiation {
     frozen_seller_per_unit_kobo: fresh.frozen_seller_per_unit_kobo,
     frozen_buyer_per_unit_kobo: fresh.frozen_buyer_per_unit_kobo,
     freeze_expires_at: fresh.freeze_expires_at,
+    reopen_count: fresh.reopen_count,
     updated_at: fresh.updated_at,
   };
 }
@@ -226,7 +247,10 @@ async function refresh(): Promise<void> {
   if (inFlight) return inFlight;
   inFlight = (async () => {
     try {
-      const threads = await listNegotiations(activeBuyerId());
+      const mine = getUserId();
+      const buyerThreads = await listNegotiations(activeBuyerId());
+      const sellerThreads = mine ? await listSellerNegotiations(mine) : [];
+      const threads = [...buyerThreads, ...sellerThreads.filter((t) => !buyerThreads.some((b) => b.id === t.id))];
       const byId = new Map(threads.map((t) => [t.id, t]));
       const next = items.map((n) => {
         const t = byId.get(n.id);
@@ -267,8 +291,10 @@ function stopPollIfIdle(): void {
 
 function onEnvelope(env: MarketEnvelope): void {
   if (env.event_type !== 'market.negotiation_message') return;
-  const buyerId = (env.payload as { buyer_id?: string }).buyer_id;
-  if (buyerId && buyerId === activeBuyerId()) void refresh();
+  const payload = env.payload as { buyer_id?: string; seller_id?: string };
+  const me = getUserId();
+  if (payload.buyer_id && payload.buyer_id === activeBuyerId()) void refresh();
+  else if (me && payload.seller_id === me) void refresh();
 }
 
 function startFeed(): void {
@@ -320,6 +346,37 @@ export function isRequestNegotiation(n: Negotiation): boolean {
 
 export function findNegotiationById(id: string): Negotiation | undefined {
   return items.find((n) => n.id === id);
+}
+
+/* -------------------------------- bounded haggle -------------------------------- */
+
+/** Which side of this thread the logged-in user is on. */
+export function negotiationRole(n: Negotiation): 'BUYER' | 'SELLER' {
+  const me = getUserId();
+  return me != null && n.seller.id === me ? 'SELLER' : 'BUYER';
+}
+
+/** How many price moves each side has used so far (server caps at MAX_ROUNDS). */
+export function buyerMoves(n: Negotiation): number {
+  return n.messages.filter((m) => m.kind === 'BUYER_BID').length;
+}
+
+export function sellerMoves(n: Negotiation): number {
+  return n.messages.filter((m) => m.kind === 'SELLER_OFFER').length;
+}
+
+export function lastPriceFromSide(
+  n: Negotiation,
+  side: 'BUYER' | 'SELLER',
+): { qty: number; per_unit_kobo: number } | null {
+  const m = [...n.messages].reverse().find((x) => x.side === side && x.per_unit_kobo != null);
+  if (!m) return null;
+  return { qty: m.qty > 0 ? m.qty : n.qty, per_unit_kobo: m.per_unit_kobo! };
+}
+
+/** Turn deadline for an OPEN thread: the server auto-freezes it after 24h idle. */
+export function turnDeadlineAt(n: Negotiation): number {
+  return new Date(n.updated_at).getTime() + 24 * 60 * 60 * 1000;
 }
 
 export function negotiationDeepLink(n: Pick<Negotiation, 'id'>): string {
@@ -376,6 +433,7 @@ export async function createOfferNegotiation(_offer: Offer, _buyerName: string, 
     frozen_seller_per_unit_kobo: null,
     frozen_buyer_per_unit_kobo: null,
     freeze_expires_at: null,
+    reopen_count: 0,
     created_at: nowIso(),
     updated_at: nowIso(),
   };
@@ -422,6 +480,7 @@ export async function createRequestNegotiation(input: {
     frozen_seller_per_unit_kobo: null,
     frozen_buyer_per_unit_kobo: null,
     freeze_expires_at: null,
+    reopen_count: 0,
     created_at: nowIso(),
     updated_at: nowIso(),
   };
@@ -652,6 +711,164 @@ export function continueBargain(
     qty,
     message: sentence,
   })
+    .then(applyThread)
+    .catch(() => void refresh());
+}
+
+/* ----------------------------- seller-side actions ----------------------------- */
+
+/** Seller counters the buyer with a fresh price on an OPEN thread. */
+export function sellerCounter(negotiationId: string, perUnitKobo: number, qty?: number, message?: string): void {
+  const n = items.find((x) => x.id === negotiationId);
+  const me = getUserId();
+  if (!n || n.status !== 'OPEN' || !me || n.seller.id !== me) return;
+  const perUnit = roundGrid(perUnitKobo);
+  const newQty = qty != null ? Math.max(1, Math.floor(qty)) : n.qty;
+  const sentence =
+    message?.trim() || `Make we settle — I fit do ${label(perUnit)} each for the ${newQty} wey you want.`;
+
+  upsert({
+    ...n,
+    qty: newQty,
+    messages: [
+      ...n.messages,
+      {
+        id: `pending-${Date.now()}`,
+        kind: 'SELLER_OFFER',
+        side: 'SELLER',
+        qty: newQty,
+        per_unit_kobo: perUnit,
+        message: sentence,
+        at: nowIso(),
+      },
+    ],
+  });
+  void sellerOfferNegotiation(negotiationId, me, { per_unit_kobo: perUnit, qty: newQty, message: sentence })
+    .then(applyThread)
+    .catch(() => void refresh());
+}
+
+/** Seller agrees to the buyer's standing price and settles the deal. */
+export function sellerAcceptPrice(negotiationId: string, perUnitKobo: number): void {
+  const n = items.find((x) => x.id === negotiationId);
+  const me = getUserId();
+  if (!n || n.status === 'SETTLED' || n.draft || !me || n.seller.id !== me) return;
+
+  upsert({
+    ...n,
+    status: 'SETTLED',
+    messages: [
+      ...n.messages,
+      {
+        id: `pending-${Date.now()}`,
+        kind: 'SELLER_ACCEPT',
+        side: 'SELLER',
+        qty: n.qty,
+        per_unit_kobo: perUnitKobo,
+        message: `Na you win today o! ${label(perUnitKobo)} each. Don send am to your cart.`,
+        at: nowIso(),
+      },
+    ],
+  });
+  void sellerAcceptNegotiation(negotiationId, me, perUnitKobo)
+    .then(applyThread)
+    .catch(() => void refresh());
+}
+
+/** Seller "Sells for this" — takes the buyer's frozen price and settles. */
+export function sellerSellFrozen(negotiationId: string): void {
+  const n = items.find((x) => x.id === negotiationId);
+  const me = getUserId();
+  if (!n || n.status !== 'ENDED' || !me || n.seller.id !== me) return;
+  const price = n.frozen_buyer_per_unit_kobo;
+  if (price == null) return;
+
+  upsert({
+    ...n,
+    status: 'SETTLED',
+    messages: [
+      ...n.messages,
+      {
+        id: `pending-${Date.now()}`,
+        kind: 'SELLER_ACCEPT',
+        side: 'SELLER',
+        qty: n.qty,
+        per_unit_kobo: price,
+        message: `Oya na so! ${label(price)} each — don dey your buyer cart.`,
+        at: nowIso(),
+      },
+    ],
+  });
+  void sellerSellFrozenNegotiation(negotiationId, me)
+    .then(applyThread)
+    .catch(() => void refresh());
+}
+
+/** Seller ends the haggle; the last prices freeze for 24h. */
+export function sellerEndBargain(negotiationId: string, message?: string): void {
+  const n = items.find((x) => x.id === negotiationId);
+  const me = getUserId();
+  if (!n || n.status === 'SETTLED' || n.status === 'ENDED' || n.draft || !me || n.seller.id !== me) return;
+
+  const sent = message?.trim() || 'E don stand this side. If you wan run am, e still dey.';
+  upsert({
+    ...n,
+    status: 'ENDED',
+    ended_at: Date.now(),
+    ended_by: 'SELLER',
+    messages: [
+      ...n.messages,
+      {
+        id: `pending-${Date.now()}`,
+        kind: 'END',
+        side: 'SELLER',
+        qty: n.qty,
+        per_unit_kobo: null,
+        message: sent,
+        at: nowIso(),
+      },
+    ],
+  });
+  void sellerEndNegotiation(negotiationId, me, sent)
+    .then(applyThread)
+    .catch(() => void refresh());
+}
+
+/** Seller reopens an ended bargain with a fresh price (normal haggling resumes). */
+export function sellerContinueBargain(
+  negotiationId: string,
+  perUnitKobo: number,
+  qty: number,
+  message?: string,
+): void {
+  const n = items.find((x) => x.id === negotiationId);
+  const me = getUserId();
+  if (!n || n.status !== 'ENDED' || !me || n.seller.id !== me) return;
+  const perUnit = roundGrid(perUnitKobo);
+  const sentence = message?.trim() || `E no reach — I still wan talk. ${label(perUnit)} each for the ${qty}.`;
+
+  upsert({
+    ...n,
+    status: 'OPEN',
+    ended_at: null,
+    ended_by: null,
+    frozen_seller_per_unit_kobo: null,
+    frozen_buyer_per_unit_kobo: null,
+    freeze_expires_at: null,
+    messages: [
+      ...n.messages,
+      {
+        id: `pending-${Date.now()}`,
+        kind: 'SELLER_OFFER',
+        side: 'SELLER',
+        qty,
+        per_unit_kobo: perUnit,
+        message: sentence,
+        at: nowIso(),
+      },
+    ],
+  });
+  void sellerContinueNegotiation(negotiationId, me, { per_unit_kobo: perUnit, qty, message: sentence })
     .then(applyThread)
     .catch(() => void refresh());
 }

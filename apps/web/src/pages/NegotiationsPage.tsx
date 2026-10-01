@@ -4,6 +4,7 @@ import { naira } from '@ojaline/design';
 import {
   getNegotiations,
   subscribeNegotiations,
+  negotiationRole,
   type Negotiation,
 } from '../lib/negotiation';
 import { useMediaQuery, DESKTOP_BREAKPOINT } from '../lib/useMediaQuery';
@@ -56,15 +57,19 @@ function StatusChip({ n }: { n: Negotiation }) {
     );
   }
   const last = n.messages[n.messages.length - 1];
-  const waiting = last?.side === 'BUYER';
+  const myTurn = last == null
+    ? false
+    : negotiationRole(n) === 'SELLER'
+      ? last.side === 'BUYER'
+      : last.side === 'SELLER';
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-        waiting ? 'bg-[#FFF6DA] text-[#A36A00]' : 'bg-secondary/25 text-primary-dark'
+        myTurn ? 'bg-secondary/25 text-primary-dark' : 'bg-[#FFF6DA] text-[#A36A00]'
       }`}
     >
-      <Icon name={waiting ? 'clock' : 'handshake'} size={10} />
-      {waiting ? 'Waiting reply' : 'Bargaining'}
+      <Icon name={myTurn ? 'handshake' : 'clock'} size={10} />
+      {myTurn ? 'Your turn' : 'Waiting reply'}
     </span>
   );
 }
@@ -96,21 +101,28 @@ export default function NegotiationsPage({ base = '/negotiations' }: { base?: st
     else navigate(`${base}/${n.id}`);
   };
 
+  const isSellerPortal = base.startsWith('/seller');
   const emptyState = (
     <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
       <div className="mb-3 grid h-14 w-14 place-items-center rounded-full bg-primary-light text-primary">
         <Icon name="handshake" size={26} />
       </div>
-      <p className="text-sm font-bold text-text">You no dey bargain anyone now</p>
-      <p className="mt-1 text-xs text-textSecondary">
-        Open any offer, bod da price button and start bargaining with the seller.
+      <p className="text-sm font-bold text-text">
+        {isSellerPortal ? 'Nobody dey bargain you now' : 'You no dey bargain anyone now'}
       </p>
-      <Link
-        to="/offers"
-        className="mt-4 rounded-xl bg-primary px-4 py-2.5 text-[12px] font-bold text-white transition hover:bg-primary-dark"
-      >
-        Find something to bargain
-      </Link>
+      <p className="mt-1 text-xs text-textSecondary">
+        {isSellerPortal
+          ? 'When a buyer open a haggle on your listing, e go show here so you fit answer.'
+          : 'Open any offer, bod da price button and start bargaining with the seller.'}
+      </p>
+      {!isSellerPortal && (
+        <Link
+          to="/offers"
+          className="mt-4 rounded-xl bg-primary px-4 py-2.5 text-[12px] font-bold text-white transition hover:bg-primary-dark"
+        >
+          Find something to bargain
+        </Link>
+      )}
     </div>
   );
 
@@ -138,10 +150,13 @@ export default function NegotiationsPage({ base = '/negotiations' }: { base?: st
             ) : (
               <div className="mx-auto max-w-2xl lg:max-w-none">
                 {sorted.map((n) => {
-                  const waiting = n.status === 'OPEN' && n.messages[n.messages.length - 1]?.side === 'BUYER';
+                  const asSeller = negotiationRole(n) === 'SELLER';
+                  const lastSide = n.messages[n.messages.length - 1]?.side ?? null;
+                  const myTurn = n.status === 'OPEN' && (asSeller ? lastSide === 'BUYER' : lastSide === 'SELLER');
                   const lastMsg = n.messages[n.messages.length - 1];
                   const price = lastSellerPrice(n);
                   const isActive = isDesktop && selected?.id === n.id;
+                  const peer = asSeller ? n.buyer_name.split(' ')[0] || 'buyer' : n.seller.name.split(' ')[0] || 'seller';
                   return (
                     <button
                       key={n.id}
@@ -161,9 +176,11 @@ export default function NegotiationsPage({ base = '/negotiations' }: { base?: st
                         </span>
                         <span className="mt-0.5 flex items-center justify-between gap-2">
                           <span className="min-w-0 flex-1 truncate text-xs text-textSecondary">
-                            {waiting
-                              ? `Waiting for ${n.seller.name.split(' ')[0]} to reply…`
-                              : lastMsg?.message ?? `Chatting with ${n.seller.name}`}
+                            {myTurn
+                              ? 'Your turn to reply…'
+                              : lastMsg != null && n.status === 'OPEN'
+                                ? `Waiting for ${peer} to reply…`
+                                : lastMsg?.message ?? `Chatting with ${peer}`}
                           </span>
                           <StatusChip n={n} />
                         </span>
@@ -212,7 +229,9 @@ export default function NegotiationsPage({ base = '/negotiations' }: { base?: st
               </span>
               <p className="mt-3 text-sm font-bold text-text">No bargain wey dey</p>
               <p className="mt-1 text-[11px] text-textSecondary">
-                Open any offer, bod da price button and start bargaining with the seller.
+                {isSellerPortal
+                  ? 'When a buyer open a haggle on your listing, e go show here.'
+                  : 'Open any offer, bod da price button and start bargaining with the seller.'}
               </p>
             </div>
           )}

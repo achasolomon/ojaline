@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getAddresses, setDefaultAddress, deleteAddress, type SavedAddress } from '../lib/api';
+import { getAddresses, getStorefront, mediaUrl, setDefaultAddress, deleteAddress, type SavedAddress, type Seller } from '../lib/api';
 import { getCartCount, subscribeCart } from '../lib/cart';
 import { getUnreadCount, subscribeNotifications } from '../lib/notifications';
 import { getUser, getUserId, clearSession } from '../lib/session';
@@ -64,12 +64,16 @@ export default function Account() {
   const [addresses, setAddresses] = useState<SavedAddress[]>([]);
   const [cartCount, setCartCount] = useState(() => getCartCount());
   const [unread, setUnread] = useState(() => getUnreadCount());
+  const [seller, setSeller] = useState<Seller | null>(null);
 
   const [showAdd, setShowAdd] = useState(false);
 
   useEffect(() => {
     if (!userId) return;
     getAddresses(userId).then(setAddresses).catch(() => {});
+    if (user?.seller_type) {
+      getStorefront(userId).then(setSeller).catch(() => {});
+    }
     if (window.location.hash === '#addresses') {
       setTimeout(() => {
         document.getElementById('addresses')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -110,36 +114,66 @@ export default function Account() {
     }
   };
 
+  const photoUrl = seller?.profile_photo_url ? mediaUrl(seller.profile_photo_url) : null;
+  const bannerUrl = seller?.banner_url ? mediaUrl(seller.banner_url) : null;
+
   return (
     <div className="max-w-[1200px] mx-auto px-6 py-8">
       {/* Profile header */}
-      <div className="bg-white border border-border rounded-xl p-6 mb-6 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-        <div className="w-16 h-16 rounded-full bg-primary-light text-primary flex items-center justify-center shrink-0">
-          <Icon name="user" size={30} />
-        </div>
-        <div className="flex-1">
-          <h1 className="text-lg font-black text-text">{user?.full_name || 'My Account'}</h1>
-          <p className="text-xs text-textSecondary mt-0.5">{user?.phone || ''} {user?.email ? `· ${user.email}` : ''}</p>
-          <p className="text-[10px] text-primary mt-1 bg-primary-light rounded-full inline-block px-2 py-0.5 font-semibold capitalize">{user?.roles?.join(', ') || 'Buyer'}</p>
-        </div>
-        <div className="flex flex-col items-end gap-3">
-          <div className="flex gap-4 text-center">
-            <div className="px-4">
-              <p className="text-lg font-black text-text">{cartCount}</p>
-              <p className="text-[10px] text-textSecondary">in cart</p>
-            </div>
-            <div className="px-4 border-l border-border">
-              <p className="text-lg font-black text-text">{unread}</p>
-              <p className="text-[10px] text-textSecondary">unread</p>
+      <div className="mb-6 overflow-hidden rounded-xl border border-border bg-white">
+        <div
+          className={`h-24 sm:h-28 w-full ${bannerUrl ? 'bg-cover bg-center' : 'bg-gradient-to-r from-primary to-primary-dark'}`}
+          style={bannerUrl ? { backgroundImage: `url(${bannerUrl})` } : undefined}
+          role="img"
+          aria-label="Profile banner"
+        />
+        <div className="flex flex-col gap-4 px-6 pb-6 sm:flex-row sm:items-end">
+          <div className="-mt-10 shrink-0">
+            <div className="grid h-20 w-20 items-end overflow-hidden rounded-full border-4 border-white bg-primary-light text-primary shadow-md">
+              {photoUrl ? (
+                <img src={photoUrl} alt={`${user?.full_name || 'profile'} photo`} className="h-full w-full object-cover" />
+              ) : (
+                <span className="grid h-full w-full place-items-center">
+                  <Icon name="user" size={36} />
+                </span>
+              )}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={logout}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-danger bg-transparent border border-danger/30 rounded-lg px-3 py-1.5 cursor-pointer hover:bg-danger/5 transition"
-          >
-            <Icon name="logout" size={13} /> Log out
-          </button>
+          <div className="min-w-0 flex-1 sm:pb-1">
+            <h1 className="text-lg font-black text-text">{user?.full_name || 'My Account'}</h1>
+            <p className="text-xs text-textSecondary mt-0.5">{user?.phone || ''} {user?.email ? `· ${user.email}` : ''}</p>
+            <p className="text-[10px] text-primary mt-1 bg-primary-light rounded-full inline-block px-2 py-0.5 font-semibold capitalize">{user?.roles?.join(', ') || 'Buyer'}</p>
+          </div>
+          <div className="flex flex-col items-start gap-3 sm:items-end sm:pb-1">
+            <div className="flex gap-4 text-center">
+              <div className="px-4">
+                <p className="text-lg font-black text-text">{cartCount}</p>
+                <p className="text-[10px] text-textSecondary">in cart</p>
+              </div>
+              <div className="px-4 border-l border-border">
+                <p className="text-lg font-black text-text">{unread}</p>
+                <p className="text-[10px] text-textSecondary">unread</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {user?.seller_type && (
+                <button
+                  type="button"
+                  onClick={() => navigate('/seller/appearance')}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary bg-primary-light border-none rounded-lg px-3 py-1.5 cursor-pointer hover:bg-primary-light/70 transition"
+                >
+                  <Icon name="settings" size={13} /> Storefront look
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={logout}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-danger bg-transparent border border-danger/30 rounded-lg px-3 py-1.5 cursor-pointer hover:bg-danger/5 transition"
+              >
+                <Icon name="logout" size={13} /> Log out
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 

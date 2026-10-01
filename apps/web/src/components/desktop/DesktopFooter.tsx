@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom';
+
 export function DesktopFooter() {
   return (
     <footer className="bg-[#10351f] text-[#c6d8cc] mt-8 hidden lg:block">
@@ -14,36 +16,36 @@ export function DesktopFooter() {
           {/* Shop */}
           <div>
             <h3 className="text-[10px] text-white font-black mb-0">SHOP</h3>
-            <a href="#" className="block text-[9px] text-[#adc1b4] no-underline mt-2 mb-2 hover:text-white transition">Categories</a>
-            <a href="#" className="block text-[9px] text-[#adc1b4] no-underline mb-2 hover:text-white transition">Fresh Produce</a>
-            <a href="#" className="block text-[9px] text-[#adc1b4] no-underline mb-2 hover:text-white transition">Market Day</a>
-            <a href="#" className="block text-[9px] text-[#adc1b4] no-underline mb-2 hover:text-white transition">Deals</a>
+            <Link to="/categories" className="block text-[9px] text-[#adc1b4] no-underline mt-2 mb-2 hover:text-white transition">Categories</Link>
+            <Link to="/offers" className="block text-[9px] text-[#adc1b4] no-underline mb-2 hover:text-white transition">Fresh Produce</Link>
+            <Link to="/market-days" className="block text-[9px] text-[#adc1b4] no-underline mb-2 hover:text-white transition">Market Day</Link>
+            <Link to="/offers?sort=popular" className="block text-[9px] text-[#adc1b4] no-underline mb-2 hover:text-white transition">Deals</Link>
           </div>
 
           {/* Sell */}
           <div>
             <h3 className="text-[10px] text-white font-black mb-0">SELL ON KIKA</h3>
-            <a href="#" className="block text-[9px] text-[#adc1b4] no-underline mt-2 mb-2 hover:text-white transition">Become a Seller</a>
-            <a href="#" className="block text-[9px] text-[#adc1b4] no-underline mb-2 hover:text-white transition">Seller Dashboard</a>
-            <a href="#" className="block text-[9px] text-[#adc1b4] no-underline mb-2 hover:text-white transition">Seller Policies</a>
+            <Link to="/register" className="block text-[9px] text-[#adc1b4] no-underline mt-2 mb-2 hover:text-white transition">Become a Seller</Link>
+            <Link to="/seller/dashboard" className="block text-[9px] text-[#adc1b4] no-underline mb-2 hover:text-white transition">Seller Dashboard</Link>
+            <Link to="/help" className="block text-[9px] text-[#adc1b4] no-underline mb-2 hover:text-white transition">Seller Policies</Link>
           </div>
 
           {/* Help */}
           <div>
             <h3 className="text-[10px] text-white font-black mb-0">HELP</h3>
-            <a href="#" className="block text-[9px] text-[#adc1b4] no-underline mt-2 mb-2 hover:text-white transition">Support</a>
-            <a href="#" className="block text-[9px] text-[#adc1b4] no-underline mb-2 hover:text-white transition">FAQs</a>
-            <a href="#" className="block text-[9px] text-[#adc1b4] no-underline mb-2 hover:text-white transition">Delivery</a>
-            <a href="#" className="block text-[9px] text-[#adc1b4] no-underline mb-2 hover:text-white transition">Returns</a>
+            <Link to="/help" className="block text-[9px] text-[#adc1b4] no-underline mt-2 mb-2 hover:text-white transition">Support</Link>
+            <Link to="/help" className="block text-[9px] text-[#adc1b4] no-underline mb-2 hover:text-white transition">FAQs</Link>
+            <Link to="/help" className="block text-[9px] text-[#adc1b4] no-underline mb-2 hover:text-white transition">Delivery</Link>
+            <Link to="/returns" className="block text-[9px] text-[#adc1b4] no-underline mb-2 hover:text-white transition">Returns</Link>
           </div>
 
           {/* Company & Legal */}
           <div>
             <h3 className="text-[10px] text-white font-black mb-0">COMPANY & LEGAL</h3>
-            <a href="#" className="block text-[9px] text-[#adc1b4] no-underline mt-2 mb-2 hover:text-white transition">About Kika</a>
-            <a href="#" className="block text-[9px] text-[#adc1b4] no-underline mb-2 hover:text-white transition">Contact</a>
-            <a href="#" className="block text-[9px] text-[#adc1b4] no-underline mb-2 hover:text-white transition">Terms</a>
-            <a href="#" className="block text-[9px] text-[#adc1b4] no-underline mb-2 hover:text-white transition">Privacy</a>
+            <Link to="/help" className="block text-[9px] text-[#adc1b4] no-underline mt-2 mb-2 hover:text-white transition">About Kika</Link>
+            <Link to="/help" className="block text-[9px] text-[#adc1b4] no-underline mb-2 hover:text-white transition">Contact</Link>
+            <Link to="/help" className="block text-[9px] text-[#adc1b4] no-underline mb-2 hover:text-white transition">Terms</Link>
+            <Link to="/help" className="block text-[9px] text-[#adc1b4] no-underline mb-2 hover:text-white transition">Privacy</Link>
           </div>
         </div>
 

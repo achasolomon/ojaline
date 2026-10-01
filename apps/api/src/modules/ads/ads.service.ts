@@ -67,6 +67,7 @@ export interface AdRow {
   ends_at: Date;
   max_impressions: number | null;
   impressions_shown: number;
+  clicks_shown: number;
   created_at: Date;
   updated_at: Date;
 }
@@ -376,6 +377,24 @@ export class AdsService {
     }
 
     return rows.map((r) => this.rowToPublic(r as AdRow, String(r.seller_name)));
+  }
+
+  /**
+   * Best-effort tap counter for a served ad. Intentionally silent on failure
+   * so a missed counter never breaks navigation, like the impression bump.
+   * Only counts while the ad is actually live and within its window.
+   */
+  async registerClick(adId: string): Promise<{ ok: boolean }> {
+    try {
+      await this.pool.query(
+        `UPDATE marketing.ads SET clicks_shown = clicks_shown + 1
+           WHERE id = $1 AND status = 'ACTIVE' AND starts_at <= now() AND ends_at > now()`,
+        [adId],
+      );
+    } catch (err) {
+      console.error('[ads] click increment failed (advisory only)', err);
+    }
+    return { ok: true };
   }
 
   async report(adId: string, reporterId: string | null, reason: AdReportReason): Promise<{ ok: boolean; removed: boolean }> {

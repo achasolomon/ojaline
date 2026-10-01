@@ -160,7 +160,7 @@ describe('MultiSellerGate — checkGate', () => {
     expect(result.seller_count).toBe(3);
   });
 
-  it('blocks sellers in different clusters', async () => {
+  it('allows sellers across different clusters (per-leg capacity)', async () => {
     await insertRiskTier(pool, seller1, 'VERIFIED_LOW', 0.96, false);
     await insertRiskTier(pool, seller2, 'VERIFIED_LOW', 0.97, false);
     const offer1 = await insertOffer(pool, seller1, clusterA);
@@ -169,8 +169,8 @@ describe('MultiSellerGate — checkGate', () => {
       makeItem(offer1, seller1, clusterA),
       makeItem(offer2, seller2, clusterB),
     ]);
-    expect(result.allowed).toBe(false);
-    expect(result.reason).toContain('same cluster');
+    expect(result.allowed).toBe(true);
+    expect(result.seller_count).toBe(2);
     expect(result.clusters.length).toBe(2);
   });
 

@@ -7,6 +7,8 @@ import { toCSV, downloadCSV } from '../lib/csv';
 import { Icon, type IconName } from '../components/icons';
 import { PageTopBar } from '../components/PageTopBar';
 import { TrendChart, type TrendMetric } from '../components/seller/TrendChart';
+import { DoughnutChart } from '../components/seller/DoughnutChart';
+import { LineChart } from '../components/seller/LineChart';
 import { cn } from '../lib/cn';
 
 const fmt = (cents: number) => naira.format(cents / 100);
@@ -33,18 +35,6 @@ function exportTopProducts(stats: SellerStats) {
   downloadCSV(`seller-top-products-${new Date().toISOString().slice(0, 10)}.csv`, toCSV(rows, TOP_PRODUCTS_COLS));
 }
 
-function StatTile({ icon, label, value, tint }: { icon: IconName; label: string; value: string; tint: string }) {
-  return (
-    <div className="flex min-w-0 flex-col rounded-2xl bg-white p-3.5">
-      <span className={`grid h-8 w-8 place-items-center rounded-lg ${tint}`}>
-        <Icon name={icon} size={15} />
-      </span>
-      <p className="mt-2.5 truncate text-lg font-black tracking-tight text-gray-900">{value}</p>
-      <p className="mt-0.5 truncate text-[10px] font-semibold uppercase tracking-wide text-gray-500">{label}</p>
-    </div>
-  );
-}
-
 function SectionTitle({ icon, children, action }: { icon: IconName; children: string; action?: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-2">
@@ -68,6 +58,7 @@ export default function SellerAnalyticsPage() {
   const [trend, setTrend] = useState<SellerTrend | null>(null);
   const [days, setDays] = useState(14);
   const [metric, setMetric] = useState<TrendMetric>('sales_cents');
+  const [chartMode, setChartMode] = useState<'bars' | 'line'>('bars');
 
   const load = useCallback(async () => {
     try {
@@ -110,19 +101,6 @@ export default function SellerAnalyticsPage() {
     );
   }
 
-  const cards = stats
-    ? [
-        { label: 'Revenue (released)', value: fmt(stats.revenue_cents), icon: 'bank' as const, tint: 'bg-[#D6F5E7] text-[#087A38]' },
-        { label: 'Orders total', value: String(stats.orders_total), icon: 'box' as const, tint: 'bg-[#E8EEFF] text-[#2A4BD7]' },
-        { label: 'Completed', value: String(stats.orders_completed), icon: 'check' as const, tint: 'bg-[#D6F5E7] text-[#087A38]' },
-        { label: 'Cancelled', value: String(stats.orders_cancelled), icon: 'close' as const, tint: 'bg-[#FFF1F0] text-danger' },
-        { label: 'On-time rate', value: pct(stats.on_time_rate), icon: 'clock' as const, tint: 'bg-[#E8EEFF] text-[#2A4BD7]' },
-        { label: 'Disputes (30d)', value: pct(stats.dispute_rate_30d), icon: 'help' as const, tint: 'bg-[#FFF6DA] text-[#A36A00]' },
-        { label: 'Avg rating', value: stats.avg_rating != null ? stats.avg_rating.toFixed(1) : '—', icon: 'star' as const, tint: 'bg-[#FFF6DA] text-[#A36A00]' },
-        { label: 'Reviews', value: String(stats.review_count), icon: 'message' as const, tint: 'bg-[#E8EEFF] text-[#2A4BD7]' },
-      ]
-    : [];
-
   const bestDay = trend?.best_day ?? null;
 
   return (
@@ -154,19 +132,207 @@ export default function SellerAnalyticsPage() {
         <div className="px-4 pb-10 pt-4 sm:px-5 md:px-0 md:pb-0 md:pt-4">
         {stats == null ? (
           <>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} className="h-[118px] animate-pulse rounded-2xl bg-gray-200" />
-              ))}
+            <div className="h-24 animate-pulse rounded-2xl bg-gray-200" />
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <div className="h-52 animate-pulse rounded-2xl bg-gray-200" />
+              <div className="h-52 animate-pulse rounded-2xl bg-gray-200" />
+              <div className="h-52 animate-pulse rounded-2xl bg-gray-200" />
+              <div className="h-52 animate-pulse rounded-2xl bg-gray-200" />
             </div>
-            <div className="mt-4 h-64 animate-pulse rounded-2xl bg-gray-200" />
+            <div className="h-64 animate-pulse rounded-2xl bg-gray-200" />
           </>
         ) : (
           <div className="space-y-4">
-            <div className="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-4">
-              {cards.map((card) => (
-                <StatTile key={card.label} icon={card.icon} label={card.label} value={card.value} tint={card.tint} />
-              ))}
+            <section className="rounded-2xl bg-white px-4 py-4 sm:px-5">
+              <div className="grid grid-cols-3 divide-x divide-gray-100 text-center">
+                <div className="min-w-0 px-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Revenue · released</p>
+                  <p className="mt-1.5 truncate text-lg font-black tracking-tight text-gray-900">{fmt(stats.revenue_cents)}</p>
+                </div>
+                <div className="min-w-0 px-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Orders total</p>
+                  <p className="mt-1.5 truncate text-lg font-black tracking-tight text-gray-900">{stats.orders_total}</p>
+                </div>
+                <div className="min-w-0 px-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Views · 7d</p>
+                  <p className="mt-1.5 truncate text-lg font-black tracking-tight text-gray-900">{stats.views_7d}</p>
+                </div>
+              </div>
+            </section>
+
+            <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+              <section className="rounded-2xl bg-white p-4 sm:p-5">
+                <SectionTitle icon="pie">Order outcomes</SectionTitle>
+                <div className="mt-3 flex flex-col items-center gap-5 sm:flex-row">
+                  <DoughnutChart
+                    size={156}
+                    centerValue={String(stats.orders_total)}
+                    centerLabel="orders"
+                    segments={[
+                      { label: 'Completed', value: stats.orders_completed, color: '#087A38' },
+                      {
+                        label: 'In progress',
+                        value: Math.max(stats.orders_total - stats.orders_completed - stats.orders_cancelled, 0),
+                        color: '#F59E0B',
+                      },
+                      { label: 'Cancelled', value: stats.orders_cancelled, color: '#F04438' },
+                    ]}
+                  />
+                  <ul className="w-full min-w-0 flex-1 space-y-2">
+                    {[
+                      { label: 'Completed', value: stats.orders_completed, color: '#087A38' },
+                      {
+                        label: 'In progress',
+                        value: Math.max(stats.orders_total - stats.orders_completed - stats.orders_cancelled, 0),
+                        color: '#F59E0B',
+                      },
+                      { label: 'Cancelled', value: stats.orders_cancelled, color: '#F04438' },
+                    ].map((row) => (
+                      <li
+                        key={row.label}
+                        className="flex items-center justify-between gap-3 rounded-xl bg-surface px-3.5 py-2.5"
+                      >
+                        <span className="flex items-center gap-2 text-[12px] font-semibold text-gray-600">
+                          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: row.color }} />
+                          {row.label}
+                        </span>
+                        <span className="text-[13px] font-black text-gray-900">{row.value}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </section>
+
+              <section className="rounded-2xl bg-white p-4 sm:p-5">
+                <SectionTitle icon="star">Shop quality</SectionTitle>
+                <div className="mt-3 flex flex-col items-center gap-5 sm:flex-row">
+                  <DoughnutChart
+                    size={156}
+                    centerValue={stats.avg_rating != null ? stats.avg_rating.toFixed(1) : '—'}
+                    centerLabel="of 5"
+                    segments={[
+                      { label: 'Avg rating', value: stats.avg_rating ?? 0, color: '#F59E0B' },
+                      { label: 'Remaining', value: Math.max(5 - (stats.avg_rating ?? 0), 0), color: '#F3F4F6' },
+                    ]}
+                  />
+                  <ul className="w-full min-w-0 flex-1 space-y-2">
+                    <li className="flex items-center justify-between gap-3 rounded-xl bg-surface px-3.5 py-2.5">
+                      <span className="flex items-center gap-2 text-[12px] font-semibold text-gray-600">
+                        <Icon name="star" size={14} className="text-[#F59E0B]" />
+                        Average rating
+                      </span>
+                      <span className="text-[13px] font-black text-gray-900">
+                        {stats.avg_rating != null ? `${stats.avg_rating.toFixed(1)}/5` : '—'}
+                      </span>
+                    </li>
+                    <li className="flex items-center justify-between gap-3 rounded-xl bg-surface px-3.5 py-2.5">
+                      <span className="flex items-center gap-2 text-[12px] font-semibold text-gray-600">
+                        <Icon name="message" size={14} className="text-[#2A4BD7]" />
+                        Reviews
+                      </span>
+                      <span className="text-[13px] font-black text-gray-900">{stats.review_count}</span>
+                    </li>
+                    <li className="rounded-xl bg-surface px-3.5 py-2.5">
+                      <div className="flex items-center justify-between gap-3 text-[12px] font-semibold text-gray-600">
+                        <span className="flex items-center gap-2">
+                          <Icon name="clock" size={14} className="text-[#2A4BD7]" />
+                          On-time rate
+                        </span>
+                        <span className="text-[13px] font-black text-gray-900">{pct(stats.on_time_rate)}</span>
+                      </div>
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-100">
+                        <div className="h-full rounded-full bg-[#2A4BD7]" style={{ width: `${stats.on_time_rate * 100}%` }} />
+                      </div>
+                    </li>
+                  </ul>
+                </div>
+              </section>
+            </div>
+
+            <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+              <section className="rounded-2xl bg-white p-4 sm:p-5">
+                <SectionTitle icon="help">Disputes & returns</SectionTitle>
+                <div className="mt-3 flex flex-col items-center gap-5 sm:flex-row">
+                  <DoughnutChart
+                    size={156}
+                    centerValue={pct(stats.dispute_rate_30d)}
+                    centerLabel="disputed"
+                    segments={[
+                      {
+                        label: 'Disputed (30d)',
+                        value: stats.dispute_rate_30d,
+                        color: stats.dispute_rate_30d > 0.2 ? '#F04438' : '#F59E0B',
+                      },
+                      { label: 'Clean', value: Math.max(1 - stats.dispute_rate_30d, 0), color: '#087A38' },
+                    ]}
+                  />
+                  <div className="w-full min-w-0 flex-1">
+                    <p className="text-[12px] leading-relaxed text-gray-600">
+                      <span className="font-black text-gray-900">{Math.round(stats.dispute_rate_30d * stats.orders_total)}</span>{' '}
+                      return{Math.round(stats.dispute_rate_30d * stats.orders_total) === 1 ? '' : 's'} raised against your{' '}
+                      <span className="font-black text-gray-900">{stats.orders_total}</span> orders in the last 30 days.
+                      Refunds issued after release are booked back as clawbacks, so your available payout balance already
+                      reflects them.
+                    </p>
+                    <p
+                      className={cn(
+                        'mt-3 rounded-xl px-3 py-2 text-[11px] font-semibold leading-relaxed',
+                        stats.dispute_rate_30d > 0.2 ? 'bg-[#FFF1F0] text-danger' : 'bg-[#D6F5E7] text-[#087A38]',
+                      )}
+                    >
+                      {stats.dispute_rate_30d > 0.2
+                        ? 'Dispute rate is high — respond to returns quickly and resolve issues with buyers.'
+                        : 'Dispute rate is healthy. Keep responding to returns fast to protect it.'}
+                    </p>
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-2xl bg-white p-4 sm:p-5">
+                <SectionTitle icon="pie">Order funnel</SectionTitle>
+                {stats.views_total > 0 ? (
+                  <>
+                    <ul className="mt-4 space-y-3.5">
+                      {[
+                        { label: 'Views', value: stats.views_total, color: '#087A38' },
+                        { label: 'Orders', value: stats.orders_total, color: '#16a34a' },
+                        { label: 'Completed', value: stats.orders_completed, color: '#65C98D' },
+                      ].map((f) => (
+                        <li key={f.label}>
+                          <div className="flex items-center justify-between text-[11px] font-bold text-gray-600">
+                            <span>{f.label}</span>
+                            <span className="text-gray-900">{f.value}</span>
+                          </div>
+                          <div className="mt-1 h-2.5 overflow-hidden rounded-full bg-gray-100">
+                            <div
+                              className="h-full rounded-full transition-all duration-500"
+                              style={{ width: `${(f.value / stats.views_total) * 100}%`, backgroundColor: f.color }}
+                            />
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-4 rounded-xl bg-surface px-3 py-2 text-[11px] leading-relaxed text-gray-500">
+                      Every view has a{' '}
+                      <span className="font-black text-gray-900">{pct(stats.orders_total / stats.views_total)}</span> chance of
+                      becoming an order, and{' '}
+                      <span className="font-black text-gray-900">
+                        {stats.orders_total > 0 ? pct(stats.orders_completed / stats.orders_total) : '—'}
+                      </span>{' '}
+                      of orders complete.
+                    </p>
+                  </>
+                ) : (
+                  <div className="mt-3 flex items-center gap-3 rounded-xl bg-surface/60 p-4">
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-surface text-gray-400">
+                      <Icon name="eye" size={18} />
+                    </span>
+                    <p className="min-w-0 text-xs leading-relaxed text-gray-500">
+                      No views yet — once buyers open your offers the funnel fills in.
+                    </p>
+                  </div>
+                )}
+              </section>
             </div>
 
             <section className="rounded-2xl bg-white p-4 sm:p-5">
@@ -208,6 +374,22 @@ export default function SellerAnalyticsPage() {
                       </button>
                     ))}
                   </div>
+                  <div className="flex rounded-xl bg-gray-100 p-0.5">
+                    {(['bars', 'line'] as const).map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setChartMode(m)}
+                        className={cn(
+                          'flex items-center gap-1 rounded-lg px-3 py-1.5 text-[11px] font-semibold transition',
+                          chartMode === m ? 'bg-primary text-white shadow-sm' : 'text-gray-500 hover:text-gray-700',
+                        )}
+                      >
+                        <Icon name={m === 'bars' ? 'bars' : 'trend'} size={12} />
+                        {m === 'bars' ? 'Bars' : 'Line'}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -236,7 +418,14 @@ export default function SellerAnalyticsPage() {
 
               <div className="mt-4">
                 {trend ? (
-                  <TrendChart points={trend.trend} metric={metric} />
+                  chartMode === 'bars' ? (
+                    <TrendChart points={trend.trend} metric={metric} />
+                  ) : (
+                    <LineChart
+                      color={metric === 'released_cents' ? '#087A38' : '#16a34a'}
+                      points={trend.trend.map((p) => ({ label: p.date.slice(5).replace('-', '/'), value: p[metric] }))}
+                    />
+                  )
                 ) : (
                   <div className="grid h-44 place-items-center animate-pulse rounded-xl bg-gray-100">Loading trend…</div>
                 )}
@@ -274,6 +463,7 @@ export default function SellerAnalyticsPage() {
                 <ul className="mt-3">
                   {stats.top_products.map((p, i) => {
                     const topMax = Math.max(...stats.top_products.map((x) => x.revenue_cents), 1);
+                    const topTotal = stats.top_products.reduce((s, x) => s + x.revenue_cents, 0);
                     return (
                       <li key={p.offer_id} className="flex items-center gap-3 py-2.5">
                         <span
@@ -296,7 +486,9 @@ export default function SellerAnalyticsPage() {
                                 style={{ width: `${(p.revenue_cents / topMax) * 100}%` }}
                               />
                             </div>
-                            <span className="shrink-0 text-[10px] font-medium text-gray-400">{p.sold_qty} sold</span>
+                            <span className="shrink-0 text-[10px] font-medium text-gray-400">
+                              {p.sold_qty} sold · {Math.round((p.revenue_cents / topTotal) * 100)}% of revenue
+                            </span>
                           </div>
                         </div>
                       </li>

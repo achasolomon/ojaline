@@ -23,7 +23,7 @@ export function NotificationBell() {
     >
       <Icon name="bell" size={18} />
       {unread > 0 && (
-        <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#df3535] px-1 text-[8px] font-bold text-white leading-none">
+        <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[8px] font-bold text-white leading-none">
           {unread > 99 ? '99+' : unread}
         </span>
       )}

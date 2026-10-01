@@ -165,6 +165,142 @@ describe('seller wants list', () => {
   });
 });
 
+describe('bounded haggle', () => {
+  it('caps the buyer at 3 bids and rejects the 4th', async () => {
+    const r = await seedResources();
+    const { negotiationId } = await seedHaggleThread(r);
+
+    for (let i = 1; i <= 3; i++) {
+      await market.buyerBid(negotiationId, r.buyerId, 10, 100_000 * i, `bid ${i}`);
+    }
+    await expect(market.buyerBid(negotiationId, r.buyerId, 10, 500_000, 'one more')).rejects.toThrow(
+      /rounds/,
+    );
+  });
+
+  it('caps the seller at 3 counters and rejects the 4th', async () => {
+    const r = await seedResources();
+    const { negotiationId } = await seedHaggleThread(r);
+
+    for (let i = 1; i <= 3; i++) {
+      await market.sellerOffer(negotiationId, r.sellerId, 150_000 + i * 1_000, 10);
+    }
+    await expect(market.sellerOffer(negotiationId, r.sellerId, 900_000, 10)).rejects.toThrow(
+      /final word/,
+    );
+  });
+
+  it('freezes prices on end, reopens once, and refuses a second reopen', async () => {
+    const r = await seedResources();
+    const { negotiationId } = await seedHaggleThread(r);
+
+    await market.buyerBid(negotiationId, r.buyerId, 10, 100_000, 'I fit collect am for 10k each');
+    await market.sellerOffer(negotiationId, r.sellerId, 200_000, 10);
+
+    const ended = await market.endBargain(negotiationId, r.buyerId, 'BUYER', 'Make I reason am');
+    expect(String(ended.status)).toBe('ENDED');
+    expect(Number(ended.frozen_seller_per_unit_kobo)).toBe(200_000);
+    expect(Number(ended.frozen_buyer_per_unit_kobo)).toBe(10_000);
+    expect(ended.freeze_expires_at).toBeTruthy();
+
+    const reopened = await market.continueBargain(negotiationId, r.buyerId, 'BUYER', 120_000, 10);
+    expect(String(reopened.status)).toBe('OPEN');
+    expect(Number(reopened.reopen_count)).toBe(1);
+
+    await market.endBargain(negotiationId, r.buyerId, 'BUYER', 'E don stand o');
+    await expect(market.continueBargain(negotiationId, r.buyerId, 'BUYER', 130_000, 10)).rejects.toThrow(
+      /reopen/,
+    );
+  });
+
+  it('refuses to reopen a bargain whose frozen window has closed', async () => {
+    const r = await seedResources();
+    const { negotiationId } = await seedHaggleThread(r);
+    await market.buyerBid(negotiationId, r.buyerId, 10, 100_000, 'bid');
+    await market.endBargain(negotiationId, r.sellerId, 'SELLER');
+    await app.query(
+      `UPDATE market.negotiations SET freeze_expires_at = now() - interval '1 hour' WHERE id = $1`,
+      [negotiationId],
+    );
+
+    await expect(market.continueBargain(negotiationId, r.buyerId, 'BUYER', 120_000, 10)).rejects.toThrow(
+      /frozen window don close/,
+    );
+  });
+
+  it('auto-freezes a thread idle for 24 hours and pins the last prices', async () => {
+    const r = await seedResources();
+    const { negotiationId } = await seedHaggleThread(r);
+    await market.buyerBid(negotiationId, r.buyerId, 10, 100_000, 'bid');
+    await market.sellerOffer(negotiationId, r.sellerId, 250_000, 10);
+    await app.query(
+      `UPDATE market.negotiations SET updated_at = now() - interval '25 hours' WHERE id = $1`,
+      [negotiationId],
+    );
+
+    await market.deadlineSweep();
+
+    const threads = (await market.listNegotiations(r.buyerId)) as Array<Record<string, unknown>>;
+    const t = threads.find((x) => String(x.id) === negotiationId);
+    expect(t).toBeTruthy();
+    expect(String(t?.status)).toBe('ENDED');
+    expect(t?.ended_by).toBeNull();
+    expect(Number(t?.frozen_seller_per_unit_kobo)).toBe(250_000);
+    expect(Number(t?.frozen_buyer_per_unit_kobo)).toBe(10_000);
+    expect(t?.freeze_expires_at).toBeTruthy();
+    const msgs = t?.messages as Array<Record<string, unknown>>;
+    const note = msgs.find((m: Record<string, unknown>) => String(m.kind) === 'NOTE');
+    expect(note).toBeTruthy();
+  });
+
+  it('drops the frozen pins once the 24h grab window passes', async () => {
+    const r = await seedResources();
+    const { negotiationId } = await seedHaggleThread(r);
+    await market.buyerBid(negotiationId, r.buyerId, 10, 100_000, 'bid');
+    await market.endBargain(negotiationId, r.buyerId, 'BUYER');
+    await app.query(
+      `UPDATE market.negotiations SET freeze_expires_at = now() - interval '1 hour' WHERE id = $1`,
+      [negotiationId],
+    );
+
+    await market.deadlineSweep();
+
+    const { rows } = await app.query(
+      `SELECT observable, frozen_seller_per_unit_kobo, frozen_buyer_per_unit_kobo, freeze_expires_at
+         FROM market.negotiations WHERE id = $1`,
+      [negotiationId],
+    );
+    expect(String(rows[0].observable)).toBe('ENDED');
+    expect(rows[0].frozen_seller_per_unit_kobo).toBeNull();
+    expect(rows[0].frozen_buyer_per_unit_kobo).toBeNull();
+    expect(rows[0].freeze_expires_at).toBeNull();
+  });
+
+  it('nudges the idle side once 6h before the auto-freeze', async () => {
+    const r = await seedResources();
+    const { negotiationId } = await seedHaggleThread(r);
+    await market.buyerBid(negotiationId, r.buyerId, 10, 100_000, 'bid');
+    await app.query(
+      `UPDATE market.negotiations SET reply_at = now() - interval '5 seconds' WHERE id = $1`,
+      [negotiationId],
+    );
+    await market.replySweep();
+    await app.query(
+      `UPDATE market.negotiations SET updated_at = now() - interval '19 hours' WHERE id = $1`,
+      [negotiationId],
+    );
+    await market.deadlineSweep();
+    let row = (await app.query(`SELECT observable, auto_freeze_reminded_at FROM market.negotiations WHERE id = $1`, [negotiationId])).rows[0];
+    expect(String(row.observable)).toBe('OPEN');
+    expect(row.auto_freeze_reminded_at).toBeTruthy();
+
+    await market.deadlineSweep();
+    row = (await app.query(`SELECT observable, auto_freeze_reminded_at FROM market.negotiations WHERE id = $1`, [negotiationId])).rows[0];
+    expect(String(row.observable)).toBe('OPEN');
+    expect(row.auto_freeze_reminded_at).toBeTruthy();
+  });
+});
+
 /* ------------------------------- seeding ------------------------------- */
 
 async function seedResources(): Promise<Resources> {
@@ -230,11 +366,41 @@ async function seedWantAndBid(r: Resources): Promise<string> {
   return want.rows[0].id;
 }
 
+/** Opens a REQUEST-type haggle (want + bid) the way the mobile flow does. */
+async function seedHaggleThread(r: Resources): Promise<{ negotiationId: string }> {
+  const want = await admin.query<{ id: string }>(
+    `INSERT INTO market.wants (buyer_id, product_name, qty, unit, note)
+     VALUES ($1, $2, 10, 'basket', 'urgent') RETURNING id`,
+    [r.buyerId, `Tomato Basket ${randomUUID().slice(0, 4)}`],
+  );
+  const bid = await admin.query<{ id: string }>(
+    `INSERT INTO market.bids (want_id, seller_id, offer_id, product_name, quote_per_unit_kobo, quote_total_kobo, pitch)
+     VALUES ($1, $2, $3, $4, 120000, 1200000, 'Fresh tomatoes for you') RETURNING id`,
+    [want.rows[0].id, r.sellerId, r.offerId, 'Tomato Basket'],
+  );
+  const thread = (await market.openThread(
+    { basis_type: 'REQUEST', want_id: want.rows[0].id, bid_id: bid.rows[0].id },
+    r.buyerId,
+  )) as Record<string, unknown>;
+  return { negotiationId: String(thread.id) };
+}
+
 async function cleanup(): Promise<void> {
   if (!resources) return;
   const { sellerId, foreignSellerId, buyerId, offerId, lotId, clusterId } = resources;
 
   await admin.query(`DELETE FROM market.crowd_sales WHERE seller_id = ANY($1)`, [[sellerId]]);
+  await admin.query(
+    `DELETE FROM market.negotiation_messages
+      WHERE negotiation_id IN (
+        SELECT id FROM market.negotiations WHERE buyer_id = ANY($1) OR seller_id = ANY($1)
+      )`,
+    [[sellerId, foreignSellerId, buyerId]],
+  );
+  await admin.query(
+    `DELETE FROM market.negotiations WHERE buyer_id = ANY($1) OR seller_id = ANY($1)`,
+    [[sellerId, foreignSellerId, buyerId]],
+  );
   await admin.query(`DELETE FROM market.bids WHERE seller_id = ANY($1)`, [[sellerId, foreignSellerId]]);
   await admin.query(`DELETE FROM market.wants WHERE buyer_id = ANY($1)`, [[buyerId]]);
   await admin.query(`DELETE FROM catalog.offer_price_history WHERE offer_id = $1`, [offerId]);

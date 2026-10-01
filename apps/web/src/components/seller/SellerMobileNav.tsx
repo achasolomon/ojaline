@@ -125,7 +125,7 @@ export function SellerMobileNav() {
           <span className={cn('relative', pill, active.orders && 'bg-primary/10')}>
             <Icon name="box" size={20} className={active.orders ? 'text-primary' : 'text-gray-400'} />
             {needsAction > 0 && (
-              <span className="absolute -right-1 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-[#df3535] px-1 text-[9px] font-black leading-none text-white">
+              <span className="absolute -right-1 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-danger px-1 text-[9px] font-black leading-none text-white">
                 {needsAction > 99 ? '99+' : needsAction}
               </span>
             )}

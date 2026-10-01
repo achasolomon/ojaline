@@ -84,7 +84,7 @@ export function NegotiationDetail({
       {negotiation.status === 'SETTLED' && !inCart && (
         <div className="border-b border-border bg-[#FFF6DA] px-4 py-3">
           <div className="flex items-center gap-3">
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#F5A623]/20 text-[#A36A00]">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-secondary/20 text-[#A36A00]">
               <Icon name="trash" size={16} />
             </span>
             <div className="min-w-0 flex-1">

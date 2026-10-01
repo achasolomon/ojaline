@@ -76,6 +76,8 @@ export interface SellerStats {
   dispute_rate_30d: number;
   avg_rating: number | null;
   review_count: number;
+  views_total: number;
+  views_7d: number;
   top_products: Array<{ offer_id: string; product_name: string; sold_qty: number; revenue_cents: number }>;
 }
 
@@ -753,6 +755,16 @@ const { rows: disputeRows } = await client.query<{ id: string }>(
       [actor.id],
     );
 
+    const { rows: viewRows } = await this.pool.query<{ total: string; last7: string }>(
+      `SELECT
+         COALESCE(SUM(ov.views), 0)::int AS total,
+         COALESCE(SUM(CASE WHEN ov.viewed_on >= CURRENT_DATE - 6 THEN ov.views END), 0)::int AS last7
+       FROM catalog.offer_views ov
+       JOIN catalog.offers off ON off.id = ov.offer_id
+       WHERE off.seller_id = $1`,
+      [actor.id],
+    );
+
     const orows = orderRows[0];
     const total = Number(orows.total);
     const completed = Number(orows.completed);
@@ -770,6 +782,8 @@ const { rows: disputeRows } = await client.query<{ id: string }>(
       dispute_rate_30d: disputeRate,
       avg_rating: ratingRows[0]?.avg_rating ? Number(ratingRows[0].avg_rating) : null,
       review_count: ratingRows[0]?.review_count ? Number(ratingRows[0].review_count) : 0,
+      views_total: Number(viewRows[0].total),
+      views_7d: Number(viewRows[0].last7),
       top_products: topProducts.map((p) => ({
         offer_id: p.offer_id,
         product_name: p.product_name,

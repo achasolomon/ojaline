@@ -46,4 +46,9 @@ export class AdsController {
   ) {
     return this.ads.report(id, userId || null, body.reason ?? 'OTHER');
   }
+
+  @Post(':id/click')
+  async click(@Param('id') id: string) {
+    return this.ads.registerClick(id);
+  }
 }

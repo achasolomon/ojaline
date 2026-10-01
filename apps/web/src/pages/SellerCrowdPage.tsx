@@ -385,7 +385,14 @@ export default function SellerCrowdPage() {
             </section>
 
             {composerOpen && (
-              <section className="rounded-2xl bg-white p-4 sm:p-5">
+              <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+                <button
+                  type="button"
+                  aria-label="Close composer"
+                  onClick={() => setComposerOpen(false)}
+                  className="absolute inset-0 bg-black/40"
+                />
+                <div className="relative z-10 max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-4 shadow-2xl sm:rounded-2xl sm:p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h2 className="text-sm font-extrabold text-gray-900">Launch a crowd sale</h2>
@@ -482,7 +489,8 @@ export default function SellerCrowdPage() {
                     </button>
                   </>
                 )}
-              </section>
+                </div>
+              </div>
             )}
 
             <section>
